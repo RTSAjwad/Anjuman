@@ -6,10 +6,12 @@ independently verifiable.
 
 ## Goals & non-goals
 
-- **Goal:** server boots against Postgres, all 71 endpoints behave identically,
+- **Goal:** server boots against Postgres, all 71 endpoints behave correctly,
   migrations run cleanly from an empty database.
-- **Non-goal:** no observable API change (same DTOs, same JSON, same route
-  coverage). No feature work. No data preservation (dev-only data).
+- **Non-goal:** no feature work, no data preservation (dev-only data).
+- **Note:** one small, deliberate wire change is in scope: four `suspended`
+  fields become `bool` (was `i64` 0/1) per the settled boolean decision. JSON
+  field order/content is otherwise unchanged.
 - **Approach (settled):** discard the ~34 SQLite migration files; write **one**
   schema migration + **one** seed migration for Postgres.
 
@@ -41,11 +43,11 @@ Update `server/.env.example` to the Postgres URL.
 
 ## Phase 1 — Dependencies & connection layer
 
-1. `server/Cargo.toml` — sqlx features:
+1. `server/Cargo.toml` — sqlx features (final):
    - Drop `sqlite`.
    - Keep/add `runtime-tokio-rustls`, `migrate`, `macros`.
-   - Add `postgres`, and the `uuid`, `chrono`, `json` features **if** Phase 2
-     uses `UUID`/`JSONB`/`TIMESTAMPTZ` mappings (likely yes).
+   - Add `postgres`, `chrono`, `json`, `uuid` (for `TIMESTAMPTZ`, `JSONB`,
+     and identity columns as needed).
 2. `server/src/db.rs`:
    - `use sqlx::postgres::{PgPool, PgPoolOptions}` + `PgPool`/`Postgres`.
    - `connect()` → `PgPoolOptions::new().max_connections(N).connect(DATABASE_URL)`.
@@ -74,15 +76,36 @@ One `.sql` file (plus a `0002` seed). Standardize on idiomatic Postgres:
 
 ### Column-type mapping (apply uniformly)
 
-| SQLite | Postgres |
+> **Decisions locked (2026-09-27):** timestamps → `TIMESTAMPTZ`; JSON → `JSONB`;
+> enum columns → Postgres `ENUM` types; boolean flags → `bool`; offline query
+> checking via `cargo sqlx prepare` + committed `.sqlx/`.
+
+| SQLite | Postgres (final) |
 |---|---|
-| `INTEGER PRIMARY KEY` | `BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY` (or `BIGSERIAL`) |
+| `INTEGER PRIMARY KEY` | `BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
 | `INTEGER NOT NULL DEFAULT 0` (bool) | `BOOLEAN NOT NULL DEFAULT FALSE` |
-| `INTEGER` epoch-seconds (`due_at`, `joined_at`, `reviewed_at`, `expires_at`, `buried_at`, `added_at`, `shared_at`, `revoked_at`) | **decide**: keep `BIGINT` epoch-seconds (matches existing Rust `i64`/`now_secs()`; minimal churn) **or** `TIMESTAMPTZ`. **Rec: keep `BIGINT` epoch-seconds** — the codebase treats time as `i64` and FSRS intervals are seconds. |
-| `TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP` (`created_at`) | `BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()))::BIGINT` — **normalize** every timestamp column to int epoch-seconds (today the schema mixes string `CURRENT_TIMESTAMP` and int `unixepoch()`). |
-| `fields_json TEXT` / `field_names TEXT` (JSON) | **decide**: `JSONB` (idiomatic; needs `sqlx` `json` feature + `Json<T>` wrappers) **or** keep `TEXT` (zero handler churn). **Rec: `JSONB`**, flag as sub-decision. |
-| CHECK-enum `TEXT` (`role`, `state`, `kind`) | **decide**: `TEXT + CHECK` **or** `CREATE TYPE ... AS ENUM`. **Rec: `TEXT + CHECK`** (maps to existing `String` fields; enum types add friction). |
-| `REAL` (stability, difficulty, retention) | `DOUBLE PRECISION` (maps to `f64`; avoid `REAL` which is `f32`) |
+| `INTEGER` epoch-seconds (`due_at`, `joined_at`, `reviewed_at`, `expires_at`, `buried_at`, `added_at`, `shared_at`, `revoked_at`, `created_at`) | **`TIMESTAMPTZ`** — implies a `chrono::DateTime<Utc>` (`sqlx` `chrono` feature) + `Utc.timestamp_opt(...)` → `.to_utc()`/`now()` rewrite across the codebase; `now_secs()`/`SystemTime` epoch-seconds helpers are replaced by `Utc::now()`/`chrono` arithmetic. |
+| `TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP` (`created_at`) | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` (consistent with the above). |
+| `fields_json TEXT` / `field_names TEXT` (JSON) | **`JSONB`** (sqlx `json` feature; wrap with `sqlx::types::Json<...>` in handlers; `serde_json::to_string`/`from_str` round-trips become `Json`-bound). |
+| CHECK-enum `TEXT` (`role`, `state`, `kind`) | **`CREATE TYPE ... AS ENUM`** (`user_role`, `membership_role`, `card_state`, `step_kind`) — implies `sqlx` maps them as `String` still, and `#[derive(sqlx::Type)]` or `String` bindings; enum types in Postgres are `TEXT`-compatible for `String` reads. |
+| `REAL` (stability, difficulty, retention) | `DOUBLE PRECISION` (maps to `f64`). |
+
+### Wire-contract impact (decision 5: booleans)
+
+Switching `suspended`/`buried`/`archived` booleans to native `bool` **does change
+four `anjuman_contracts` DTOs** (a deliberate, small wire change — previously
+`i64` 0/1):
+
+- `cards::CardModResponse.suspended`: `i64` → `bool`
+- `cards::NoteModResponse.suspended`: `i64` → `bool`
+- `cards::CardBrowserResponse.suspended`: `Option<i64>` → `Option<bool>`
+- `study::StudyCard.suspended`: `i64` → `bool`
+
+(`archived` already `bool`. The `flag` fields — `StudyCard.flag`,
+`CardBrowserResponse.flag`, `FlagResponse.flag`, `SetFlag.flag` — are **0-7 flag
+colors, not booleans**, and stay `i64`/`i32`.) This changes the generated OpenAPI
+(integer → boolean) and must be reflected in `/api-docs` — an accepted,
+intentional delta, not a regression.
 
 ### Full table set (cross-checked against every migration — no missed columns)
 
@@ -141,14 +164,17 @@ Grep-verified inventory; convert in this order:
 
 1. **`?` → `$n` placeholders** in every query across all handlers + `jwt.rs` +
    `deck_options.rs` + `note_types.rs`. (Some files already use `$1`/`$2`.)
-2. **`unixepoch()`** →
-   - INSERT `created_at`: pass `now_secs()` from Rust (helpers exist) or
-     `(EXTRACT(EPOCH FROM NOW()))::BIGINT`.
-   - **comparisons** (scheduling logic in `study.rs`): keep SQL-side —
-     `due_at <= (EXTRACT(EPOCH FROM NOW()))::BIGINT`,
-     `unixepoch() + ?` → `(EXTRACT(EPOCH FROM NOW()))::BIGINT + $n`.
+2. **`unixepoch()` → timestamp handling** (because of the `TIMESTAMPTZ`
+   decision):
+   - INSERT `created_at`/`reviewed_at`/etc.: bind `Utc::now()` (or a
+     `chrono::DateTime<Utc>`) from Rust, not an epoch integer.
+   - **comparisons** (scheduling logic in `study.rs`): the "due now" checks
+     `due_at <= unixepoch()` become `due_at <= NOW()` (SQL-side, using Postgres
+     `NOW()` returns `TIMESTAMPTZ`); `unixepoch() + ?` (learn-ahead) becomes a
+     computed `NOW() + ($n * INTERVAL '1 second')`.
    - Files: `classes.rs`, `decks.rs` (×2), `notes.rs` (×2), `note_types_handler.rs`
-     (×2), `users.rs`, `study.rs` (×3).
+     (×2), `users.rs`, `study.rs` (×3), plus the `now_secs()`/`SystemTime` helpers
+     in `analytics.rs`/`card_mod.rs`/`dashboard.rs` → `Utc::now()`/`chrono`.
 3. **`last_insert_rowid()` → `RETURNING id`** (`.fetch_one` → `row.id`):
    `users.rs`, `classes.rs`, `decks.rs` (create + duplicate chains), `notes.rs`,
    `note_types_handler.rs` (clone + create_template), `deck_options_handler.rs`.
@@ -156,11 +182,11 @@ Grep-verified inventory; convert in this order:
    INSERT…SELECT flow is the trickiest (keep transaction structure).
 4. **`INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`**:
    `jwt.rs` (`jti`), `notes.rs` `sync_card_rows` (`(note_id, template_id)`).
-5. **Integer-boolean reads → `bool`**: `archived`, `bury_new`, `suspended`,
-   `bury_review`, `bury_interday` (from `!= 0` to native `bool`). For the wire
-   types that keep `i64` (`CardModResponse.suspended`, `StudyCard.suspended`,
-   `StudyCard.flag`), cast at the SQL boundary (`(suspended)::int`) so the API
-   stays **byte-identical**.
+5. **Integer-boolean reads → `bool`** (per decision 5): `archived`, `bury_new`,
+   `suspended`, `bury_review`, `bury_interday` read as native `BOOLEAN` → `bool`
+   (remove the `!= 0` sites). The four `suspended` wire fields become `bool` in
+   `anjuman_contracts` (see §Phase 2 "Wire-contract impact"). The 0-7 `flag`
+   fields stay integers.
 6. **PRIMARY KEY `Option<i64>` → `i64`**: Postgres returns non-null; remove the
    `.expect("... is NOT NULL")` guards in `admin_users.rs`, `classes.rs`,
    `decks.rs`, `search_users.rs`, `note_types.rs`.
@@ -191,20 +217,21 @@ smoke-test CRUD + study flow.
 
 ---
 
-## Risks / open decisions (lock before executing)
+## Risks / open decisions — ALL RESOLVED (2026-09-27)
 
-1. **Postgres runtime** (Phase 0) — services-flake vs. Docker vs. NixOS module.
-2. **Timestamp model** — `BIGINT` epoch-seconds (rec) vs `TIMESTAMPTZ`.
-3. **`fields_json`/`field_names`** — `JSONB` + `json` feature (rec, more churn)
-   vs plain `TEXT` (zero churn).
-4. **Enum columns** — `TEXT + CHECK` (rec) vs `CREATE TYPE ... AS ENUM`.
-5. **`suspended`/`flag` wire type** — keep `i64` + SQL cast (rec; avoids a wire
-   change) vs change DTO to `bool` (out of scope).
-6. **Offline query checking** — `sqlx::query!` needs a live `DATABASE_URL` at
-   compile time **or** `cargo sqlx prepare`-generated `.sqlx/` metadata checked
-   in. **Critical gotcha:** without offline metadata, `cargo build` will fail
-   when Postgres isn't reachable. Decide (a) always-run Postgres via dev shell
-   or (b) adopt offline `.sqlx/` metadata.
+1. **Postgres runtime** (Phase 0) → **in the flake** (`services-flake`/
+   `process-compose` so `nix develop` brings up a local Postgres).
+2. **Timestamp model** → **`TIMESTAMPTZ`** (Rust side: `chrono::DateTime<Utc>`,
+   sqlx `chrono` feature). Broader rewrite than epoch-seconds — replaces
+   `now_secs()`/`SystemTime`/`as_secs()` helpers and the `unixepoch()` SQL.
+3. **`fields_json`/`field_names`** → **`JSONB`** (sqlx `json` feature +
+   `sqlx::types::Json<T>` in handlers).
+4. **Enum columns** → **Postgres `ENUM` types** (`user_role`, `membership_role`,
+   `card_state`, `step_kind`).
+5. **`suspended` wire type** → **`bool`** (four DTO fields change; `flag` stays
+   0-7 integer).
+6. **Offline query checking** → **`cargo sqlx prepare` + committed `.sqlx/`**
+   metadata (so `cargo build` doesn't require a live DB), per recommendation.
 
 ---
 

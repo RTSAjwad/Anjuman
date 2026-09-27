@@ -8,171 +8,173 @@
     # both the client and the server so there is exactly one Rust in the shell.
     rust-overlay.url = "github:oxalica/rust-overlay";
 
-    # Composable per-system helpers (devShells, packages, formatter, …).
-    flake-utils.url = "github:numtide/flake-utils";
+    # flake-parts is the structural framework (used by services-flake /
+    # process-compose-flake).
+    flake-parts.url = "github:hercules-ci/flake-parts";
+
+    # Development services (Postgres) via flake-parts.
+    process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
+    services-flake.url = "github:juspay/services-flake";
   };
 
-  outputs = {
-    self,
-    nixpkgs,
-    rust-overlay,
-    flake-utils,
-  }:
-    flake-utils.lib.eachDefaultSystem (system: let
-      overlays = [(import rust-overlay)];
-
-      pkgs = import nixpkgs {
-        inherit system overlays;
-      };
-
-      # Stable Rust toolchain with the WebAssembly target installed, so the
-      # Leptos shell (and future WASM work) builds out of the box. Used by both
-      # the client and the server (the server just doesn't need the wasm
-      # target, which is harmless to have present).
-      rust-toolchain = pkgs.rust-bin.stable.latest.default.override {
-        targets = ["wasm32-unknown-unknown"];
-        extensions = ["rust-src" "rust-analyzer" "clippy" "rustfmt"];
-      };
-
-      # Native build inputs for the Linux (libadwaita) shell. Present now so
-      # the shell can be added without re-editing the flake.
-      linux-native-inputs = with pkgs; [
-        pkg-config
-        gtk4
-        libadwaita
-        glib
+  outputs = inputs @ {flake-parts, ...}:
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
       ];
 
-      # BoltFFI CLI, built from crates.io (not yet in nixpkgs). Used to
-      # generate Swift/Kotlin/C#/TypeScript bindings from `shared/boltffi.toml`.
-      # Built with our rust-overlay toolchain because boltffi_cli needs
-      # edition 2024, which nixpkgs' default cargo (1.82) doesn't support.
-      boltffi-cli = let
-        rust-platform = pkgs.makeRustPlatform {
-          rustc = rust-toolchain;
-          cargo = rust-toolchain;
-        };
-      in
-        rust-platform.buildRustPackage rec {
-          pname = "boltffi_cli";
-          version = "0.30.1";
+      imports = [
+        inputs.process-compose-flake.flakeModule
+      ];
 
-          src = pkgs.fetchCrate {
-            inherit pname version;
-            hash = "sha256-FtD5ZPq0tY+c30VE8H0Qx+VpB/RbdfVUPBUWwTHfgIQ=";
+      perSystem = {
+        config,
+        pkgs,
+        system,
+        inputs',
+        ...
+      }: let
+        rust-toolchain =
+          pkgs.rust-bin.stable.latest.default.override {
+            targets = ["wasm32-unknown-unknown"];
+            extensions = ["rust-src" "rust-analyzer" "clippy" "rustfmt"];
           };
 
-          cargoHash = "sha256-DdfG8Z1joV1ftyIw9UIF0GVYalxMC1gYZtxIWeF8O/E=";
+        # Native build inputs for the Linux (libadwaita) shell.
+        linux-native-inputs = with pkgs; [
+          pkg-config
+          gtk4
+          libadwaita
+          glib
+        ];
 
-          # boltffi_cli's own test suite has environment-specific failures;
-          # we only need the binary for binding generation.
-          doCheck = false;
+        # BoltFFI CLI, built from crates.io (not yet in nixpkgs). Built with our
+        # rust-overlay toolchain because boltffi_cli needs edition 2024.
+        boltffi-cli = let
+          rust-platform = pkgs.makeRustPlatform {
+            rustc = rust-toolchain;
+            cargo = rust-toolchain;
+          };
+        in
+          rust-platform.buildRustPackage rec {
+            pname = "boltffi_cli";
+            version = "0.30.1";
+
+            src = pkgs.fetchCrate {
+              inherit pname version;
+              hash = "sha256-FtD5ZPq0tY+c30VE8H0Qx+VpB/RbdfVUPBUWwTHfgIQ=";
+            };
+
+            cargoHash = "sha256-DdfG8Z1joV1ftyIw9UIF0GVYalxMC1gYZtxIWeF8O/E=";
+
+            doCheck = false;
+          };
+
+        # --- Client (Crux cross-platform app) dependencies ---
+        client-packages = with pkgs; [
+          rust-toolchain
+
+          # Web (Leptos) shell tooling.
+          trunk
+          wasm-bindgen-cli
+          wasm-pack
+          binaryen
+
+          # TypeScript type generation (facet) shells out to pnpm.
+          pnpm
+          nodejs
+
+          # FFI bindings + type generation for native shells.
+          boltffi-cli
+
+          # General Rust workflow.
+          cargo-watch
+          cargo-edit
+        ];
+
+        # --- Server (Axum backend) dependencies ---
+        server-packages = with pkgs; [
+          rust-toolchain
+
+          rust-analyzer
+          sqlx-cli
+          sqlite
+
+          pkg-config
+          openssl
+
+          just
+        ];
+      in {
+        formatter = pkgs.alejandra;
+
+        packages = {
+          inherit boltffi-cli;
+          default = boltffi-cli;
         };
 
-      # --- Client (Crux cross-platform app) dependencies ---
-      client-packages = with pkgs; [
-        rust-toolchain
+        devShells = {
+          default = pkgs.mkShell {
+            name = "anjuman";
 
-        # Web (Leptos) shell tooling.
-        trunk
-        wasm-bindgen-cli
-        wasm-pack
-        binaryen
+            packages = client-packages ++ server-packages;
 
-        # TypeScript type generation (facet) shells out to pnpm.
-        pnpm
-        nodejs
+            nativeBuildInputs = linux-native-inputs;
 
-        # FFI bindings + type generation for native shells.
-        boltffi-cli
+            RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath linux-native-inputs;
 
-        # General Rust workflow.
-        cargo-watch
-        cargo-edit
-      ];
+            shellHook = ''
+              export DATABASE_URL=''${DATABASE_URL:-postgres://127.0.0.1:5432/anjuman}
 
-      # --- Server (Axum backend) dependencies ---
-      server-packages = with pkgs; [
-        rust-toolchain
+              echo "Anjuman dev shell (rust $(rustc --version | awk '{print $2}'))"
+              echo "  wasm target:  $(rustup target list --installed 2>/dev/null | grep wasm32 || echo 'via toolchain')"
+              echo "  Postgres:     run 'nix run .#anjuman' in another terminal"
+            '';
+          };
 
-        rust-analyzer
-        sqlx-cli
-        sqlite
+          client = pkgs.mkShell {
+            name = "anjuman-client";
 
-        pkg-config
-        openssl
+            packages = client-packages;
 
-        just
-      ];
+            nativeBuildInputs = linux-native-inputs;
 
-      # Environment & shell hook shared by the full dev shell.
-      shell-env = {
-        RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
-        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath linux-native-inputs;
+            RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath linux-native-inputs;
+
+            shellHook = ''
+              echo "Anjuman client dev shell (rust $(rustc --version | awk '{print $2}'))"
+            '';
+          };
+
+          server = pkgs.mkShell {
+            name = "anjuman-server";
+
+            packages = server-packages;
+
+            shellHook = ''
+              export DATABASE_URL=''${DATABASE_URL:-postgres://127.0.0.1:5432/anjuman}
+
+              echo "Anjuman server dev shell (rust $(rustc --version | awk '{print $2}'))"
+              echo "  Postgres: run 'nix run .#anjuman' in another terminal"
+            '';
+          };
+        };
+
+        # The "anjuman" process-compose service group — brings up local
+        # development services (Postgres). Run it with `nix run .#anjuman`.
+        process-compose."anjuman" = {
+          imports = [
+            inputs.services-flake.processComposeModules.default
+          ];
+
+          services.postgres."pg".enable = true;
+          services.postgres."pg".initialDatabases = [
+            {name = "anjuman";}
+          ];
+        };
       };
-    in {
-      formatter = pkgs.alejandra;
-
-      packages = {
-        inherit boltffi-cli;
-        default = boltffi-cli;
-      };
-
-      devShells = {
-        # The full workspace shell: everything needed for both the client and
-        # the server in one environment.
-        default = pkgs.mkShell {
-          name = "anjuman";
-
-          packages = client-packages ++ server-packages;
-
-          nativeBuildInputs = linux-native-inputs;
-
-          RUST_SRC_PATH = shell-env.RUST_SRC_PATH;
-          LD_LIBRARY_PATH = shell-env.LD_LIBRARY_PATH;
-
-          shellHook = ''
-            export DATABASE_URL=''${DATABASE_URL:-sqlite://platform.db}
-
-            echo "Anjuman dev shell (rust $(rustc --version | awk '{print $2}'))"
-            echo "  wasm target:  $(rustup target list --installed 2>/dev/null | grep wasm32 || echo 'via toolchain')"
-          '';
-        };
-
-        # Client-only shell.
-        client = pkgs.mkShell {
-          name = "anjuman-client";
-
-          packages = client-packages;
-
-          nativeBuildInputs = linux-native-inputs;
-
-          RUST_SRC_PATH = shell-env.RUST_SRC_PATH;
-          LD_LIBRARY_PATH = shell-env.LD_LIBRARY_PATH;
-
-          shellHook = ''
-            echo "Anjuman client dev shell (rust $(rustc --version | awk '{print $2}'))"
-          '';
-        };
-
-        # Server-only shell.
-        server = pkgs.mkShell {
-          name = "anjuman-server";
-
-          packages = server-packages;
-
-          shellHook = ''
-            export DATABASE_URL=''${DATABASE_URL:-sqlite://platform.db}
-
-            # Initialize a local SQLite database in WAL mode if one doesn't
-            # exist yet (mirrors the previous server flake's convenience).
-            if [ ! -f platform.db ]; then
-              sqlite3 platform.db "PRAGMA journal_mode=WAL;"
-            fi
-
-            echo "Anjuman server dev shell (rust $(rustc --version | awk '{print $2}'))"
-          '';
-        };
-      };
-    });
+    };
 }
