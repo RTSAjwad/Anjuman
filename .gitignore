@@ -14,7 +14,9 @@ target/
 !.env.example
 !**/.env.example
 
-# SQLite databases (generated at runtime)
+# Local Postgres data dir (created by services-flake via `nix run .#anjuman`)
+# and any stray SQLite files left over from before the migration.
+/data
 *.db
 *.db-shm
 *.db-wal
