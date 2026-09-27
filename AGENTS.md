@@ -1,0 +1,91 @@
+# AGENTS.md
+
+Guidance and authoritative references for working on this repository. Read
+this first — it orients you in the monorepo and points at where the *why* and
+*what's next* live.
+
+---
+
+## 1. What this repo is
+
+**Anjuman** — an Anki-inspired spaced-repetition platform with organisation and
+collaboration (classes, roles, shared decks). One git repository containing
+three independent Cargo workspaces, linked by path dependencies:
+
+| Folder | Crate | What it is |
+|---|---|---|
+| `contracts/` | `anjuman_contracts` | The **single source of truth** for wire DTOs (request/response + shared enums like `UserRole`). Consumed by both the server and (soon) the client. |
+| `server/` | `anjuman_server` | The Axum backend (HTTP API, FSRS scheduling, Postgres). |
+| `client/` | (workspace) `shared` + `shells/*` | The Crux cross-platform app (Leptos shell implemented; SwiftUI/WinUI/Compose planned). |
+
+> Note: these are **separate Cargo workspaces**, not one top-level workspace.
+> This is deliberate — the client needs a WASM/size-optimized release profile,
+> the server a standard throughput profile, and separate `/target` and
+> `Cargo.lock` per workspace. See `client/ARCHITECTURE.md` §2 and §4 for the
+> boundary model. The server and client consume `anjuman_contracts` via
+> `path = "../contracts"`.
+
+## 2. What's next / current work
+
+The ordered task list lives in [`ROADMAP.md`](./ROADMAP.md). Read it before
+starting any new piece of work — it is the single source of truth for what is
+in progress, what is next, and the concrete acceptance criteria for each task.
+
+## 3. Where the detailed docs live
+
+- `client/AGENTS.md` — client-specific version pinning and gotchas (Crux 0.20,
+  Leptos 0.8, BoltFFI 0.30.1, thaw 0.5-beta). Read before touching `client/`.
+- `client/ARCHITECTURE.md` — the client's design rationale (core-first, thin
+  shells, FFI boundaries).
+- `server/DECK_OPTIONS_SUPPORT.md` — Anki deck-options feature matrix (what's
+  supported vs. missing). Drives roadmap task 2.
+- `server/PREFERENCES_SUPPORT.md` — Anki preferences feature matrix. Drives
+  roadmap task 3.
+- `contracts/src/lib.rs` — module map of the shared wire types.
+- `server/src/openapi.rs` — the generated OpenAPI document (served at
+  `/api-docs`; there is no hand-written `api.yaml` anymore).
+
+## 4. Build / run / test
+
+Everything goes through the root Nix dev shell (no global Rust on PATH):
+
+```sh
+nix develop                # full shell (client + server toolchains)
+nix develop .#client       # client-only
+nix develop .#server       # server-only
+
+# contracts
+cargo build --manifest-path contracts/Cargo.toml
+cargo build --manifest-path contracts/Cargo.toml --features openapi
+
+# server
+cargo build --manifest-path server/Cargo.toml
+cargo test  --manifest-path server/Cargo.toml
+
+# client (inside its workspace)
+cd client && cargo build && cargo test
+cd client/shells/leptos && trunk serve
+```
+
+## 5. Working conventions
+
+- **Centralize crate versions** in each workspace's `Cargo.toml`
+  `[workspace.dependencies]` (the client already does; mirror it server-side).
+- **Never commit secrets** — `.env` files and SQLite `.db` files are
+  gitignored (see root `.gitignore`; use `.env.example`).
+- **Database** — the server is migrating from SQLite to **Postgres** (roadmap
+  task 1). Until that lands, do not add new SQLite-specific SQL.
+- **OpenAPI** — generated from `anjuman_contracts` via `utoipa`; never
+  hand-edit a spec file.
+- Generated code is gitignored (`shells/*/generated/`, `shells/leptos/dist/`).
+
+## 6. Definitions of done (for agents)
+
+When you finish a ROADMAP sub-task, you are done only when:
+
+1. `cargo build` and `cargo test` pass in the affected workspace(s).
+2. For server changes: the OpenAPI spec still generates (the `server` build
+   does this automatically) and route coverage is unchanged.
+3. No new warnings beyond those already documented.
+4. The corresponding ROADMAP checkbox is flipped to `[x]` (or the status
+   marker updated) by *you*, with a one-line note of what changed.
