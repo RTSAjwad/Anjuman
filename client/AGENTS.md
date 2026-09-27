@@ -18,8 +18,9 @@ SwiftUI/WinUI/Compose/Libadwaita are planned.
 - `shared/` — the Crux core. `Model`/`Event`/`ViewModel`/`Effect` in
   `src/app.rs`, FFI in `src/ffi.rs`, typegen binary in `src/bin/codegen.rs`.
 - `shells/leptos/` — the web front-end (CSR-only, `trunk`).
-- `flake.nix` — Nix dev shell (provisions Rust 1.98 + `wasm32` target, `trunk`,
-  `boltffi_cli`, `pnpm`, `gtk4`/`libadwaita`).
+- `flake.nix` — Nix dev shell (in the **repo root**; provisions Rust 1.98 +
+  `wasm32` target, `trunk`, `boltffi_cli`, `pnpm`, `gtk4`/`libadwaita`, plus the
+  server's `sqlx-cli`/`sqlite`).
 - `shared/boltffi.toml` — BoltFFI native-binding config (apple/android/wasm/csharp).
 
 The Axum server and the `anjuman_contracts` crate live in **separate repos**
@@ -146,7 +147,7 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 ### Nix
 - `boltffi_cli` needs **edition 2024**, so it must be built with the rust-overlay
   toolchain (1.98), not nixpkgs' default cargo (1.82). See the `boltffi-cli`
-  derivation in `flake.nix`.
+  derivation in the root `flake.nix`.
 - Type generation (TypeScript) shells out to **`pnpm`**; it must be in the shell.
 
 ## 5. Settled architectural decisions (do not re-litigate)

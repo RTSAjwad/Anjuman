@@ -10,21 +10,28 @@ See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full architecture.
 
 ```
 Cargo.toml          # [workspace] + [workspace.dependencies] (central version pinning)
-flake.nix           # Nix dev shell (Rust + wasm target + trunk + pnpm + gtk4)
 shared/             # The Crux core (Model / Event / ViewModel / Effect + FFI + typegen)
 shells/leptos/      # Leptos (WASM) web shell
 ```
 
-The Axum server and the shared `anjuman_contracts` crate live in **separate
-repos** — see `ARCHITECTURE.md` §7 for why.
+> Note: the Nix dev shell now lives in the **repository root** (`../flake.nix`),
+> shared with the server and `anjuman_contracts` (single monorepo). Enter it from
+> the repo root with `nix develop`.
+
+The Axum server and the shared `anjuman_contracts` crate live in sibling
+folders in the same monorepo (`../server`, `../contracts`).
 
 ## Prerequisites
 
-Everything is provided by the Nix flake. Install Nix with flakes enabled, then:
+Everything is provided by the Nix flake at the repository root. Install Nix
+with flakes enabled, then from the repo root:
 
 ```sh
-# Enter the dev shell (automates if you use direnv — see envrc.example)
+# Enter the full dev shell (automates if you use direnv)
 nix develop
+
+# Or the client-only shell
+nix develop .#client
 ```
 
 The dev shell provides:
