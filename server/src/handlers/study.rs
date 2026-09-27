@@ -32,6 +32,7 @@ use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyC
 
 use crate::{
     auth::AuthUser,
+    db_types::DbCardState,
     handlers::decks,
     note_types,
     state::AppState,
@@ -52,7 +53,7 @@ struct CardRow {
     template_id: i64,
     note_type_id: i64,
     fields_json: sqlx::types::Json<serde_json::Value>,
-    state: Option<String>,
+    state: DbCardState,
     due_at: Option<DateTime<Utc>>,
     stability: f64,
     difficulty: f64,
@@ -267,7 +268,7 @@ async fn next_due_card(
         CardRow,
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
-               COALESCE(scs.state::text, '') as state, scs.due_at, scs.stability as "stability: f64",
+               scs.state as "state!: DbCardState", scs.due_at, scs.stability as "stability: f64",
                scs.difficulty as "difficulty: f64", scs.reps, scs.lapses,
                scs.flag as "flag: i64", scs.suspended as "suspended: bool",
                scs.buried_at, scs.bury_reason, scs.step_index as "step_index: i64"
@@ -328,7 +329,7 @@ async fn next_due_card(
         CardRow,
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
-               COALESCE(scs.state::text, '') as state, scs.due_at, scs.stability as "stability: f64",
+               scs.state as "state!: DbCardState", scs.due_at, scs.stability as "stability: f64",
                scs.difficulty as "difficulty: f64", scs.reps, scs.lapses,
                scs.flag as "flag: i64", scs.suspended as "suspended: bool",
                scs.buried_at, scs.bury_reason, scs.step_index as "step_index: i64"
@@ -396,7 +397,7 @@ async fn row_to_study_card(
         note_id: c.note_id,
         front: rendered.front,
         back: rendered.back,
-        state: c.state.unwrap_or_default(),
+        state: c.state.as_str().to_string(),
         due_at: c.due_at,
         stability: c.stability,
         difficulty: c.difficulty,
@@ -454,8 +455,8 @@ fn predict_intervals(
 
     let mut map = HashMap::new();
 
-    match c.state.as_deref() {
-        Some("new") => {
+    match c.state {
+        DbCardState::New => {
             // Again/Hard: first learning step; Good: next step; Easy: graduate.
             map.insert(
                 "1".to_string(),
@@ -480,7 +481,7 @@ fn predict_intervals(
                 .unwrap_or(86400 * 4);
             map.insert("4".to_string(), easy);
         }
-        Some("learning") => {
+        DbCardState::Learning => {
             // Again: first step; Hard/Good: next step (or graduate); Easy: graduate.
             map.insert(
                 "1".to_string(),
@@ -503,7 +504,7 @@ fn predict_intervals(
                 .unwrap_or(86400 * 4);
             map.insert("4".to_string(), easy);
         }
-        Some("review") => {
+        DbCardState::Review => {
             // Again: first relearning step; Hard/Good/Easy: FSRS intervals.
             map.insert(
                 "1".to_string(),
@@ -519,7 +520,7 @@ fn predict_intervals(
                 map.insert("4".to_string(), 86400 * 4);
             }
         }
-        Some("relearning") => {
+        DbCardState::Relearning => {
             // Again: first relearning step; Hard/Good: next step (or graduate).
             map.insert(
                 "1".to_string(),
@@ -541,9 +542,6 @@ fn predict_intervals(
                 .map(|f| interval_secs(f[3]))
                 .unwrap_or(86400 * 4);
             map.insert("4".to_string(), easy);
-        }
-        _ => {
-            return None;
         }
     }
 

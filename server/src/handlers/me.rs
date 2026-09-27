@@ -10,7 +10,7 @@ use axum::{Json, extract::State, http::StatusCode};
 
 use anjuman_contracts::auth::UserResponse;
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{auth::AuthUser, db_types::DbUserRole, state::AppState};
 
 // ---------------------------------------------------------------------------
 // Handler
@@ -32,7 +32,7 @@ pub async fn me(
     // because the token might be valid but the user might have been deleted.
     let row = sqlx::query!(
         r#"
-        SELECT id, email, first_name, last_name, role::text AS role, school_id
+        SELECT id, email, first_name, last_name, role as "role!: DbUserRole", school_id
         FROM users
         WHERE id = $1
         "#,
@@ -43,11 +43,7 @@ pub async fn me(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    let role = row
-        .role
-        .expect("role is NOT NULL in schema")
-        .parse()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let role = row.role.into();
 
     Ok(Json(UserResponse {
         id: row.id,

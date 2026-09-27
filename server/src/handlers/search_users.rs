@@ -16,7 +16,7 @@ use axum::{
 use anjuman_contracts::users::{SearchQuery, SearchResult};
 use anjuman_contracts::UserRole;
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{auth::AuthUser, db_types::DbUserRole, state::AppState};
 
 // ---------------------------------------------------------------------------
 // Handler
@@ -45,10 +45,10 @@ pub async fn search_users(
 
     let rows = sqlx::query!(
         r#"
-        SELECT id, email, first_name, last_name, role::text AS role
+        SELECT id, email, first_name, last_name, role as "role!: DbUserRole"
         FROM users
         WHERE school_id = $1
-          AND role::text != 'admin'
+          AND role != 'admin'
           AND (
             first_name ILIKE $2
             OR last_name ILIKE $3
@@ -76,20 +76,14 @@ pub async fn search_users(
 
     let results: Vec<SearchResult> = rows
         .into_iter()
-        .map(|r| {
-            Ok::<_, (StatusCode, &'static str)>(SearchResult {
-                id: r.id,
-                email: r.email,
-                first_name: r.first_name,
-                last_name: r.last_name,
-                role: r
-                    .role
-                    .expect("role is NOT NULL in schema")
-                    .parse()
-                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
-            })
+        .map(|r| SearchResult {
+            id: r.id,
+            email: r.email,
+            first_name: r.first_name,
+            last_name: r.last_name,
+            role: r.role.into(),
         })
-        .collect::<Result<_, _>>()?;
+        .collect();
 
     Ok(Json(results))
 }

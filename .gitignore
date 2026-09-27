@@ -11,8 +11,6 @@ target/
 # Environment / secrets — never commit real credentials.
 .env
 **/.env
-!.env.example
-!**/.env.example
 
 # Local Postgres data dir (created by services-flake via `nix run .#anjuman`)
 # and any stray SQLite files left over from before the migration.

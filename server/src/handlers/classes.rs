@@ -33,7 +33,11 @@ use anjuman_contracts::classes::{
 };
 use anjuman_contracts::{MessageResponse, UserRole};
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{
+    auth::AuthUser,
+    db_types::{DbMembershipRole, DbUserRole},
+    state::AppState,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -389,7 +393,7 @@ pub async fn view_roster(
     // Fetch all members with their user details.
     let members = sqlx::query!(
         r#"
-        SELECT cm.user_id, u.email, u.first_name, u.last_name, cm.role::text AS role, cm.joined_at
+        SELECT cm.user_id, u.email, u.first_name, u.last_name, cm.role as "role!: DbMembershipRole", cm.joined_at
         FROM class_members cm
         JOIN users u ON u.id = cm.user_id
         WHERE cm.class_id = $1
@@ -403,21 +407,15 @@ pub async fn view_roster(
 
     let member_list: Vec<MemberResponse> = members
         .into_iter()
-        .map(|m| {
-            Ok::<_, (StatusCode, &'static str)>(MemberResponse {
-                user_id: m.user_id,
-                email: m.email,
-                first_name: m.first_name,
-                last_name: m.last_name,
-                role: m
-                    .role
-                    .expect("role is NOT NULL in schema")
-                    .parse()
-                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
-                joined_at: m.joined_at,
-            })
+        .map(|m| MemberResponse {
+            user_id: m.user_id,
+            email: m.email,
+            first_name: m.first_name,
+            last_name: m.last_name,
+            role: m.role.into(),
+            joined_at: m.joined_at,
         })
-        .collect::<Result<_, _>>()?;
+        .collect();
 
     Ok(Json(RosterResponse {
         class: ClassResponse {
@@ -447,7 +445,7 @@ pub async fn add_member(
     check_class_member(&state.db, class_id, claims.school_id, &claims).await?;
 
     let target = sqlx::query!(
-        "SELECT id, email, first_name, last_name, role::text AS role FROM users WHERE id = $1 AND school_id = $2",
+        "SELECT id, email, first_name, last_name, role as \"role!: DbUserRole\" FROM users WHERE id = $1 AND school_id = $2",
         body.user_id,
         claims.school_id
     )
@@ -456,7 +454,7 @@ pub async fn add_member(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "User not found in your school"))?;
 
-    if target.role.as_deref() == Some("admin") {
+    if target.role == DbUserRole::Admin {
         return Err((StatusCode::BAD_REQUEST, "Admins cannot be added to classes"));
     }
 
@@ -470,7 +468,7 @@ pub async fn add_member(
         "#,
         class_id,
         body.user_id,
-        target.role,
+        DbMembershipRole::from(target.role).as_str(),
         now
     )
     .execute(&state.db)
@@ -484,11 +482,7 @@ pub async fn add_member(
             email: target.email,
             first_name: target.first_name,
             last_name: target.last_name,
-            role: target
-                .role
-                .expect("role is NOT NULL in schema")
-                .parse()
-                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
+            role: target.role.into(),
             joined_at: now,
         }),
     ))

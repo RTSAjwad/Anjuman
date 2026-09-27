@@ -38,7 +38,7 @@ use anjuman_contracts::decks::{
 };
 use anjuman_contracts::{MessageResponse, UserRole};
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{auth::AuthUser, db_types::DbUserRole, state::AppState};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -593,7 +593,7 @@ pub async fn share_deck(
 
     // Verify the target user exists in the same school and is a teacher/admin.
     let target = sqlx::query!(
-        "SELECT id, email, first_name, last_name, role::text AS role FROM users WHERE id = $1 AND school_id = $2",
+        "SELECT id, email, first_name, last_name, role as \"role!: DbUserRole\" FROM users WHERE id = $1 AND school_id = $2",
         body.user_id,
         claims.school_id
     )
@@ -602,14 +602,14 @@ pub async fn share_deck(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "User not found in your school"))?;
 
-    if target.role.as_deref() == Some("student") {
+    if target.role == DbUserRole::Student {
         return Err((
             StatusCode::BAD_REQUEST,
             "Cannot share a deck with a student",
         ));
     }
 
-    if target.role.as_deref() == Some("admin") {
+    if target.role == DbUserRole::Admin {
         return Err((
             StatusCode::BAD_REQUEST,
             "Admins already have access to all decks",
@@ -706,7 +706,7 @@ pub async fn transfer_owner(
 
     // Verify target is a teacher in the same school.
     let target = sqlx::query!(
-        "SELECT id, role::text AS role FROM users WHERE id = $1 AND school_id = $2",
+        "SELECT id, role as \"role!: DbUserRole\" FROM users WHERE id = $1 AND school_id = $2",
         body.user_id,
         claims.school_id
     )
@@ -715,7 +715,7 @@ pub async fn transfer_owner(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "User not found in your school"))?;
 
-    if target.role.as_deref() != Some("teacher") {
+    if target.role != DbUserRole::Teacher {
         return Err((
             StatusCode::BAD_REQUEST,
             "Ownership can only be transferred to a teacher",

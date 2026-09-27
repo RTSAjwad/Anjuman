@@ -9,7 +9,7 @@ use chrono::Utc;
 
 use anjuman_contracts::users::{CreateUser, User};
 
-use crate::state::AppState;
+use crate::{db_types::DbUserRole, state::AppState};
 
 use argon2::{
     Argon2,
@@ -41,12 +41,11 @@ pub async fn create_user(
     let password_hash =
         hash_password(&body.password).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Convert the UserRole enum to a string for database storage.
-    let role_str = body.role.to_string();
-
     // Insert the new user row.
     //
-    // `created_at` is set to the current time in Rust (`Utc::now()`).
+    // The `role` is a Postgres `user_role` enum. It is bound as its lowercase
+    // string via `.as_str()` and cast to the enum on the SQL side, since the
+    // compile-time `query!` macro can't map custom enum types directly.
     let result = sqlx::query!(
         r#"
         INSERT INTO users
@@ -59,14 +58,13 @@ pub async fn create_user(
             last_name,
             created_at
         )
-        VALUES
-        ($1, $2, $3, $4::text::user_role, $5, $6, $7)
+        VALUES ($1, $2, $3, $4::text::user_role, $5, $6, $7)
         RETURNING id
         "#,
         body.school_id,
         body.email,
         password_hash,
-        role_str,
+        DbUserRole::from(body.role).as_str(),
         body.first_name,
         body.last_name,
         Utc::now()

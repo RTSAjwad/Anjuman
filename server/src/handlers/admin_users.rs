@@ -20,6 +20,7 @@ use anjuman_contracts::{MessageResponse, UserRole};
 
 use crate::{
     auth::AuthUser,
+    db_types::DbUserRole,
     handlers::users::hash_password,
     state::AppState,
 };
@@ -56,7 +57,7 @@ pub async fn get_user(
 
     let row = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, role::text AS role, created_at
+        SELECT id, school_id, email, first_name, last_name, role as "role!: DbUserRole", created_at
         FROM users
         WHERE id = $1 AND school_id = $2
         "#,
@@ -74,11 +75,7 @@ pub async fn get_user(
         email: row.email,
         first_name: row.first_name,
         last_name: row.last_name,
-        role: row
-            .role
-            .expect("role is NOT NULL in schema")
-            .parse()
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
+        role: row.role.into(),
         created_at: row.created_at,
     }))
 }
@@ -150,8 +147,7 @@ pub async fn update_user(
     }
 
     if let Some(role) = &body.role {
-        let role_str = role.to_string();
-        sqlx::query!("UPDATE users SET role = $1::text::user_role WHERE id = $2", role_str, user_id)
+        sqlx::query!("UPDATE users SET role = $1::text::user_role WHERE id = $2", DbUserRole::from(*role).as_str(), user_id)
             .execute(&mut *tx)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -186,7 +182,7 @@ pub async fn update_user(
     // Fetch and return the updated user.
     let row = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, role::text AS role, created_at
+        SELECT id, school_id, email, first_name, last_name, role as "role!: DbUserRole", created_at
         FROM users
         WHERE id = $1
         "#,
@@ -202,11 +198,7 @@ pub async fn update_user(
         email: row.email,
         first_name: row.first_name,
         last_name: row.last_name,
-        role: row
-            .role
-            .expect("role is NOT NULL in schema")
-            .parse()
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
+        role: row.role.into(),
         created_at: row.created_at,
     }))
 }
@@ -253,7 +245,7 @@ pub async fn list_users(
 
     let rows = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, role::text AS role, created_at
+        SELECT id, school_id, email, first_name, last_name, role as "role!: DbUserRole", created_at
         FROM users
         WHERE school_id = $1
         ORDER BY created_at DESC
@@ -266,22 +258,16 @@ pub async fn list_users(
 
     let users: Vec<UserDetail> = rows
         .into_iter()
-        .map(|r| {
-            Ok::<_, (StatusCode, &'static str)>(UserDetail {
-                id: r.id,
-                school_id: r.school_id,
-                email: r.email,
-                first_name: r.first_name,
-                last_name: r.last_name,
-                role: r
-                    .role
-                    .expect("role is NOT NULL in schema")
-                    .parse()
-                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
-                created_at: r.created_at,
-            })
+        .map(|r| UserDetail {
+            id: r.id,
+            school_id: r.school_id,
+            email: r.email,
+            first_name: r.first_name,
+            last_name: r.last_name,
+            role: r.role.into(),
+            created_at: r.created_at,
         })
-        .collect::<Result<_, _>>()?;
+        .collect();
 
     Ok(Json(users))
 }

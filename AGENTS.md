@@ -67,17 +67,27 @@ cd client && cargo build && cargo test
 cd client/shells/leptos && trunk serve
 ```
 
+Server `cargo test` runs integration tests (`server/tests/`) against a real
+Postgres. They use a **dedicated test database** (`ANJUMAN_TEST_DATABASE_URL`,
+default `postgres://127.0.0.1:5432/anjuman_test`) that the harness migrates and
+resets per test — so Postgres must be running (`nix run .#anjuman`) and the
+test DB must exist (`createdb anjuman_test`). See `server/tests/common/mod.rs`.
+
 ## 5. Working conventions
 
 - **Centralize crate versions** in each workspace's `Cargo.toml`
   `[workspace.dependencies]` (the client already does; mirror it server-side).
-- **Never commit secrets** — `.env` files and SQLite `.db` files are
-  gitignored (see root `.gitignore`; use `.env.example`).
+- **Never commit secrets** — `.env` files are gitignored (see root
+  `.gitignore`). Local config is supplied by the Nix dev shell
+  (`DATABASE_URL`) and a code fallback (`JWT_SECRET`).
 - **Database** — the server uses **Postgres** (provisioned by the flake via
   `nix run .#anjuman`). Migrations live in `server/migrations/` (consolidated
   `0001_create_schema.sql` + `0002_seed_data.sql`). Timestamps are
-  `TIMESTAMPTZ` → `chrono::DateTime<Utc>`; JSON is `JSONB`; enum columns are
-  read via `::text` + `.parse()`.
+  `TIMESTAMPTZ` → `chrono::DateTime<Utc>`; JSON is `JSONB`; enum columns map
+  to server-local `#[derive(sqlx::Type)]` enums in `src/db_types.rs` — read
+  them via a `col as "col!: DbType"` type override, and write them by binding
+  `DbType::X.as_str()` with a `$1::text::<enum>` SQL cast (sqlx's compile-time
+  `query!`/`query_as!` macros can't map custom enums directly).
 - **OpenAPI** — generated from `anjuman_contracts` via `utoipa`; never
   hand-edit a spec file.
 - Generated code is gitignored (`shells/*/generated/`, `shells/leptos/dist/`).

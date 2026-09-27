@@ -21,7 +21,7 @@ use anjuman_contracts::cards::{
     UnburyQuery,
 };
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{auth::AuthUser, db_types::DbCardState, state::AppState};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,7 +60,7 @@ async fn fetch_state(
     (StatusCode, &'static str),
 > {
     let row = sqlx::query!(
-        "SELECT state::text as \"state!: String\", due_at, suspended, buried_at, bury_reason FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        "SELECT state as \"state!: DbCardState\", due_at, suspended, buried_at, bury_reason FROM student_card_states WHERE student_id = $1 AND card_id = $2",
         student_id,
         card_id
     )
@@ -70,7 +70,7 @@ async fn fetch_state(
     .ok_or((StatusCode::NOT_FOUND, "Card state not found"))?;
 
     Ok((
-        row.state,
+        row.state.as_str().to_string(),
         row.due_at,
         row.suspended,
         row.buried_at,

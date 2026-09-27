@@ -24,7 +24,7 @@ use anjuman_contracts::reviews::{
     FlagResponse, ReviewResponse, ReviewedCardState, SetFlag, SubmitReview,
 };
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{auth::AuthUser, db_types::DbCardState, state::AppState};
 
 // ---------------------------------------------------------------------------
 // Learning & relearning step parsing
@@ -81,7 +81,7 @@ pub fn parse_steps(input: &str) -> Result<Vec<i64>, String> {
 /// A sibling candidate row (another card of the answered card's note).
 struct SiblingRow {
     card_id: i64,
-    state: Option<String>,
+    state: DbCardState,
     step_index: i64,
     suspended: bool,
     buried_at: Option<DateTime<Utc>>,
@@ -92,27 +92,27 @@ struct SiblingRow {
 ///
 /// 0 = intraday learning, 1 = interday learning, 2 = review, 3 = new.
 fn queue_class_rank(
-    state: &str,
+    state: DbCardState,
     step_index: i64,
     learning_steps: &[i64],
     relearning_steps: &[i64],
 ) -> i64 {
     match state {
-        "learning" => {
+        DbCardState::Learning => {
             if is_interday_step(step_index, learning_steps) {
                 1
             } else {
                 0
             }
         }
-        "relearning" => {
+        DbCardState::Relearning => {
             if is_interday_step(step_index, relearning_steps) {
                 1
             } else {
                 0
             }
         }
-        "review" => 2,
+        DbCardState::Review => 2,
         _ => 3, // new
     }
 }
@@ -143,7 +143,7 @@ async fn bury_siblings(
     let siblings = sqlx::query_as!(
         SiblingRow,
         r#"
-        SELECT scs.card_id, scs.state::text as state, scs.step_index as "step_index: i64",
+        SELECT scs.card_id, scs.state as "state!: DbCardState", scs.step_index as "step_index: i64",
                scs.suspended as "suspended: bool", scs.buried_at, c.deck_id
         FROM student_card_states scs
         JOIN cards c ON c.id = scs.card_id
@@ -168,7 +168,7 @@ async fn bury_siblings(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         let rank = queue_class_rank(
-            s.state.as_deref().unwrap_or(""),
+            s.state,
             s.step_index,
             &opts.learning_steps,
             &opts.relearning_steps,
@@ -230,7 +230,7 @@ pub async fn apply_review(
     // Fetch the current scheduling state (and the card's deck + note).
     let current = sqlx::query!(
         r#"
-        SELECT scs.state::text as "state!: String", scs.stability, scs.difficulty, scs.last_reviewed_at,
+        SELECT scs.state as "state!: DbCardState", scs.stability, scs.difficulty, scs.last_reviewed_at,
                scs.reps, scs.lapses, scs.step_index, c.deck_id, c.note_id
         FROM student_card_states scs
         JOIN cards c ON c.id = scs.card_id
@@ -260,7 +260,7 @@ pub async fn apply_review(
     // The answered card's queue class (pre-review), used to decide which
     // siblings it may bury.
     let answered_rank = queue_class_rank(
-        &current.state,
+        current.state,
         current.step_index,
         learning_steps,
         relearning_steps,
@@ -318,14 +318,14 @@ pub async fn apply_review(
     //     stability, affecting future intervals after graduation).
     // Review cards lapse back to relearning on "Again".
     let mut step_index = current.step_index;
-    let new_state: String;
+    let new_state: DbCardState;
     let due_at: DateTime<Utc>;
 
-    match current.state.as_str() {
-        "new" => match rating {
+    match current.state {
+        DbCardState::New => match rating {
             4 => {
                 // Easy: graduate immediately.
-                new_state = "review".to_string();
+                new_state = DbCardState::Review;
                 step_index = 0;
                 due_at = now + Duration::seconds(interval_fsrs_secs);
             }
@@ -333,90 +333,86 @@ pub async fn apply_review(
                 // Good: advance one step; graduate if past last.
                 step_index += 1;
                 if step_index >= learning_steps.len() as i64 {
-                    new_state = "review".to_string();
+                    new_state = DbCardState::Review;
                     step_index = 0;
                     due_at = now + Duration::seconds(interval_fsrs_secs);
                 } else {
-                    new_state = "learning".to_string();
+                    new_state = DbCardState::Learning;
                     due_at = now + Duration::seconds(learning_steps[step_index as usize]);
                 }
             }
             _ => {
                 // Again or Hard: stay in learning at first step.
-                new_state = "learning".to_string();
+                new_state = DbCardState::Learning;
                 step_index = 0;
                 due_at = now + Duration::seconds(learning_steps[0]);
             }
         },
-        "learning" => match rating {
+        DbCardState::Learning => match rating {
             1 => {
                 // Again: reset to first step.
                 step_index = 0;
                 due_at = now + Duration::seconds(learning_steps[0]);
-                new_state = "learning".to_string();
+                new_state = DbCardState::Learning;
             }
             2 | 3 => {
                 // Hard or Good: advance one step; graduate if past last.
                 step_index += 1;
                 if step_index >= learning_steps.len() as i64 {
-                    new_state = "review".to_string();
+                    new_state = DbCardState::Review;
                     step_index = 0;
                     due_at = now + Duration::seconds(interval_fsrs_secs);
                 } else {
-                    new_state = "learning".to_string();
+                    new_state = DbCardState::Learning;
                     due_at = now + Duration::seconds(learning_steps[step_index as usize]);
                 }
             }
             _ => {
                 // Easy: graduate immediately.
-                new_state = "review".to_string();
+                new_state = DbCardState::Review;
                 step_index = 0;
                 due_at = now + Duration::seconds(interval_fsrs_secs);
             }
         },
-        "review" => match rating {
+        DbCardState::Review => match rating {
             1 => {
                 // Again: lapse to relearning.
-                new_state = "relearning".to_string();
+                new_state = DbCardState::Relearning;
                 step_index = 0;
                 due_at = now + Duration::seconds(relearning_steps[0]);
             }
             _ => {
                 // Hard/Good/Easy: stay review.
-                new_state = "review".to_string();
+                new_state = DbCardState::Review;
                 due_at = now + Duration::seconds(interval_fsrs_secs);
             }
         },
-        "relearning" => match rating {
+        DbCardState::Relearning => match rating {
             1 => {
                 // Again: restart relearning steps.
                 step_index = 0;
                 due_at = now + Duration::seconds(relearning_steps[0]);
-                new_state = "relearning".to_string();
+                new_state = DbCardState::Relearning;
             }
             2 | 3 => {
                 // Hard or Good: advance one step; graduate if past last.
                 step_index += 1;
                 if step_index >= relearning_steps.len() as i64 {
-                    new_state = "review".to_string();
+                    new_state = DbCardState::Review;
                     step_index = 0;
                     due_at = now + Duration::seconds(interval_fsrs_secs);
                 } else {
-                    new_state = "relearning".to_string();
+                    new_state = DbCardState::Relearning;
                     due_at = now + Duration::seconds(relearning_steps[step_index as usize]);
                 }
             }
             _ => {
                 // Easy: graduate immediately.
-                new_state = "review".to_string();
+                new_state = DbCardState::Review;
                 step_index = 0;
                 due_at = now + Duration::seconds(interval_fsrs_secs);
             }
         },
-        other => {
-            new_state = other.to_string();
-            due_at = now + Duration::seconds(interval_fsrs_secs);
-        }
     }
 
     let new_reps = current.reps + 1;
@@ -441,7 +437,7 @@ pub async fn apply_review(
             step_index = $4, due_at = $5, last_reviewed_at = $6, reps = $7, lapses = $8
         WHERE student_id = $9 AND card_id = $10
         "#,
-        new_state,
+        new_state.as_str(),
         next.memory.stability as f64,
         next.memory.difficulty as f64,
         step_index,
@@ -464,7 +460,7 @@ pub async fn apply_review(
         rating as i64,
         now,
         response_time_ms,
-        current.state
+        current.state.as_str()
     )
     .execute(&mut *tx)
     .await
@@ -491,7 +487,7 @@ pub async fn apply_review(
 
     Ok(ReviewedCardState {
         card_id,
-        state: new_state.to_string(),
+        state: new_state.as_str().to_string(),
         due_at: Some(due_at),
         stability: next.memory.stability as f64,
         difficulty: next.memory.difficulty as f64,

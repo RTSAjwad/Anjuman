@@ -9,6 +9,8 @@
 
 use sqlx::PgPool;
 
+use crate::db_types::DbStepKind;
+
 pub use anjuman_contracts::deck_options::DeckOptions;
 
 // ---------------------------------------------------------------------------
@@ -104,7 +106,7 @@ pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
 /// Load a preset's learning and relearning steps from `deck_option_steps`.
 async fn load_steps(db: &PgPool, options_id: i64) -> Result<Steps, String> {
     let rows = sqlx::query!(
-        "SELECT kind::text as \"kind!: String\", step_index, seconds FROM deck_option_steps WHERE options_id = $1 ORDER BY kind, step_index",
+        "SELECT kind as \"kind!: DbStepKind\", step_index, seconds FROM deck_option_steps WHERE options_id = $1 ORDER BY kind, step_index",
         options_id
     )
     .fetch_all(db)
@@ -114,10 +116,9 @@ async fn load_steps(db: &PgPool, options_id: i64) -> Result<Steps, String> {
     let mut learning_steps = Vec::new();
     let mut relearning_steps = Vec::new();
     for r in rows {
-        match r.kind.as_str() {
-            "learning" => learning_steps.push(r.seconds),
-            "relearning" => relearning_steps.push(r.seconds),
-            _ => {}
+        match r.kind {
+            DbStepKind::Learning => learning_steps.push(r.seconds),
+            DbStepKind::Relearning => relearning_steps.push(r.seconds),
         }
     }
 

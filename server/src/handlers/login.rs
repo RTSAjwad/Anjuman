@@ -23,6 +23,7 @@ use anjuman_contracts::UserRole;
 
 use crate::{
     auth,
+    db_types::DbUserRole,
     handlers::users::verify_password,
     state::AppState,
 };
@@ -54,7 +55,7 @@ pub async fn login(
     // time instead of runtime.
     let row = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, password_hash, role::text AS role
+        SELECT id, school_id, email, first_name, last_name, password_hash, role as "role!: DbUserRole"
         FROM users
         WHERE email = $1
         "#,
@@ -80,16 +81,9 @@ pub async fn login(
         return Err((StatusCode::UNAUTHORIZED, "Invalid email or password"));
     }
 
-    // Step 3: Parse the role string from the database into our `UserRole` enum.
-    //
-    // The database stores roles as a Postgres ENUM (`user_role`), which sqlx
-    // maps to a `String`. We convert to the enum so we can embed a typed value
-    // in the JWT.
-    let role: UserRole = row
-        .role
-        .expect("role is NOT NULL in schema")
-        .parse()
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role in database"))?;
+    // The role is a Postgres `user_role` enum, mapped directly to
+    // `DbUserRole` by sqlx (no string round-trip).
+    let role: UserRole = row.role.into();
 
     // Step 4: Create the JWT.
     //

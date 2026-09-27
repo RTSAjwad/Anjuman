@@ -1,45 +1,21 @@
 // anjuman_server — main entry point
-
-mod app;
-mod auth;
-mod db;
-mod deck_options;
-mod handlers {
-    pub mod admin_users;
-    pub mod analytics;
-    pub mod card_browser;
-    pub mod card_mod;
-
-    pub mod classes;
-    pub mod dashboard;
-    pub mod deck_options_handler;
-    pub mod decks;
-    pub mod health;
-    pub mod login;
-    pub mod logout;
-    pub mod me;
-    pub mod note_types_handler;
-    pub mod notes;
-    pub mod reviews;
-    pub mod search_users;
-    pub mod study;
-    pub mod users;
-}
-mod note_types;
-mod openapi;
-mod routes;
-mod state;
+//
+// The server is split into a library (`lib.rs`, testable by `server/tests/`)
+// and this thin binary. The binary owns process concerns: tracing init, a
+// background token-cleanup task, and binding the TCP listener.
 
 use std::net::SocketAddr;
 
-use state::AppState;
+use anjuman_server::app::app;
+use anjuman_server::state::AppState;
 
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    let db = db::connect().await.expect("database connection failed");
+    let db = anjuman_server::db::connect()
+        .await
+        .expect("database connection failed");
 
     sqlx::migrate!("./migrations")
         .run(&db)
@@ -81,7 +57,7 @@ async fn main() {
     // -------------------------------------------------------------------
 
     let state = AppState { db };
-    let app = app::app(state);
+    let app = app(state);
 
     // Bind to 127.0.0.1 by default for security.
     // Pass `--bind 0.0.0.0` to allow connections from other devices.
