@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::reviews::ReviewedCardState;
@@ -17,18 +18,18 @@ pub struct StudyCard {
     pub front: String,
     pub back: String,
     pub state: String,
-    pub due_at: Option<i64>,
+    pub due_at: Option<DateTime<Utc>>,
     pub stability: f64,
     pub difficulty: f64,
     pub reps: i64,
     pub lapses: i64,
     /// Anki-style card flag (0-7). 0 means no flag.
     pub flag: i64,
-    /// 1 if suspended, 0 otherwise.
-    pub suspended: i64,
-    /// Unix seconds when this card was buried; null if not currently buried.
-    /// A non-null value on/before today's start auto-expires (unburied).
-    pub buried_at: Option<i64>,
+    /// True if suspended.
+    pub suspended: bool,
+    /// When this card was buried; null if not currently buried. A non-null
+    /// value on/before today's start auto-expires (unburied).
+    pub buried_at: Option<DateTime<Utc>>,
     /// Why this card is buried (`user_card`, `sibling_new`, …); null if not buried.
     pub bury_reason: Option<String>,
     /// Current position in the learning/relearning steps list (0-based).

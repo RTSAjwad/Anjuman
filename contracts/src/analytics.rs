@@ -1,5 +1,6 @@
 //! Analytics and dashboard DTOs.
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 /// Per-student aggregate statistics.
@@ -29,7 +30,7 @@ pub struct StudentStatsWithEmail {
     pub total_reviews: i64,
     pub retention_rate: f64,
     pub cards_mastered: i64,
-    pub last_active: Option<String>,
+    pub last_active: Option<DateTime<Utc>>,
 }
 
 /// A single day's activity point.
@@ -103,7 +104,7 @@ pub struct ClassCard {
     pub name: String,
     pub student_count: i64,
     pub avg_retention: f64,
-    pub last_activity: Option<String>,
+    pub last_activity: Option<DateTime<Utc>>,
 }
 
 /// A student flagged for the teacher's attention.
@@ -113,7 +114,7 @@ pub struct AttentionStudent {
     pub student_id: i64,
     pub email: String,
     pub reason: String,
-    pub last_active: Option<String>,
+    pub last_active: Option<DateTime<Utc>>,
     pub retention: f64,
     pub class_name: String,
 }

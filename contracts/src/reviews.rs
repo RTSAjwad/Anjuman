@@ -1,5 +1,6 @@
 //! Review DTOs.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Request body for submitting a review.
@@ -18,7 +19,7 @@ pub struct SubmitReview {
 pub struct ReviewResponse {
     pub card_id: i64,
     pub state: String,
-    pub due_at: Option<i64>,
+    pub due_at: Option<DateTime<Utc>>,
     pub stability: f64,
     pub difficulty: f64,
     pub reps: i64,
@@ -34,7 +35,7 @@ pub struct ReviewResponse {
 pub struct ReviewedCardState {
     pub card_id: i64,
     pub state: String,
-    pub due_at: Option<i64>,
+    pub due_at: Option<DateTime<Utc>>,
     pub stability: f64,
     pub difficulty: f64,
     pub reps: i64,

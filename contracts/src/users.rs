@@ -1,5 +1,6 @@
 //! User-management DTOs.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{auth::UserResponse, shared::UserRole};
@@ -44,7 +45,7 @@ pub struct UserDetail {
     pub first_name: String,
     pub last_name: String,
     pub role: UserRole,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 /// Query parameters for `GET /users/search`.

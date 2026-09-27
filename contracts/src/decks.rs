@@ -1,5 +1,6 @@
 //! Deck-management DTOs.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Expected JSON body for creating a deck.
@@ -87,7 +88,7 @@ pub struct DeckResponse {
     pub owner_first_name: String,
     pub owner_last_name: String,
     pub parent_id: Option<i64>,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
     /// Card counts for the requesting student. Present only in list_decks.
     /// Not populated in get_deck, create_deck, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,7 +111,7 @@ pub struct CollaboratorResponse {
     pub email: String,
     pub first_name: String,
     pub last_name: String,
-    pub shared_at: i64,
+    pub shared_at: DateTime<Utc>,
 }
 
 /// A deck together with its collaborators and linked classes.

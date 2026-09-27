@@ -1,5 +1,6 @@
 //! Note DTOs.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -38,7 +39,7 @@ pub struct NoteResponse {
     pub note_type_name: String,
     pub fields: Map<String, Value>,
     pub cards: Vec<CardSummary>,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 /// A summary of one card generated from a note.

@@ -1,5 +1,6 @@
 //! Class-management DTOs.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::UserRole;
@@ -37,7 +38,7 @@ pub struct ClassResponse {
     pub description: Option<String>,
     pub archived: bool,
     pub created_by: i64,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 /// A single member of a class.
@@ -49,7 +50,7 @@ pub struct MemberResponse {
     pub first_name: String,
     pub last_name: String,
     pub role: UserRole,
-    pub joined_at: i64,
+    pub joined_at: DateTime<Utc>,
 }
 
 /// A class together with its full roster.

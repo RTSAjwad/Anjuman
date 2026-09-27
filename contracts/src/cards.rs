@@ -1,5 +1,6 @@
 //! Card and card-browser DTOs.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -7,8 +8,8 @@ use serde_json::{Map, Value};
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RescheduleBody {
-    /// Absolute due timestamp (Unix epoch seconds).
-    pub due_at: Option<i64>,
+    /// Absolute due timestamp.
+    pub due_at: Option<DateTime<Utc>>,
     /// Relative due offset in days from now (alternative to `due_at`).
     pub days: Option<i64>,
 }
@@ -41,11 +42,11 @@ pub struct UnburyQuery {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CardModResponse {
     pub card_id: i64,
-    pub suspended: i64,
-    pub buried_at: Option<i64>,
+    pub suspended: bool,
+    pub buried_at: Option<DateTime<Utc>>,
     /// Reason the card is buried (`user_card`, `sibling_new`, …); null if not buried.
     pub bury_reason: Option<String>,
-    pub due_at: Option<i64>,
+    pub due_at: Option<DateTime<Utc>>,
     pub state: String,
 }
 
@@ -57,10 +58,10 @@ pub struct NoteModResponse {
     pub cards_affected: i64,
     /// IDs of the cards that were affected.
     pub card_ids: Vec<i64>,
-    /// 1 if suspended, 0 otherwise (suspend operation).
-    pub suspended: i64,
-    /// Unix seconds when cards were buried; null if not buried (bury operation).
-    pub buried_at: Option<i64>,
+    /// True if suspended (suspend operation).
+    pub suspended: bool,
+    /// When cards were buried; null if not buried (bury operation).
+    pub buried_at: Option<DateTime<Utc>>,
     /// Reason cards were buried; null if not buried (bury operation).
     pub bury_reason: Option<String>,
 }
@@ -118,20 +119,20 @@ pub struct CardBrowserResponse {
     pub template_name: String,
     pub fields: Map<String, Value>,
     pub state: Option<String>,
-    pub due_at: Option<i64>,
+    pub due_at: Option<DateTime<Utc>>,
     pub stability: Option<f64>,
     pub difficulty: Option<f64>,
     pub reps: Option<i64>,
     pub lapses: Option<i64>,
     /// Anki-style card flag (0-7). 0 means no flag.
     pub flag: Option<i64>,
-    /// 1 if suspended, 0 otherwise (student view only).
-    pub suspended: Option<i64>,
-    /// Unix seconds when the card was buried (student view only); null if not buried.
-    pub buried_at: Option<i64>,
+    /// True if suspended (student view only).
+    pub suspended: Option<bool>,
+    /// When the card was buried (student view only); null if not buried.
+    pub buried_at: Option<DateTime<Utc>>,
     /// Why the card is buried; null if not buried (student view only).
     pub bury_reason: Option<String>,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_card_position: Option<i64>,
 }
