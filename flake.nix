@@ -29,12 +29,15 @@
       ];
 
       perSystem = {
-        config,
-        pkgs,
         system,
-        inputs',
         ...
       }: let
+        # Apply the rust-overlay to our pkgs so `pkgs.rust-bin` is available.
+        pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [(import inputs.rust-overlay)];
+        };
+
         rust-toolchain =
           pkgs.rust-bin.stable.latest.default.override {
             targets = ["wasm32-unknown-unknown"];
@@ -99,7 +102,7 @@
 
           rust-analyzer
           sqlx-cli
-          sqlite
+          postgresql
 
           pkg-config
           openssl
@@ -170,10 +173,12 @@
             inputs.services-flake.processComposeModules.default
           ];
 
-          services.postgres."pg".enable = true;
-          services.postgres."pg".initialDatabases = [
-            {name = "anjuman";}
-          ];
+          services.postgres."pg" = {
+            enable = true;
+            initialDatabases = [
+              {name = "anjuman";}
+            ];
+          };
         };
       };
     };
