@@ -13,7 +13,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use chrono::TimeZone;
+use chrono::{Datelike, Utc};
 use sqlx::FromRow;
 
 use anjuman_contracts::analytics::{
@@ -35,7 +35,7 @@ use crate::{
 
 #[derive(FromRow)]
 struct DailyRow {
-    day_start: i64,
+    day_start: chrono::DateTime<Utc>,
     review_count: i64,
     avg_rating: f64,
     avg_time: f64,
@@ -52,7 +52,7 @@ struct DifficultCardRow {
     card_id: i64,
     template_id: i64,
     note_type_id: i64,
-    fields_json: String,
+    fields_json: sqlx::types::Json<serde_json::Map<String, serde_json::Value>>,
     avg_rating: f64,
     total_reviews: i64,
 }
@@ -65,42 +65,26 @@ struct StudentRow {
 
 #[derive(FromRow)]
 struct ReviewDay {
-    reviewed_at: i64,
+    reviewed_at: chrono::DateTime<Utc>,
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+fn start_of_today() -> chrono::DateTime<Utc> {
+    Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
         .unwrap()
-        .as_secs() as i64
+        .and_utc()
 }
 
-fn start_of_today() -> i64 {
-    let now = now_secs();
-    now - (now % 86400)
-}
-
-fn start_of_week() -> i64 {
-    let now = now_secs();
-    let days_since_epoch = now / 86400;
-    let days_since_monday = (days_since_epoch + 3) % 7;
-    (days_since_epoch - days_since_monday) * 86400
-}
-
-fn days_since_epoch(ts: i64) -> i64 {
-    ts / 86400
-}
-
-fn format_date(ts: i64) -> String {
-    chrono::Utc
-        .timestamp_opt(ts, 0)
-        .unwrap()
-        .format("%Y-%m-%d")
-        .to_string()
+fn start_of_week() -> chrono::DateTime<Utc> {
+    let date = Utc::now().date_naive();
+    let days_since_monday = date.weekday().num_days_from_monday() as i64;
+    let monday = date - chrono::Duration::days(days_since_monday);
+    monday.and_hms_opt(0, 0, 0).unwrap().and_utc()
 }
 
 fn round2(v: f64) -> f64 {
@@ -133,14 +117,14 @@ async fn compute_core_metrics(
     let week = start_of_week();
 
     let total_reviews: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = ?")
+        sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = $1")
             .bind(student_id)
             .fetch_one(db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let reviews_today: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM reviews WHERE student_id = ? AND reviewed_at >= ?",
+        "SELECT COUNT(*) FROM reviews WHERE student_id = $1 AND reviewed_at >= $2",
     )
     .bind(student_id)
     .bind(today)
@@ -150,7 +134,7 @@ async fn compute_core_metrics(
 
     let retention_rate = if total_reviews > 0 {
         let good_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = ? AND rating >= 3")
+            sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = $1 AND rating >= 3")
                 .bind(student_id)
                 .fetch_one(db)
                 .await
@@ -162,7 +146,7 @@ async fn compute_core_metrics(
 
     let average_rating = if total_reviews > 0 {
         let avg: f64 = sqlx::query_scalar(
-            "SELECT AVG(CAST(rating AS REAL)) FROM reviews WHERE student_id = ?",
+            "SELECT AVG(CAST(rating AS REAL)) FROM reviews WHERE student_id = $1",
         )
         .bind(student_id)
         .fetch_one(db)
@@ -174,14 +158,14 @@ async fn compute_core_metrics(
     };
 
     let cards_total: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM student_card_states WHERE student_id = ?")
+        sqlx::query_scalar("SELECT COUNT(*) FROM student_card_states WHERE student_id = $1")
             .bind(student_id)
             .fetch_one(db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let cards_mastered: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM student_card_states WHERE student_id = ? AND state = 'review' AND stability > 10.0"
+        "SELECT COUNT(*) FROM student_card_states WHERE student_id = $1 AND state = 'review' AND stability > 10.0"
     )
     .bind(student_id)
     .fetch_one(db)
@@ -189,7 +173,7 @@ async fn compute_core_metrics(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let cards_learning: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM student_card_states WHERE student_id = ? AND state IN ('new', 'learning')"
+        "SELECT COUNT(*) FROM student_card_states WHERE student_id = $1 AND state IN ('new', 'learning')"
     )
     .bind(student_id)
     .fetch_one(db)
@@ -197,7 +181,7 @@ async fn compute_core_metrics(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let cards_struggling: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM student_card_states WHERE student_id = ? AND lapses > 2",
+        "SELECT COUNT(*) FROM student_card_states WHERE student_id = $1 AND lapses > 2",
     )
     .bind(student_id)
     .fetch_one(db)
@@ -206,36 +190,36 @@ async fn compute_core_metrics(
 
     // Study streak.
     let days = sqlx::query_as::<_, ReviewDay>(
-        "SELECT DISTINCT reviewed_at FROM reviews WHERE student_id = ? ORDER BY reviewed_at DESC LIMIT 365"
+        "SELECT DISTINCT reviewed_at FROM reviews WHERE student_id = $1 ORDER BY reviewed_at DESC LIMIT 365"
     )
     .bind(student_id)
     .fetch_all(db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let today_day = days_since_epoch(today);
-    let mut review_days: std::collections::HashSet<i64> = days
+    let mut review_days: std::collections::HashSet<chrono::NaiveDate> = days
         .iter()
-        .map(|r| days_since_epoch(r.reviewed_at))
+        .map(|r| r.reviewed_at.date_naive())
         .collect();
 
     if reviews_today > 0 {
-        review_days.insert(days_since_epoch(now_secs()));
+        review_days.insert(Utc::now().date_naive());
     }
 
+    let today_day = today.date_naive();
     let mut check_day = if reviews_today > 0 {
         today_day
     } else {
-        today_day - 1
+        today_day - chrono::Duration::days(1)
     };
     let mut streak = 0i64;
     while review_days.contains(&check_day) {
         streak += 1;
-        check_day -= 1;
+        check_day -= chrono::Duration::days(1);
     }
 
     let time_spent_today_seconds: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(response_time_ms), 0) / 1000 FROM reviews WHERE student_id = ? AND reviewed_at >= ?"
+        "SELECT COALESCE(SUM(response_time_ms), 0) / 1000 FROM reviews WHERE student_id = $1 AND reviewed_at >= $2"
     )
     .bind(student_id)
     .bind(today)
@@ -244,7 +228,7 @@ async fn compute_core_metrics(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let sessions_this_week: i64 = sqlx::query_scalar(
-        "SELECT COUNT(DISTINCT reviewed_at / 86400) FROM reviews WHERE student_id = ? AND reviewed_at >= ?",
+        "SELECT COUNT(DISTINCT DATE_TRUNC('day', reviewed_at)) FROM reviews WHERE student_id = $1 AND reviewed_at >= $2",
     )
     .bind(student_id)
     .bind(week)
@@ -272,17 +256,17 @@ async fn compute_daily_breakdown(
     student_id: i64,
     days: i64,
 ) -> Result<Vec<DailyPoint>, StatusCode> {
-    let since = start_of_today() - (days * 86400);
+    let since = start_of_today() - chrono::Duration::days(days);
 
     let rows = sqlx::query_as::<_, DailyRow>(
         r#"
         SELECT
-            (reviewed_at / 86400) * 86400 as day_start,
+            DATE_TRUNC('day', reviewed_at) as day_start,
             COUNT(*) as review_count,
             AVG(CAST(rating AS REAL)) as avg_rating,
             COALESCE(AVG(CAST(response_time_ms AS REAL)), 0) as avg_time
         FROM reviews
-        WHERE student_id = ? AND reviewed_at >= ?
+        WHERE student_id = $1 AND reviewed_at >= $2
         GROUP BY day_start
         ORDER BY day_start ASC
         "#,
@@ -296,7 +280,7 @@ async fn compute_daily_breakdown(
     Ok(rows
         .into_iter()
         .map(|r| DailyPoint {
-            date: format_date(r.day_start),
+            date: r.day_start.format("%Y-%m-%d").to_string(),
             reviews: r.review_count,
             avg_rating: round2(r.avg_rating),
             avg_time_ms: round2(r.avg_time),
@@ -365,14 +349,14 @@ pub async fn class_analytics(
 ) -> Result<Json<ClassAnalytics>, (StatusCode, &'static str)> {
     check_class_access(&state.db, class_id, claims.school_id, &claims).await?;
 
-    let class_name: String = sqlx::query_scalar("SELECT name FROM classes WHERE id = ?")
+    let class_name: String = sqlx::query_scalar("SELECT name FROM classes WHERE id = $1")
         .bind(class_id)
         .fetch_one(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     let students_enrolled: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM class_members WHERE class_id = ? AND role = 'student'",
+        "SELECT COUNT(*) FROM class_members WHERE class_id = $1 AND role = 'student'",
     )
     .bind(class_id)
     .fetch_one(&state.db)
@@ -384,7 +368,7 @@ pub async fn class_analytics(
         r#"
         SELECT COUNT(*) as total, SUM(CASE WHEN r.rating >= 3 THEN 1 ELSE 0 END) as good
         FROM reviews r
-        JOIN class_members cm ON cm.user_id = r.student_id AND cm.class_id = ?
+        JOIN class_members cm ON cm.user_id = r.student_id AND cm.class_id = $1
         GROUP BY r.student_id
         "#,
     )
@@ -417,7 +401,7 @@ pub async fn class_analytics(
         FROM reviews r
         JOIN cards c ON c.id = r.card_id
         JOIN notes n ON n.id = c.note_id
-        JOIN class_members cm ON cm.user_id = r.student_id AND cm.class_id = ?
+        JOIN class_members cm ON cm.user_id = r.student_id AND cm.class_id = $1
         GROUP BY r.card_id
         HAVING COUNT(*) >= 5
         ORDER BY avg_rating ASC
@@ -431,8 +415,7 @@ pub async fn class_analytics(
 
     let mut most_difficult_cards: Vec<DifficultCard> = Vec::new();
     for c in difficult_cards {
-        let fields: note_types::NoteFields = serde_json::from_str(&c.fields_json)
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid JSON"))?;
+        let fields: note_types::NoteFields = c.fields_json.0;
         let nt = crate::note_types::get_note_type(&state.db, c.note_type_id)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -452,7 +435,7 @@ pub async fn class_analytics(
 
     // Per-student rows.
     let students = sqlx::query_as::<_, StudentRow>(
-        "SELECT u.id as student_id, u.email FROM class_members cm JOIN users u ON u.id = cm.user_id WHERE cm.class_id = ? AND cm.role = 'student' ORDER BY u.email"
+        "SELECT u.id as student_id, u.email FROM class_members cm JOIN users u ON u.id = cm.user_id WHERE cm.class_id = $1 AND cm.role = 'student' ORDER BY u.email"
     )
     .bind(class_id)
     .fetch_all(&state.db)
@@ -465,7 +448,7 @@ pub async fn class_analytics(
         let sid = s.student_id;
 
         let total_reviews: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = ?")
+            sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = $1")
                 .bind(sid)
                 .fetch_one(&state.db)
                 .await
@@ -473,7 +456,7 @@ pub async fn class_analytics(
 
         let retention_rate = if total_reviews > 0 {
             let good: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM reviews WHERE student_id = ? AND rating >= 3",
+                "SELECT COUNT(*) FROM reviews WHERE student_id = $1 AND rating >= 3",
             )
             .bind(sid)
             .fetch_one(&state.db)
@@ -485,15 +468,15 @@ pub async fn class_analytics(
         };
 
         let cards_mastered: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM student_card_states WHERE student_id = ? AND state = 'review' AND stability > 10.0"
+            "SELECT COUNT(*) FROM student_card_states WHERE student_id = $1 AND state = 'review' AND stability > 10.0"
         )
         .bind(sid)
         .fetch_one(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-        let last_active: Option<i64> =
-            sqlx::query_scalar("SELECT MAX(reviewed_at) FROM reviews WHERE student_id = ?")
+        let last_active: Option<chrono::DateTime<Utc>> =
+            sqlx::query_scalar("SELECT MAX(reviewed_at) FROM reviews WHERE student_id = $1")
                 .bind(sid)
                 .fetch_one(&state.db)
                 .await
@@ -505,7 +488,7 @@ pub async fn class_analytics(
             total_reviews,
             retention_rate,
             cards_mastered,
-            last_active: last_active.map(format_date),
+            last_active,
         });
     }
 
@@ -526,7 +509,7 @@ pub async fn student_detail(
     check_class_access(&state.db, class_id, claims.school_id, &claims).await?;
 
     let enrolled: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM class_members WHERE class_id = ? AND user_id = ? AND role = 'student'"
+        "SELECT COUNT(*) FROM class_members WHERE class_id = $1 AND user_id = $2 AND role = 'student'"
     )
     .bind(class_id)
     .bind(student_id)
@@ -538,7 +521,7 @@ pub async fn student_detail(
         return Err((StatusCode::NOT_FOUND, "Student not found in this class"));
     }
 
-    let email: String = sqlx::query_scalar("SELECT email FROM users WHERE id = ?")
+    let email: String = sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
         .bind(student_id)
         .fetch_one(&state.db)
         .await

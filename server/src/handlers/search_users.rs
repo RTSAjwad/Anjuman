@@ -45,19 +45,19 @@ pub async fn search_users(
 
     let rows = sqlx::query!(
         r#"
-        SELECT id, email, first_name, last_name, role
+        SELECT id, email, first_name, last_name, role::text AS role
         FROM users
-        WHERE school_id = ?
-          AND role != 'admin'
+        WHERE school_id = $1
+          AND role::text != 'admin'
           AND (
-            first_name LIKE ? COLLATE NOCASE
-            OR last_name LIKE ? COLLATE NOCASE
-            OR email LIKE ? COLLATE NOCASE
+            first_name ILIKE $2
+            OR last_name ILIKE $3
+            OR email ILIKE $4
           )
         ORDER BY
           CASE
-            WHEN first_name LIKE ? COLLATE NOCASE THEN 0
-            WHEN last_name LIKE ? COLLATE NOCASE THEN 1
+            WHEN first_name ILIKE $5 THEN 0
+            WHEN last_name ILIKE $6 THEN 1
             ELSE 2
           END,
           first_name
@@ -78,12 +78,13 @@ pub async fn search_users(
         .into_iter()
         .map(|r| {
             Ok::<_, (StatusCode, &'static str)>(SearchResult {
-                id: r.id.expect("user.id is NOT NULL in schema"),
+                id: r.id,
                 email: r.email,
                 first_name: r.first_name,
                 last_name: r.last_name,
                 role: r
                     .role
+                    .expect("role is NOT NULL in schema")
                     .parse()
                     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
             })

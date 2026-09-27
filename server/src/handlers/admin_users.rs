@@ -56,9 +56,9 @@ pub async fn get_user(
 
     let row = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, role, created_at
+        SELECT id, school_id, email, first_name, last_name, role::text AS role, created_at
         FROM users
-        WHERE id = ? AND school_id = ?
+        WHERE id = $1 AND school_id = $2
         "#,
         user_id,
         school_id
@@ -76,6 +76,7 @@ pub async fn get_user(
         last_name: row.last_name,
         role: row
             .role
+            .expect("role is NOT NULL in schema")
             .parse()
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
         created_at: row.created_at,
@@ -97,7 +98,7 @@ pub async fn update_user(
 
     // Verify the target user exists and belongs to the admin's school.
     let _ = sqlx::query!(
-        "SELECT id FROM users WHERE id = ? AND school_id = ?",
+        "SELECT id FROM users WHERE id = $1 AND school_id = $2",
         user_id,
         school_id
     )
@@ -122,7 +123,7 @@ pub async fn update_user(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     if let Some(email) = &body.email {
-        sqlx::query!("UPDATE users SET email = ? WHERE id = ?", email, user_id)
+        sqlx::query!("UPDATE users SET email = $1 WHERE id = $2", email, user_id)
             .execute(&mut *tx)
             .await
             .map_err(|e| {
@@ -139,7 +140,7 @@ pub async fn update_user(
 
     if let Some(hash) = &new_hash {
         sqlx::query!(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
+            "UPDATE users SET password_hash = $1 WHERE id = $2",
             hash,
             user_id
         )
@@ -150,7 +151,7 @@ pub async fn update_user(
 
     if let Some(role) = &body.role {
         let role_str = role.to_string();
-        sqlx::query!("UPDATE users SET role = ? WHERE id = ?", role_str, user_id)
+        sqlx::query!("UPDATE users SET role = $1::text::user_role WHERE id = $2", role_str, user_id)
             .execute(&mut *tx)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -158,7 +159,7 @@ pub async fn update_user(
 
     if let Some(first_name) = &body.first_name {
         sqlx::query!(
-            "UPDATE users SET first_name = ? WHERE id = ?",
+            "UPDATE users SET first_name = $1 WHERE id = $2",
             first_name,
             user_id
         )
@@ -169,7 +170,7 @@ pub async fn update_user(
 
     if let Some(last_name) = &body.last_name {
         sqlx::query!(
-            "UPDATE users SET last_name = ? WHERE id = ?",
+            "UPDATE users SET last_name = $1 WHERE id = $2",
             last_name,
             user_id
         )
@@ -185,9 +186,9 @@ pub async fn update_user(
     // Fetch and return the updated user.
     let row = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, role, created_at
+        SELECT id, school_id, email, first_name, last_name, role::text AS role, created_at
         FROM users
-        WHERE id = ?
+        WHERE id = $1
         "#,
         user_id
     )
@@ -203,6 +204,7 @@ pub async fn update_user(
         last_name: row.last_name,
         role: row
             .role
+            .expect("role is NOT NULL in schema")
             .parse()
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
         created_at: row.created_at,
@@ -223,7 +225,7 @@ pub async fn delete_user(
     let school_id = check_admin(&claims)?;
 
     let result = sqlx::query!(
-        "DELETE FROM users WHERE id = ? AND school_id = ?",
+        "DELETE FROM users WHERE id = $1 AND school_id = $2",
         user_id,
         school_id
     )
@@ -251,9 +253,9 @@ pub async fn list_users(
 
     let rows = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, role, created_at
+        SELECT id, school_id, email, first_name, last_name, role::text AS role, created_at
         FROM users
-        WHERE school_id = ?
+        WHERE school_id = $1
         ORDER BY created_at DESC
         "#,
         school_id
@@ -266,13 +268,14 @@ pub async fn list_users(
         .into_iter()
         .map(|r| {
             Ok::<_, (StatusCode, &'static str)>(UserDetail {
-                id: r.id.expect("user.id is NOT NULL in schema"),
+                id: r.id,
                 school_id: r.school_id,
                 email: r.email,
                 first_name: r.first_name,
                 last_name: r.last_name,
                 role: r
                     .role
+                    .expect("role is NOT NULL in schema")
                     .parse()
                     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
                 created_at: r.created_at,

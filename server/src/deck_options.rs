@@ -33,7 +33,7 @@ pub async fn replace_steps(
     relearning_steps: &[i64],
 ) -> Result<(), String> {
     sqlx::query!(
-        "DELETE FROM deck_option_steps WHERE options_id = ?",
+        "DELETE FROM deck_option_steps WHERE options_id = $1",
         options_id
     )
     .execute(&mut **tx)
@@ -43,7 +43,7 @@ pub async fn replace_steps(
     for (i, secs) in learning_steps.iter().enumerate() {
         let step_index = i as i64;
         sqlx::query!(
-            "INSERT INTO deck_option_steps (options_id, kind, step_index, seconds) VALUES (?, 'learning', ?, ?)",
+            "INSERT INTO deck_option_steps (options_id, kind, step_index, seconds) VALUES ($1, 'learning', $2, $3)",
             options_id,
             step_index,
             secs
@@ -56,7 +56,7 @@ pub async fn replace_steps(
     for (i, secs) in relearning_steps.iter().enumerate() {
         let step_index = i as i64;
         sqlx::query!(
-            "INSERT INTO deck_option_steps (options_id, kind, step_index, seconds) VALUES (?, 'relearning', ?, ?)",
+            "INSERT INTO deck_option_steps (options_id, kind, step_index, seconds) VALUES ($1, 'relearning', $2, $3)",
             options_id,
             step_index,
             secs
@@ -76,7 +76,7 @@ pub async fn replace_steps(
 /// Fetch a preset by id, including its normalised steps.
 pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
     let row = sqlx::query!(
-        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day FROM deck_options WHERE id = ?",
+        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day FROM deck_options WHERE id = $1",
         id
     )
     .fetch_optional(db)
@@ -93,9 +93,9 @@ pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
         learning_steps: steps.learning_steps,
         relearning_steps: steps.relearning_steps,
         desired_retention: row.desired_retention,
-        bury_new: row.bury_new != 0,
-        bury_review: row.bury_review != 0,
-        bury_interday: row.bury_interday != 0,
+        bury_new: row.bury_new,
+        bury_review: row.bury_review,
+        bury_interday: row.bury_interday,
         new_per_day: row.new_per_day,
         review_per_day: row.review_per_day,
     })
@@ -104,7 +104,7 @@ pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
 /// Load a preset's learning and relearning steps from `deck_option_steps`.
 async fn load_steps(db: &PgPool, options_id: i64) -> Result<Steps, String> {
     let rows = sqlx::query!(
-        "SELECT kind, step_index, seconds FROM deck_option_steps WHERE options_id = ? ORDER BY kind, step_index",
+        "SELECT kind::text as \"kind!: String\", step_index, seconds FROM deck_option_steps WHERE options_id = $1 ORDER BY kind, step_index",
         options_id
     )
     .fetch_all(db)
@@ -138,7 +138,7 @@ struct Steps {
 /// global default preset (owned by the system school, id 0).
 pub async fn options_for_deck(db: &PgPool, deck_id: i64) -> Result<DeckOptions, String> {
     let options_id: Option<Option<i64>> =
-        sqlx::query_scalar("SELECT options_id FROM decks WHERE id = ?")
+        sqlx::query_scalar("SELECT options_id FROM decks WHERE id = $1")
             .bind(deck_id)
             .fetch_optional(db)
             .await

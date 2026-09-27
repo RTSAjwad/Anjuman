@@ -13,6 +13,9 @@ use axum::{
     http::StatusCode,
 };
 
+use chrono::{DateTime, Utc};
+use sqlx::types::Json as SqlxJson;
+
 use anjuman_contracts::cards::{CardBrowserPage, CardBrowserQuery, CardBrowserResponse};
 
 use crate::{auth::AuthUser, note_types, state::AppState};
@@ -25,8 +28,7 @@ async fn rows_to_responses(
     let mut cards = Vec::new();
     let mut new_pos = new_card_offset;
     for r in rows {
-        let fields: serde_json::Map<String, serde_json::Value> =
-            serde_json::from_str(&r.fields_json).unwrap_or_default();
+        let fields: serde_json::Map<String, serde_json::Value> = r.fields_json.0;
         let nt = note_types::get_note_type(db, r.note_type_id)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -66,12 +68,12 @@ async fn rows_to_responses(
             fields,
             state: r.state,
             due_at: r.due_at,
-            stability: Some(r.stability),
-            difficulty: Some(r.difficulty),
-            reps: Some(r.reps),
-            lapses: Some(r.lapses),
-            flag: Some(r.flag),
-            suspended: Some(r.suspended),
+            stability: r.stability,
+            difficulty: r.difficulty,
+            reps: r.reps,
+            lapses: r.lapses,
+            flag: r.flag,
+            suspended: r.suspended,
             buried_at: r.buried_at,
             bury_reason: r.bury_reason,
             created_at: r.created_at,
@@ -148,7 +150,7 @@ pub async fn browse_cards(
         .q
         .as_ref()
         .filter(|s| !s.trim().is_empty())
-        .map(|q| format!("AND n.fields_json LIKE '%{}%'", q.trim()))
+        .map(|q| format!("AND n.fields_json::text LIKE '%{}%'", q.trim()))
         .unwrap_or_default();
     let state_filter = state_where(&params.state);
     let flag_filter = in_clause("scs.flag", &params.flag);
@@ -188,12 +190,13 @@ pub async fn browse_cards(
     let new_card_offset = if let Some(first) = rows.first() {
         let new_where = format!("WHERE d.school_id = $2 {} {}", deck_filter, q_filter);
         let off_sql = format!(
-            "SELECT COUNT(*) {} {} AND (scs.state = 'new' OR scs.state IS NULL) AND c.created_at > '{}'",
-            base_from, new_where, first.created_at
+            "SELECT COUNT(*) {} {} AND (scs.state = 'new' OR scs.state IS NULL) AND c.created_at > $3",
+            base_from, new_where
         );
         sqlx::query_scalar(&off_sql)
             .bind(claims.sub)
             .bind(claims.school_id)
+            .bind(first.created_at)
             .fetch_one(&state.db)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
@@ -222,16 +225,16 @@ struct CardBrowserRow {
     deck_title: String,
     note_type_id: i64,
     note_type_name: String,
-    fields_json: String,
-    created_at: String,
+    fields_json: SqlxJson<serde_json::Map<String, serde_json::Value>>,
+    created_at: DateTime<Utc>,
     state: Option<String>,
-    due_at: Option<i64>,
-    stability: f64,
-    difficulty: f64,
-    reps: i64,
-    lapses: i64,
-    flag: i64,
-    suspended: i64,
-    buried_at: Option<i64>,
+    due_at: Option<DateTime<Utc>>,
+    stability: Option<f64>,
+    difficulty: Option<f64>,
+    reps: Option<i64>,
+    lapses: Option<i64>,
+    flag: Option<i64>,
+    suspended: Option<bool>,
+    buried_at: Option<DateTime<Utc>>,
     bury_reason: Option<String>,
 }

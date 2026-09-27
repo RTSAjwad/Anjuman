@@ -130,16 +130,15 @@ pub async fn verify_token(token: &str, db: &PgPool) -> Result<Claims, AuthError>
     let claims = token_data.claims;
 
     // Step 2: Check if this token has been revoked (logged out).
-    // `EXISTS(...)` returns 0 or 1, which sqlx maps to a Rust integer.
-    let revoked: i64 = sqlx::query_scalar!(
-        r#"SELECT EXISTS(SELECT 1 FROM revoked_tokens WHERE jti = ?) AS "exists!: i64""#,
+    let revoked: Option<bool> = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM revoked_tokens WHERE jti = $1)",
         claims.jti
     )
     .fetch_one(db)
     .await
     .map_err(|_| AuthError::TokenInvalid)?;
 
-    if revoked != 0 {
+    if revoked.unwrap_or(false) {
         return Err(AuthError::TokenRevoked);
     }
 
@@ -153,11 +152,11 @@ pub async fn verify_token(token: &str, db: &PgPool) -> Result<Claims, AuthError>
 pub async fn revoke_token(
     jti: &str,
     user_id: i64,
-    expires_at: i64,
+    expires_at: chrono::DateTime<chrono::Utc>,
     db: &PgPool,
 ) -> Result<(), AuthError> {
     sqlx::query!(
-        "INSERT OR IGNORE INTO revoked_tokens (jti, user_id, expires_at) VALUES (?, ?, ?)",
+        "INSERT INTO revoked_tokens (jti, user_id, expires_at) VALUES ($1, $2, $3) ON CONFLICT (jti) DO NOTHING",
         jti,
         user_id,
         expires_at,

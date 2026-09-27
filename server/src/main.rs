@@ -55,12 +55,9 @@ async fn main() {
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
         loop {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = chrono::Utc::now();
 
-            match sqlx::query!("DELETE FROM revoked_tokens WHERE expires_at <= ?", now)
+            match sqlx::query!("DELETE FROM revoked_tokens WHERE expires_at <= $1", now)
                 .execute(&cleanup_db)
                 .await
             {

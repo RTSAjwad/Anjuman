@@ -59,7 +59,7 @@ pub struct RenderedCard {
 /// Look up a note type by ID, including its templates.
 pub async fn get_note_type(db: &PgPool, id: i64) -> Result<NoteType, String> {
     let row = sqlx::query!(
-        "SELECT id, name, field_names, sort_field FROM note_types WHERE id = ?",
+        "SELECT id, name, field_names, sort_field FROM note_types WHERE id = $1",
         id
     )
     .fetch_optional(db)
@@ -67,11 +67,11 @@ pub async fn get_note_type(db: &PgPool, id: i64) -> Result<NoteType, String> {
     .map_err(|e| format!("Database error: {e}"))?
     .ok_or_else(|| format!("Note type {id} not found"))?;
 
-    let field_names: Vec<String> = serde_json::from_str(&row.field_names)
+    let field_names: Vec<String> = serde_json::from_value(row.field_names)
         .map_err(|e| format!("Invalid field_names JSON: {e}"))?;
 
     let templates = sqlx::query!(
-        "SELECT id, ord, name, front_pattern, back_pattern FROM note_type_templates WHERE note_type_id = ? ORDER BY ord",
+        "SELECT id, ord, name, front_pattern, back_pattern FROM note_type_templates WHERE note_type_id = $1 ORDER BY ord",
         id
     )
     .fetch_all(db)
@@ -81,7 +81,7 @@ pub async fn get_note_type(db: &PgPool, id: i64) -> Result<NoteType, String> {
     let templates: Vec<Template> = templates
         .into_iter()
         .map(|t| Template {
-            id: t.id.expect("template.id is NOT NULL"),
+            id: t.id,
             ord: t.ord,
             name: t.name,
             front_pattern: t.front_pattern,
@@ -100,19 +100,19 @@ pub async fn get_note_type(db: &PgPool, id: i64) -> Result<NoteType, String> {
 
 /// Look up a note type by name (for legacy compatibility).
 pub async fn get_note_type_by_name(db: &PgPool, name: &str) -> Result<NoteType, String> {
-    let row = sqlx::query!("SELECT id FROM note_types WHERE name = ?", name)
+    let row = sqlx::query!("SELECT id FROM note_types WHERE name = $1", name)
         .fetch_optional(db)
         .await
         .map_err(|e| format!("Database error: {e}"))?
         .ok_or_else(|| format!("Note type '{name}' not found"))?;
 
-    get_note_type(db, row.id.expect("note_type.id is NOT NULL")).await
+    get_note_type(db, row.id).await
 }
 
 /// List all note types in a school.
 pub async fn list_note_types(db: &PgPool, school_id: i64) -> Result<Vec<NoteType>, String> {
     let rows = sqlx::query!(
-        "SELECT id, name, field_names FROM note_types WHERE school_id = ? ORDER BY name",
+        "SELECT id, name, field_names FROM note_types WHERE school_id = $1 ORDER BY name",
         school_id
     )
     .fetch_all(db)
@@ -121,7 +121,7 @@ pub async fn list_note_types(db: &PgPool, school_id: i64) -> Result<Vec<NoteType
 
     let mut result = Vec::new();
     for row in rows {
-        let nt = get_note_type(db, row.id.expect("id is NOT NULL")).await?;
+        let nt = get_note_type(db, row.id).await?;
         result.push(nt);
     }
     Ok(result)

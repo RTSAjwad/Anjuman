@@ -29,6 +29,8 @@ use axum::{
     http::StatusCode,
 };
 
+use chrono::Utc;
+
 use anjuman_contracts::decks::{
     AddDeckToClass, ClassInfo, CollaboratorResponse, CreateDeck, DeckCounts, DeckCountsQuery,
     DeckCountsResponse, DeckDetailResponse, DeckResponse, DeleteDeckQuery, ShareDeck,
@@ -64,7 +66,7 @@ pub async fn check_deck_owner(
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
     let row = sqlx::query!(
-        "SELECT id, created_by FROM decks WHERE id = ? AND school_id = ?",
+        "SELECT id, created_by FROM decks WHERE id = $1 AND school_id = $2",
         deck_id,
         school_id
     )
@@ -97,7 +99,7 @@ pub async fn check_deck_collaborator(
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
     let row = sqlx::query!(
-        "SELECT id, created_by FROM decks WHERE id = ? AND school_id = ?",
+        "SELECT id, created_by FROM decks WHERE id = $1 AND school_id = $2",
         deck_id,
         school_id
     )
@@ -117,7 +119,7 @@ pub async fn check_deck_collaborator(
 
     // Check if the user is a collaborator.
     let is_collab = sqlx::query_scalar!(
-        r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = ? AND user_id = ?) AS "exists!: i64""#,
+        r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2) AS "exists!: bool""#,
         deck_id,
         claims.sub
     )
@@ -125,7 +127,7 @@ pub async fn check_deck_collaborator(
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    if is_collab != 0 {
+    if is_collab {
         return Ok(());
     }
 
@@ -147,7 +149,7 @@ pub async fn check_deck_visible(
         r#"
         SELECT id, created_by
         FROM decks
-        WHERE id = ? AND school_id = ?
+        WHERE id = $1 AND school_id = $2
         "#,
         deck_id,
         school_id
@@ -164,7 +166,7 @@ pub async fn check_deck_visible(
 
     // Check if the user is a collaborator.
     let is_collab = sqlx::query_scalar!(
-        r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = ? AND user_id = ?) AS "exists!: i64""#,
+        r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2) AS "exists!: bool""#,
         deck_id,
         claims.sub
     )
@@ -172,7 +174,7 @@ pub async fn check_deck_visible(
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    if is_collab != 0 {
+    if is_collab {
         return Ok(());
     }
 
@@ -181,8 +183,8 @@ pub async fn check_deck_visible(
         r#"SELECT EXISTS(
             SELECT 1 FROM deck_classes dcl
             JOIN class_members cm ON cm.class_id = dcl.class_id
-            WHERE dcl.deck_id = ? AND cm.user_id = ?
-        ) AS "exists!: i64""#,
+            WHERE dcl.deck_id = $1 AND cm.user_id = $2
+        ) AS "exists!: bool""#,
         deck_id,
         claims.sub
     )
@@ -190,7 +192,7 @@ pub async fn check_deck_visible(
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    if in_class != 0 {
+    if in_class {
         return Ok(());
     }
 
@@ -211,7 +213,7 @@ async fn fetch_deck(
                u.last_name as owner_last_name
         FROM decks d
         JOIN users u ON u.id = d.created_by
-        WHERE d.id = ?
+        WHERE d.id = $1
         "#,
         deck_id
     )
@@ -253,7 +255,7 @@ pub async fn create_deck(
     // Validate parent exists in same school if provided.
     if let Some(parent_id) = body.parent_id {
         let parent = sqlx::query!(
-            "SELECT id FROM decks WHERE id = ? AND school_id = ?",
+            "SELECT id FROM decks WHERE id = $1 AND school_id = $2",
             parent_id,
             claims.school_id
         )
@@ -268,19 +270,21 @@ pub async fn create_deck(
     let result = sqlx::query!(
         r#"
         INSERT INTO decks (school_id, title, description, parent_id, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, unixepoch())
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
         "#,
         claims.school_id,
         body.title,
         body.description,
         body.parent_id,
-        claims.sub
+        claims.sub,
+        Utc::now()
     )
-    .execute(&state.db)
+    .fetch_one(&state.db)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    let deck = fetch_deck(&state.db, result.last_insert_rowid()).await?;
+    let deck = fetch_deck(&state.db, result.id).await?;
     Ok((StatusCode::CREATED, Json(deck)))
 }
 
@@ -302,7 +306,7 @@ pub async fn rename_deck(
         if title.is_empty() {
             return Err((StatusCode::BAD_REQUEST, "Title cannot be empty"));
         }
-        sqlx::query!("UPDATE decks SET title = ? WHERE id = ?", title, deck_id)
+        sqlx::query!("UPDATE decks SET title = $1 WHERE id = $2", title, deck_id)
             .execute(&state.db)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -312,7 +316,7 @@ pub async fn rename_deck(
         // If moving to a parent, validate it exists and check for cycles.
         if let Some(pid) = parent_id {
             let parent = sqlx::query!(
-                "SELECT id FROM decks WHERE id = ? AND school_id = ?",
+                "SELECT id FROM decks WHERE id = $1 AND school_id = $2",
                 pid,
                 claims.school_id
             )
@@ -332,7 +336,7 @@ pub async fn rename_deck(
                         "Cannot move a deck under one of its own descendants",
                     ));
                 }
-                let next = sqlx::query_scalar!("SELECT parent_id FROM decks WHERE id = ?", current)
+                let next = sqlx::query_scalar!("SELECT parent_id FROM decks WHERE id = $1", current)
                     .fetch_optional(&state.db)
                     .await
                     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -344,7 +348,7 @@ pub async fn rename_deck(
         }
 
         sqlx::query!(
-            "UPDATE decks SET parent_id = ? WHERE id = ?",
+            "UPDATE decks SET parent_id = $1 WHERE id = $2",
             parent_id,
             deck_id
         )
@@ -355,7 +359,7 @@ pub async fn rename_deck(
 
     if let Some(description) = body.description {
         sqlx::query!(
-            "UPDATE decks SET description = ? WHERE id = ?",
+            "UPDATE decks SET description = $1 WHERE id = $2",
             description,
             deck_id
         )
@@ -375,7 +379,7 @@ pub async fn rename_deck(
             }
         }
         sqlx::query!(
-            "UPDATE decks SET options_id = ? WHERE id = ?",
+            "UPDATE decks SET options_id = $1 WHERE id = $2",
             options_id,
             deck_id
         )
@@ -408,7 +412,7 @@ pub async fn delete_deck(
             DELETE FROM decks
             WHERE id IN (
                 WITH RECURSIVE subtree(id) AS (
-                    SELECT ?
+                    SELECT $1::BIGINT
                     UNION ALL
                     SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
                 )
@@ -427,14 +431,14 @@ pub async fn delete_deck(
     } else {
         // Unparent children first, then delete the deck.
         sqlx::query!(
-            "UPDATE decks SET parent_id = NULL WHERE parent_id = ?",
+            "UPDATE decks SET parent_id = NULL WHERE parent_id = $1",
             deck_id
         )
         .execute(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-        sqlx::query!("DELETE FROM decks WHERE id = ?", deck_id)
+        sqlx::query!("DELETE FROM decks WHERE id = $1", deck_id)
             .execute(&state.db)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -461,7 +465,7 @@ pub async fn duplicate_deck(
         r#"
         SELECT id, title, description, parent_id, created_by
         FROM decks
-        WHERE id = ? AND school_id = ?
+        WHERE id = $1 AND school_id = $2
         "#,
         deck_id,
         claims.school_id
@@ -476,7 +480,7 @@ pub async fn duplicate_deck(
 
     if !can_access {
         let is_collab = sqlx::query_scalar!(
-            r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = ? AND user_id = ?) AS "exists!: i64""#,
+            r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2) AS "exists!: bool""#,
             deck_id,
             claims.sub
         )
@@ -484,7 +488,7 @@ pub async fn duplicate_deck(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-        if is_collab == 0 {
+        if !is_collab {
             return Err((StatusCode::FORBIDDEN, "You do not have access to this deck"));
         }
     }
@@ -500,24 +504,26 @@ pub async fn duplicate_deck(
     let result = sqlx::query!(
         r#"
         INSERT INTO decks (school_id, title, description, parent_id, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, unixepoch())
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
         "#,
         claims.school_id,
         new_title,
         source.description,
         source.parent_id,
-        claims.sub
+        claims.sub,
+        Utc::now()
     )
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    let new_deck_id = result.last_insert_rowid();
+    let new_deck_id = result.id;
 
     // Copy all notes from the source deck into the new deck.
     // Notes are deck-independent, so we find notes via their cards' deck_id.
     let notes = sqlx::query!(
-        "SELECT DISTINCT n.id, n.note_type_id, n.fields_json FROM notes n JOIN cards c ON c.note_id = n.id WHERE c.deck_id = ? ORDER BY n.id",
+        "SELECT DISTINCT n.id, n.note_type_id, n.fields_json FROM notes n JOIN cards c ON c.note_id = n.id WHERE c.deck_id = $1 ORDER BY n.id",
         deck_id
     )
     .fetch_all(&mut *tx)
@@ -526,18 +532,19 @@ pub async fn duplicate_deck(
 
     for note in &notes {
         let note_result = sqlx::query!(
-            "INSERT INTO notes (note_type_id, fields_json, created_at) VALUES (?, ?, unixepoch())",
+            "INSERT INTO notes (note_type_id, fields_json, created_at) VALUES ($1, $2, $3) RETURNING id",
             note.note_type_id,
-            note.fields_json
+            note.fields_json as _,
+            Utc::now()
         )
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-        let new_note_id = note_result.last_insert_rowid();
+        let new_note_id = note_result.id;
 
         let cards = sqlx::query!(
-            "SELECT template_id FROM cards WHERE note_id = ? AND deck_id = ?",
+            "SELECT template_id FROM cards WHERE note_id = $1 AND deck_id = $2",
             note.id,
             deck_id
         )
@@ -547,10 +554,11 @@ pub async fn duplicate_deck(
 
         for card in &cards {
             sqlx::query!(
-                "INSERT INTO cards (note_id, deck_id, template_id, created_at) VALUES (?, ?, ?, unixepoch())",
+                "INSERT INTO cards (note_id, deck_id, template_id, created_at) VALUES ($1, $2, $3, $4)",
                 new_note_id,
                 new_deck_id,
-                card.template_id
+                card.template_id,
+                Utc::now()
             )
             .execute(&mut *tx)
             .await
@@ -585,7 +593,7 @@ pub async fn share_deck(
 
     // Verify the target user exists in the same school and is a teacher/admin.
     let target = sqlx::query!(
-        "SELECT id, email, first_name, last_name, role FROM users WHERE id = ? AND school_id = ?",
+        "SELECT id, email, first_name, last_name, role::text AS role FROM users WHERE id = $1 AND school_id = $2",
         body.user_id,
         claims.school_id
     )
@@ -594,14 +602,14 @@ pub async fn share_deck(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "User not found in your school"))?;
 
-    if target.role == "student" {
+    if target.role.as_deref() == Some("student") {
         return Err((
             StatusCode::BAD_REQUEST,
             "Cannot share a deck with a student",
         ));
     }
 
-    if target.role == "admin" {
+    if target.role.as_deref() == Some("admin") {
         return Err((
             StatusCode::BAD_REQUEST,
             "Admins already have access to all decks",
@@ -609,7 +617,7 @@ pub async fn share_deck(
     }
 
     // Prevent sharing with the deck owner (they already have full access).
-    let deck = sqlx::query!("SELECT created_by FROM decks WHERE id = ?", deck_id)
+    let deck = sqlx::query!("SELECT created_by FROM decks WHERE id = $1", deck_id)
         .fetch_one(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -621,14 +629,11 @@ pub async fn share_deck(
         ));
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = Utc::now();
 
-    // INSERT OR IGNORE makes this idempotent.
+    // ON CONFLICT DO NOTHING makes this idempotent.
     sqlx::query!(
-        "INSERT OR IGNORE INTO deck_collaborators (deck_id, user_id, shared_at) VALUES (?, ?, ?)",
+        "INSERT INTO deck_collaborators (deck_id, user_id, shared_at) VALUES ($1, $2, $3) ON CONFLICT (deck_id, user_id) DO NOTHING",
         deck_id,
         body.user_id,
         now
@@ -656,7 +661,7 @@ pub async fn unshare_deck(
     check_deck_owner(&state.db, deck_id, claims.school_id, &claims).await?;
 
     let result = sqlx::query!(
-        "DELETE FROM deck_collaborators WHERE deck_id = ? AND user_id = ?",
+        "DELETE FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2",
         deck_id,
         user_id
     )
@@ -688,7 +693,7 @@ pub async fn transfer_owner(
     check_deck_owner(&state.db, deck_id, claims.school_id, &claims).await?;
 
     // Fetch current owner for collaborator insertion.
-    let current = sqlx::query!("SELECT created_by FROM decks WHERE id = ?", deck_id)
+    let current = sqlx::query!("SELECT created_by FROM decks WHERE id = $1", deck_id)
         .fetch_one(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -701,7 +706,7 @@ pub async fn transfer_owner(
 
     // Verify target is a teacher in the same school.
     let target = sqlx::query!(
-        "SELECT id, role FROM users WHERE id = ? AND school_id = ?",
+        "SELECT id, role::text AS role FROM users WHERE id = $1 AND school_id = $2",
         body.user_id,
         claims.school_id
     )
@@ -710,17 +715,14 @@ pub async fn transfer_owner(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "User not found in your school"))?;
 
-    if target.role != "teacher" {
+    if target.role.as_deref() != Some("teacher") {
         return Err((
             StatusCode::BAD_REQUEST,
             "Ownership can only be transferred to a teacher",
         ));
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = Utc::now();
 
     // Update the owner and add the old owner as a collaborator atomically.
     let mut tx = crate::db::begin_immediate(&state.db)
@@ -728,7 +730,7 @@ pub async fn transfer_owner(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     sqlx::query!(
-        "UPDATE decks SET created_by = ? WHERE id = ?",
+        "UPDATE decks SET created_by = $1 WHERE id = $2",
         body.user_id,
         deck_id
     )
@@ -737,7 +739,7 @@ pub async fn transfer_owner(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     sqlx::query!(
-        "INSERT OR IGNORE INTO deck_collaborators (deck_id, user_id, shared_at) VALUES (?, ?, ?)",
+        "INSERT INTO deck_collaborators (deck_id, user_id, shared_at) VALUES ($1, $2, $3) ON CONFLICT (deck_id, user_id) DO NOTHING",
         deck_id,
         current.created_by,
         now
@@ -768,7 +770,7 @@ pub async fn add_deck_to_class(
 
     // Verify the class belongs to the same school.
     let _class = sqlx::query!(
-        "SELECT id, name FROM classes WHERE id = ? AND school_id = ?",
+        "SELECT id, name FROM classes WHERE id = $1 AND school_id = $2",
         body.class_id,
         claims.school_id
     )
@@ -777,13 +779,10 @@ pub async fn add_deck_to_class(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "Class not found"))?;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = Utc::now();
 
     sqlx::query!(
-        "INSERT OR IGNORE INTO deck_classes (deck_id, class_id, added_at) VALUES (?, ?, ?)",
+        "INSERT INTO deck_classes (deck_id, class_id, added_at) VALUES ($1, $2, $3) ON CONFLICT (deck_id, class_id) DO NOTHING",
         deck_id,
         body.class_id,
         now
@@ -807,7 +806,7 @@ pub async fn remove_deck_from_class(
     check_deck_owner(&state.db, deck_id, claims.school_id, &claims).await?;
 
     let result = sqlx::query!(
-        "DELETE FROM deck_classes WHERE deck_id = ? AND class_id = ?",
+        "DELETE FROM deck_classes WHERE deck_id = $1 AND class_id = $2",
         deck_id,
         class_id
     )
@@ -837,7 +836,7 @@ pub async fn list_deck_classes(
         SELECT c.id, c.name
         FROM deck_classes dc
         JOIN classes c ON c.id = dc.class_id
-        WHERE dc.deck_id = ?
+        WHERE dc.deck_id = $1
         ORDER BY c.name
         "#,
         deck_id
@@ -849,7 +848,7 @@ pub async fn list_deck_classes(
     let classes: Vec<ClassInfo> = rows
         .into_iter()
         .map(|r| ClassInfo {
-            id: r.id.expect("class.id is NOT NULL"),
+            id: r.id,
             name: r.name,
         })
         .collect();
@@ -878,14 +877,14 @@ pub async fn get_deck(
         true
     } else {
         let count = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM deck_collaborators WHERE deck_id = ? AND user_id = ?",
+            "SELECT COUNT(*) FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2",
             deck_id,
             claims.sub
         )
         .fetch_one(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-        count > 0
+        count.unwrap_or(0) > 0
     };
 
     let collaborators = if is_collab {
@@ -894,7 +893,7 @@ pub async fn get_deck(
             SELECT dc.user_id, u.email, u.first_name, u.last_name, dc.shared_at
             FROM deck_collaborators dc
             JOIN users u ON u.id = dc.user_id
-            WHERE dc.deck_id = ?
+            WHERE dc.deck_id = $1
             ORDER BY u.email
             "#,
             deck_id
@@ -922,7 +921,7 @@ pub async fn get_deck(
         SELECT c.id, c.name
         FROM deck_classes dc
         JOIN classes c ON c.id = dc.class_id
-        WHERE dc.deck_id = ?
+        WHERE dc.deck_id = $1
         ORDER BY c.name
         "#,
         deck_id
@@ -934,7 +933,7 @@ pub async fn get_deck(
     let deck_classes: Vec<ClassInfo> = class_rows
         .into_iter()
         .map(|r| ClassInfo {
-            id: r.id.expect("class.id is NOT NULL"),
+            id: r.id,
             name: r.name,
         })
         .collect();
@@ -966,7 +965,7 @@ pub async fn list_decks(
                    (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) as "card_count!: i64"
             FROM decks d
             JOIN users u ON u.id = d.created_by
-            WHERE d.school_id = ?
+            WHERE d.school_id = $1
             ORDER BY d.created_at DESC
             "#,
             claims.school_id
@@ -978,7 +977,7 @@ pub async fn list_decks(
         let decks: Vec<DeckResponse> = rows
             .into_iter()
             .map(|r| DeckResponse {
-                id: r.id.expect("deck.id is NOT NULL in schema"),
+                id: r.id,
                 school_id: r.school_id,
                 title: r.title,
                 description: r.description,
@@ -1010,8 +1009,8 @@ pub async fn list_decks(
             FROM decks d
             JOIN users u ON u.id = d.created_by
             LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id
-            WHERE d.school_id = ?
-              AND (d.created_by = ? OR dc.user_id = ?)
+            WHERE d.school_id = $1
+              AND (d.created_by = $2 OR dc.user_id = $3)
             ORDER BY d.created_at DESC
             "#,
             claims.school_id,
@@ -1025,7 +1024,7 @@ pub async fn list_decks(
         let decks: Vec<DeckResponse> = rows
             .into_iter()
             .map(|r| DeckResponse {
-                id: r.id.expect("deck.id is NOT NULL in schema"),
+                id: r.id,
                 school_id: r.school_id,
                 title: r.title,
                 description: r.description,
@@ -1056,8 +1055,8 @@ pub async fn list_decks(
         FROM decks d
         JOIN users u ON u.id = d.created_by
         JOIN deck_classes dcl ON dcl.deck_id = d.id
-        JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = ?
-        WHERE d.school_id = ?
+        JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = $1
+        WHERE d.school_id = $2
         ORDER BY d.created_at DESC
         "#,
         claims.sub,
@@ -1069,7 +1068,7 @@ pub async fn list_decks(
 
     let mut decks: Vec<DeckResponse> = Vec::new();
     for r in rows {
-        let deck_id = r.id.expect("deck.id is NOT NULL in schema");
+        let deck_id = r.id;
 
         // Limit-aware per-state counts for this student across the deck's
         // subtree. Shares logic with the study flow and GET /decks/counts.
@@ -1085,7 +1084,7 @@ pub async fn list_decks(
             FROM cards c
             WHERE c.deck_id IN (
                 WITH RECURSIVE subtree(id) AS (
-                    SELECT ?
+                    SELECT $1::BIGINT
                     UNION ALL
                     SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
                 )
@@ -1143,8 +1142,8 @@ pub async fn deck_counts(
             SELECT DISTINCT d.id
             FROM decks d
             JOIN deck_classes dcl ON dcl.deck_id = d.id
-            JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = ?
-            WHERE d.school_id = ?
+            JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = $1
+            WHERE d.school_id = $2
             "#,
             claims.sub,
             claims.school_id
@@ -1154,7 +1153,7 @@ pub async fn deck_counts(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
         for row in rows {
-            let deck_id = row.id.expect("deck.id is NOT NULL");
+            let deck_id = row.id;
             if let Some(filter) = params.deck_id {
                 if deck_id != filter {
                     continue;
@@ -1175,7 +1174,7 @@ pub async fn deck_counts(
                 FROM cards c
                 WHERE c.deck_id IN (
                     WITH RECURSIVE subtree(id) AS (
-                        SELECT ?
+                        SELECT $1::BIGINT
                         UNION ALL
                         SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
                     )
@@ -1210,7 +1209,7 @@ pub async fn deck_counts(
                 SELECT id FROM subtree
             )) as "total!: i64"
             FROM decks d
-            WHERE d.school_id = ?
+            WHERE d.school_id = $1
             "#,
             claims.school_id
         )
@@ -1219,7 +1218,7 @@ pub async fn deck_counts(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
         for row in rows {
-            let deck_id = row.id.expect("deck.id is NOT NULL");
+            let deck_id = row.id;
             if let Some(filter) = params.deck_id {
                 if deck_id != filter {
                     continue;

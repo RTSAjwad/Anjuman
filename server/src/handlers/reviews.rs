@@ -18,6 +18,8 @@ use axum::{
     http::StatusCode,
 };
 
+use chrono::{DateTime, Duration, Utc};
+
 use anjuman_contracts::reviews::{
     FlagResponse, ReviewResponse, ReviewedCardState, SetFlag, SubmitReview,
 };
@@ -79,10 +81,10 @@ pub fn parse_steps(input: &str) -> Result<Vec<i64>, String> {
 /// A sibling candidate row (another card of the answered card's note).
 struct SiblingRow {
     card_id: i64,
-    state: String,
+    state: Option<String>,
     step_index: i64,
-    suspended: i64,
-    buried_at: Option<i64>,
+    suspended: bool,
+    buried_at: Option<DateTime<Utc>>,
     deck_id: i64,
 }
 
@@ -134,18 +136,18 @@ async fn bury_siblings(
     answered_card_id: i64,
     answered_rank: i64,
     toggles: &crate::deck_options::DeckOptions,
-    now: i64,
+    now: DateTime<Utc>,
 ) -> Result<(), StatusCode> {
     // Read sibling candidates from within the same transaction so the
     // read→write decision is made against a consistent snapshot.
     let siblings = sqlx::query_as!(
         SiblingRow,
         r#"
-        SELECT scs.card_id, scs.state, scs.step_index as "step_index: i64",
-               scs.suspended as "suspended: i64", scs.buried_at, c.deck_id
+        SELECT scs.card_id, scs.state::text as state, scs.step_index as "step_index: i64",
+               scs.suspended as "suspended: bool", scs.buried_at, c.deck_id
         FROM student_card_states scs
         JOIN cards c ON c.id = scs.card_id
-        WHERE scs.student_id = ? AND c.note_id = ? AND scs.card_id != ?
+        WHERE scs.student_id = $1 AND c.note_id = $2 AND scs.card_id != $3
         "#,
         student_id,
         note_id,
@@ -156,7 +158,7 @@ async fn bury_siblings(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     for s in siblings {
-        if s.suspended != 0 || s.buried_at.is_some() {
+        if s.suspended || s.buried_at.is_some() {
             continue;
         }
 
@@ -166,7 +168,7 @@ async fn bury_siblings(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         let rank = queue_class_rank(
-            &s.state,
+            s.state.as_deref().unwrap_or(""),
             s.step_index,
             &opts.learning_steps,
             &opts.relearning_steps,
@@ -189,7 +191,7 @@ async fn bury_siblings(
         }
 
         sqlx::query!(
-            "UPDATE student_card_states SET buried_at = ?, bury_reason = ? WHERE student_id = ? AND card_id = ?",
+            "UPDATE student_card_states SET buried_at = $1, bury_reason = $2 WHERE student_id = $3 AND card_id = $4",
             now,
             reason,
             student_id,
@@ -228,11 +230,11 @@ pub async fn apply_review(
     // Fetch the current scheduling state (and the card's deck + note).
     let current = sqlx::query!(
         r#"
-        SELECT scs.state, scs.stability, scs.difficulty, scs.last_reviewed_at,
+        SELECT scs.state::text as "state!: String", scs.stability, scs.difficulty, scs.last_reviewed_at,
                scs.reps, scs.lapses, scs.step_index, c.deck_id, c.note_id
         FROM student_card_states scs
         JOIN cards c ON c.id = scs.card_id
-        WHERE scs.student_id = ? AND scs.card_id = ?
+        WHERE scs.student_id = $1 AND scs.card_id = $2
         "#,
         student_id,
         card_id
@@ -264,14 +266,11 @@ pub async fn apply_review(
         relearning_steps,
     );
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = Utc::now();
 
     // Calculate elapsed days since last review.
     let elapsed_days = if let Some(last_reviewed) = current.last_reviewed_at {
-        ((now - last_reviewed).max(0) as f64 / 86400.0) as u32
+        (now - last_reviewed).num_days().max(0) as u32
     } else {
         0
     };
@@ -320,7 +319,7 @@ pub async fn apply_review(
     // Review cards lapse back to relearning on "Again".
     let mut step_index = current.step_index;
     let new_state: String;
-    let due_at: i64;
+    let due_at: DateTime<Utc>;
 
     match current.state.as_str() {
         "new" => match rating {
@@ -328,7 +327,7 @@ pub async fn apply_review(
                 // Easy: graduate immediately.
                 new_state = "review".to_string();
                 step_index = 0;
-                due_at = now + interval_fsrs_secs;
+                due_at = now + Duration::seconds(interval_fsrs_secs);
             }
             3 => {
                 // Good: advance one step; graduate if past last.
@@ -336,24 +335,24 @@ pub async fn apply_review(
                 if step_index >= learning_steps.len() as i64 {
                     new_state = "review".to_string();
                     step_index = 0;
-                    due_at = now + interval_fsrs_secs;
+                    due_at = now + Duration::seconds(interval_fsrs_secs);
                 } else {
                     new_state = "learning".to_string();
-                    due_at = now + learning_steps[step_index as usize];
+                    due_at = now + Duration::seconds(learning_steps[step_index as usize]);
                 }
             }
             _ => {
                 // Again or Hard: stay in learning at first step.
                 new_state = "learning".to_string();
                 step_index = 0;
-                due_at = now + learning_steps[0];
+                due_at = now + Duration::seconds(learning_steps[0]);
             }
         },
         "learning" => match rating {
             1 => {
                 // Again: reset to first step.
                 step_index = 0;
-                due_at = now + learning_steps[0];
+                due_at = now + Duration::seconds(learning_steps[0]);
                 new_state = "learning".to_string();
             }
             2 | 3 => {
@@ -362,17 +361,17 @@ pub async fn apply_review(
                 if step_index >= learning_steps.len() as i64 {
                     new_state = "review".to_string();
                     step_index = 0;
-                    due_at = now + interval_fsrs_secs;
+                    due_at = now + Duration::seconds(interval_fsrs_secs);
                 } else {
                     new_state = "learning".to_string();
-                    due_at = now + learning_steps[step_index as usize];
+                    due_at = now + Duration::seconds(learning_steps[step_index as usize]);
                 }
             }
             _ => {
                 // Easy: graduate immediately.
                 new_state = "review".to_string();
                 step_index = 0;
-                due_at = now + interval_fsrs_secs;
+                due_at = now + Duration::seconds(interval_fsrs_secs);
             }
         },
         "review" => match rating {
@@ -380,19 +379,19 @@ pub async fn apply_review(
                 // Again: lapse to relearning.
                 new_state = "relearning".to_string();
                 step_index = 0;
-                due_at = now + relearning_steps[0];
+                due_at = now + Duration::seconds(relearning_steps[0]);
             }
             _ => {
                 // Hard/Good/Easy: stay review.
                 new_state = "review".to_string();
-                due_at = now + interval_fsrs_secs;
+                due_at = now + Duration::seconds(interval_fsrs_secs);
             }
         },
         "relearning" => match rating {
             1 => {
                 // Again: restart relearning steps.
                 step_index = 0;
-                due_at = now + relearning_steps[0];
+                due_at = now + Duration::seconds(relearning_steps[0]);
                 new_state = "relearning".to_string();
             }
             2 | 3 => {
@@ -401,22 +400,22 @@ pub async fn apply_review(
                 if step_index >= relearning_steps.len() as i64 {
                     new_state = "review".to_string();
                     step_index = 0;
-                    due_at = now + interval_fsrs_secs;
+                    due_at = now + Duration::seconds(interval_fsrs_secs);
                 } else {
                     new_state = "relearning".to_string();
-                    due_at = now + relearning_steps[step_index as usize];
+                    due_at = now + Duration::seconds(relearning_steps[step_index as usize]);
                 }
             }
             _ => {
                 // Easy: graduate immediately.
                 new_state = "review".to_string();
                 step_index = 0;
-                due_at = now + interval_fsrs_secs;
+                due_at = now + Duration::seconds(interval_fsrs_secs);
             }
         },
         other => {
             new_state = other.to_string();
-            due_at = now + interval_fsrs_secs;
+            due_at = now + Duration::seconds(interval_fsrs_secs);
         }
     }
 
@@ -438,13 +437,13 @@ pub async fn apply_review(
     sqlx::query!(
         r#"
         UPDATE student_card_states
-        SET state = ?, stability = ?, difficulty = ?,
-            step_index = ?, due_at = ?, last_reviewed_at = ?, reps = ?, lapses = ?
-        WHERE student_id = ? AND card_id = ?
+        SET state = $1::text::card_state, stability = $2, difficulty = $3,
+            step_index = $4, due_at = $5, last_reviewed_at = $6, reps = $7, lapses = $8
+        WHERE student_id = $9 AND card_id = $10
         "#,
         new_state,
-        next.memory.stability,
-        next.memory.difficulty,
+        next.memory.stability as f64,
+        next.memory.difficulty as f64,
         step_index,
         due_at,
         now,
@@ -459,10 +458,10 @@ pub async fn apply_review(
 
     // Record the review (with the pre-review state for daily-limit accounting).
     sqlx::query!(
-        "INSERT INTO reviews (student_id, card_id, rating, reviewed_at, response_time_ms, state_before) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO reviews (student_id, card_id, rating, reviewed_at, response_time_ms, state_before) VALUES ($1, $2, $3, $4, $5, $6)",
         student_id,
         card_id,
-        rating,
+        rating as i64,
         now,
         response_time_ms,
         current.state
@@ -499,7 +498,7 @@ pub async fn apply_review(
         reps: new_reps,
         lapses: new_lapses,
         step_index,
-        applied_interval_secs: due_at - now,
+        applied_interval_secs: (due_at - now).num_seconds().max(0),
     })
 }
 
@@ -547,7 +546,7 @@ pub async fn set_flag(
 
     // Ensure a state row exists so flags work on never-studied cards too.
     sqlx::query!(
-        "INSERT OR IGNORE INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses) VALUES (?, ?, 'new', 0.0, 0.0, 0, 0)",
+        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses) VALUES ($1, $2, 'new', 0.0, 0.0, 0, 0) ON CONFLICT (student_id, card_id) DO NOTHING",
         claims.sub,
         card_id
     )
@@ -556,8 +555,8 @@ pub async fn set_flag(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     let result = sqlx::query!(
-        "UPDATE student_card_states SET flag = ? WHERE student_id = ? AND card_id = ?",
-        body.flag,
+        "UPDATE student_card_states SET flag = $1 WHERE student_id = $2 AND card_id = $3",
+        body.flag as i64,
         claims.sub,
         card_id
     )

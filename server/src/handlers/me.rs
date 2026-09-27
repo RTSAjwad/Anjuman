@@ -32,9 +32,9 @@ pub async fn me(
     // because the token might be valid but the user might have been deleted.
     let row = sqlx::query!(
         r#"
-        SELECT id, email, first_name, last_name, role, school_id
+        SELECT id, email, first_name, last_name, role::text AS role, school_id
         FROM users
-        WHERE id = ?
+        WHERE id = $1
         "#,
         claims.sub
     )
@@ -45,6 +45,7 @@ pub async fn me(
 
     let role = row
         .role
+        .expect("role is NOT NULL in schema")
         .parse()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

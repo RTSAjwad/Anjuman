@@ -14,6 +14,8 @@ use axum::{
     http::StatusCode,
 };
 
+use chrono::{DateTime, Duration, Utc};
+
 use anjuman_contracts::cards::{
     CardModResponse, MoveCardBody, MoveCardResponse, NoteModResponse, RescheduleBody,
     UnburyQuery,
@@ -25,25 +27,13 @@ use crate::{auth::AuthUser, state::AppState};
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
-}
-
-/// Ensure a `student_card_states` row exists for the given (student, card).
-///
-/// Creates a `'new'` state row if one doesn't exist yet, so per-student
-/// operations (suspend, bury, flag, reschedule) work on cards the student
-/// has never studied. Mirrors the study flow's `ensure_card_states_for_deck`.
 async fn ensure_card_state(
     db: &sqlx::PgPool,
     student_id: i64,
     card_id: i64,
 ) -> Result<(), (StatusCode, &'static str)> {
     sqlx::query!(
-        "INSERT OR IGNORE INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses) VALUES (?, ?, 'new', 0.0, 0.0, 0, 0)",
+        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses) VALUES ($1, $2, 'new', 0.0, 0.0, 0, 0) ON CONFLICT (student_id, card_id) DO NOTHING",
         student_id,
         card_id
     )
@@ -59,9 +49,18 @@ async fn fetch_state(
     db: &sqlx::PgPool,
     student_id: i64,
     card_id: i64,
-) -> Result<(String, Option<i64>, i64, Option<i64>, Option<String>), (StatusCode, &'static str)> {
+) -> Result<
+    (
+        String,
+        Option<DateTime<Utc>>,
+        bool,
+        Option<DateTime<Utc>>,
+        Option<String>,
+    ),
+    (StatusCode, &'static str),
+> {
     let row = sqlx::query!(
-        "SELECT state, due_at, suspended, buried_at, bury_reason FROM student_card_states WHERE student_id = ? AND card_id = ?",
+        "SELECT state::text as \"state!: String\", due_at, suspended, buried_at, bury_reason FROM student_card_states WHERE student_id = $1 AND card_id = $2",
         student_id,
         card_id
     )
@@ -86,7 +85,7 @@ async fn fetch_note_card_ids(
     note_id: i64,
 ) -> Result<Vec<i64>, (StatusCode, &'static str)> {
     let rows = sqlx::query!(
-        "SELECT scs.card_id FROM student_card_states scs JOIN cards c ON c.id = scs.card_id WHERE scs.student_id = ? AND c.note_id = ? ORDER BY scs.card_id",
+        "SELECT scs.card_id FROM student_card_states scs JOIN cards c ON c.id = scs.card_id WHERE scs.student_id = $1 AND c.note_id = $2 ORDER BY scs.card_id",
         student_id,
         note_id
     )
@@ -105,11 +104,12 @@ async fn ensure_note_card_states(
 ) -> Result<(), (StatusCode, &'static str)> {
     sqlx::query!(
         r#"
-        INSERT OR IGNORE INTO student_card_states
+        INSERT INTO student_card_states
             (student_id, card_id, state, stability, difficulty, reps, lapses)
-        SELECT ?, c.id, 'new', 0.0, 0.0, 0, 0
+        SELECT $1, c.id, 'new', 0.0, 0.0, 0, 0
         FROM cards c
-        WHERE c.note_id = ?
+        WHERE c.note_id = $2
+        ON CONFLICT (student_id, card_id) DO NOTHING
         "#,
         student_id,
         note_id
@@ -127,9 +127,9 @@ async fn fetch_note_result_state(
     db: &sqlx::PgPool,
     student_id: i64,
     note_id: i64,
-) -> Result<(i64, Option<i64>, Option<String>), (StatusCode, &'static str)> {
+) -> Result<(bool, Option<DateTime<Utc>>, Option<String>), (StatusCode, &'static str)> {
     let row = sqlx::query!(
-        "SELECT scs.suspended, scs.buried_at, scs.bury_reason FROM student_card_states scs JOIN cards c ON c.id = scs.card_id WHERE scs.student_id = ? AND c.note_id = ? LIMIT 1",
+        "SELECT scs.suspended, scs.buried_at, scs.bury_reason FROM student_card_states scs JOIN cards c ON c.id = scs.card_id WHERE scs.student_id = $1 AND c.note_id = $2 LIMIT 1",
         student_id,
         note_id
     )
@@ -156,7 +156,7 @@ pub async fn suspend(
     // Suspending also clears any burial (buried + suspended are mutually
     // exclusive — a card is never both).
     sqlx::query!(
-        "UPDATE student_card_states SET suspended = 1, buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id = ?",
+        "UPDATE student_card_states SET suspended = TRUE, buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id = $2",
         claims.sub,
         card_id
     )
@@ -186,7 +186,7 @@ pub async fn unsuspend(
     ensure_card_state(&state.db, claims.sub, card_id).await?;
 
     let result = sqlx::query!(
-        "UPDATE student_card_states SET suspended = 0 WHERE student_id = ? AND card_id = ?",
+        "UPDATE student_card_states SET suspended = FALSE WHERE student_id = $1 AND card_id = $2",
         claims.sub,
         card_id
     )
@@ -217,14 +217,14 @@ pub async fn bury(
     State(state): State<AppState>,
     Path(card_id): Path<i64>,
 ) -> Result<Json<CardModResponse>, (StatusCode, &'static str)> {
-    let now = now_secs();
+    let now = Utc::now();
     ensure_card_state(&state.db, claims.sub, card_id).await?;
 
     // Store "when buried" and the reason; the "still buried?" check
     // auto-expires the card once `now` passes the next day-start. Suspended
     // cards are not buried (mutually exclusive).
     sqlx::query!(
-        "UPDATE student_card_states SET buried_at = ?, bury_reason = 'user_card' WHERE student_id = ? AND card_id = ? AND suspended = 0",
+        "UPDATE student_card_states SET buried_at = $1, bury_reason = 'user_card' WHERE student_id = $2 AND card_id = $3 AND suspended = FALSE",
         now,
         claims.sub,
         card_id
@@ -261,7 +261,7 @@ pub async fn unbury(
     match params.reason.as_deref() {
         Some("user") => {
             sqlx::query!(
-                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id = ? AND bury_reason IN ('user_card', 'user_note')",
+                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id = $2 AND bury_reason IN ('user_card', 'user_note')",
                 claims.sub,
                 card_id
             )
@@ -271,7 +271,7 @@ pub async fn unbury(
         }
         Some("sibling") => {
             sqlx::query!(
-                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id = ? AND bury_reason IN ('sibling_new', 'sibling_review', 'sibling_interday')",
+                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id = $2 AND bury_reason IN ('sibling_new', 'sibling_review', 'sibling_interday')",
                 claims.sub,
                 card_id
             )
@@ -281,7 +281,7 @@ pub async fn unbury(
         }
         _ => {
             sqlx::query!(
-                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id = ?",
+                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id = $2",
                 claims.sub,
                 card_id
             )
@@ -306,8 +306,8 @@ pub async fn unbury(
 
 /// `PATCH /cards/:card_id/reschedule` — Manually set a card's due date.
 ///
-/// Accepts either an absolute `due_at` (Unix seconds) or a relative `days`
-/// offset from now. If both are provided, `due_at` takes precedence.
+/// Accepts either an absolute `due_at` or a relative `days` offset from now.
+/// If both are provided, `due_at` takes precedence.
 pub async fn reschedule(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
@@ -317,7 +317,7 @@ pub async fn reschedule(
     let new_due_at = if let Some(due_at) = body.due_at {
         due_at
     } else if let Some(days) = body.days {
-        now_secs() + days * 86400
+        Utc::now() + Duration::days(days)
     } else {
         return Err((StatusCode::BAD_REQUEST, "Provide either due_at or days"));
     };
@@ -330,7 +330,7 @@ pub async fn reschedule(
     // the authoritative scheduling signal (not `reps`), so this cleanly moves
     // the card out of new/learning/relearning regardless of its history.
     let result = sqlx::query!(
-        "UPDATE student_card_states SET state = 'review', step_index = 0, due_at = ? WHERE student_id = ? AND card_id = ?",
+        "UPDATE student_card_states SET state = 'review', step_index = 0, due_at = $1 WHERE student_id = $2 AND card_id = $3",
         new_due_at,
         claims.sub,
         card_id
@@ -369,7 +369,7 @@ pub async fn suspend_note(
 
     // Suspending also clears burial (mutually exclusive).
     let result = sqlx::query!(
-        "UPDATE student_card_states SET suspended = 1, buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id IN (SELECT id FROM cards WHERE note_id = ?)",
+        "UPDATE student_card_states SET suspended = TRUE, buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id IN (SELECT id FROM cards WHERE note_id = $2)",
         claims.sub,
         note_id
     )
@@ -405,7 +405,7 @@ pub async fn unsuspend_note(
     ensure_note_card_states(&state.db, claims.sub, note_id).await?;
 
     let result = sqlx::query!(
-        "UPDATE student_card_states SET suspended = 0 WHERE student_id = ? AND card_id IN (SELECT id FROM cards WHERE note_id = ?)",
+        "UPDATE student_card_states SET suspended = FALSE WHERE student_id = $1 AND card_id IN (SELECT id FROM cards WHERE note_id = $2)",
         claims.sub,
         note_id
     )
@@ -438,12 +438,12 @@ pub async fn bury_note(
     State(state): State<AppState>,
     Path(note_id): Path<i64>,
 ) -> Result<Json<NoteModResponse>, (StatusCode, &'static str)> {
-    let now = now_secs();
+    let now = Utc::now();
     ensure_note_card_states(&state.db, claims.sub, note_id).await?;
 
     // Bury only non-suspended cards (mutually exclusive).
     sqlx::query!(
-        "UPDATE student_card_states SET buried_at = ?, bury_reason = 'user_note' WHERE student_id = ? AND card_id IN (SELECT id FROM cards WHERE note_id = ?) AND suspended = 0",
+        "UPDATE student_card_states SET buried_at = $1, bury_reason = 'user_note' WHERE student_id = $2 AND card_id IN (SELECT id FROM cards WHERE note_id = $3) AND suspended = FALSE",
         now,
         claims.sub,
         note_id
@@ -481,7 +481,7 @@ pub async fn unbury_note(
     match params.reason.as_deref() {
         Some("user") => {
             sqlx::query!(
-                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id IN (SELECT id FROM cards WHERE note_id = ?) AND bury_reason IN ('user_card', 'user_note')",
+                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id IN (SELECT id FROM cards WHERE note_id = $2) AND bury_reason IN ('user_card', 'user_note')",
                 claims.sub,
                 note_id
             )
@@ -491,7 +491,7 @@ pub async fn unbury_note(
         }
         Some("sibling") => {
             sqlx::query!(
-                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id IN (SELECT id FROM cards WHERE note_id = ?) AND bury_reason IN ('sibling_new', 'sibling_review', 'sibling_interday')",
+                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id IN (SELECT id FROM cards WHERE note_id = $2) AND bury_reason IN ('sibling_new', 'sibling_review', 'sibling_interday')",
                 claims.sub,
                 note_id
             )
@@ -501,7 +501,7 @@ pub async fn unbury_note(
         }
         _ => {
             sqlx::query!(
-                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = ? AND card_id IN (SELECT id FROM cards WHERE note_id = ?)",
+                "UPDATE student_card_states SET buried_at = NULL, bury_reason = NULL WHERE student_id = $1 AND card_id IN (SELECT id FROM cards WHERE note_id = $2)",
                 claims.sub,
                 note_id
             )
@@ -537,7 +537,7 @@ pub async fn move_card(
 ) -> Result<Json<MoveCardResponse>, (StatusCode, &'static str)> {
     // Validate the target deck exists in the same school and is accessible.
     let deck = sqlx::query!(
-        "SELECT id FROM decks WHERE id = ? AND school_id = ?",
+        "SELECT id FROM decks WHERE id = $1 AND school_id = $2",
         body.deck_id,
         claims.school_id
     )
@@ -551,7 +551,7 @@ pub async fn move_card(
         .await?;
 
     let result = sqlx::query!(
-        "UPDATE cards SET deck_id = ? WHERE id = ?",
+        "UPDATE cards SET deck_id = $1 WHERE id = $2",
         body.deck_id,
         card_id
     )

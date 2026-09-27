@@ -54,9 +54,9 @@ pub async fn login(
     // time instead of runtime.
     let row = sqlx::query!(
         r#"
-        SELECT id, school_id, email, first_name, last_name, password_hash, role
+        SELECT id, school_id, email, first_name, last_name, password_hash, role::text AS role
         FROM users
-        WHERE email = ?
+        WHERE email = $1
         "#,
         body.email
     )
@@ -82,10 +82,12 @@ pub async fn login(
 
     // Step 3: Parse the role string from the database into our `UserRole` enum.
     //
-    // The database stores roles as strings ("admin", "teacher", "student").
-    // We convert to the enum so we can embed a typed value in the JWT.
+    // The database stores roles as a Postgres ENUM (`user_role`), which sqlx
+    // maps to a `String`. We convert to the enum so we can embed a typed value
+    // in the JWT.
     let role: UserRole = row
         .role
+        .expect("role is NOT NULL in schema")
         .parse()
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role in database"))?;
 
@@ -93,17 +95,8 @@ pub async fn login(
     //
     // The token embeds the user's id, school, and role. This means
     // subsequent requests can be authorised without a database lookup.
-    //
-    // NOTE: sqlx infers `id` (INTEGER PRIMARY KEY) as `Option<i64>` but
-    // `school_id` (INTEGER NOT NULL) as plain `i64` — an inconsistency in
-    // sqlx's SQLite driver. We handle the `Option` with `.expect()` because
-    // PRIMARY KEY columns are implicitly NOT NULL and can never be missing.
-    let token = auth::create_token(
-        row.id.expect("user.id is NOT NULL (PRIMARY KEY) in schema"),
-        row.school_id,
-        role,
-    )
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to create token"))?;
+    let token = auth::create_token(row.id, row.school_id, role)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to create token"))?;
 
     // Step 5: Return the token and user info.
     //
@@ -112,7 +105,7 @@ pub async fn login(
     Ok(Json(LoginResponse {
         token,
         user: UserResponse {
-            id: row.id.expect("user.id is NOT NULL (PRIMARY KEY) in schema"),
+            id: row.id,
             email: row.email,
             first_name: row.first_name,
             last_name: row.last_name,

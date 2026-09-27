@@ -26,6 +26,8 @@ use axum::{
     http::StatusCode,
 };
 
+use chrono::{DateTime, Duration, Timelike, Utc};
+
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 
 use crate::{
@@ -45,48 +47,45 @@ use crate::{
 
 /// A card row for study, carrying the fields needed to render and schedule.
 struct CardRow {
-    id: Option<i64>,
+    id: i64,
     note_id: i64,
     template_id: i64,
     note_type_id: i64,
-    fields_json: String,
-    state: String,
-    due_at: Option<i64>,
+    fields_json: sqlx::types::Json<serde_json::Value>,
+    state: Option<String>,
+    due_at: Option<DateTime<Utc>>,
     stability: f64,
     difficulty: f64,
     reps: i64,
     lapses: i64,
     flag: i64,
-    suspended: i64,
-    buried_at: Option<i64>,
+    suspended: bool,
+    buried_at: Option<DateTime<Utc>>,
     bury_reason: Option<String>,
     step_index: i64,
 }
 
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
-}
-
-/// Compute the start of the current "study day" as a UTC epoch, given a
+/// Compute the start of the current "study day" as a `DateTime<Utc>`, given a
 /// day-start hour (0-23). The day is anchored to UTC for now (no timezone).
-fn day_start_utc(now: i64, day_start_hour: i64) -> i64 {
-    let seconds_past_midnight = now % 86400;
+///
+/// Preserves the original integer `% 86400` day-boundary logic by operating on
+/// whole elapsed seconds since midnight, then re-wrapping in a `DateTime<Utc>`.
+fn day_start_utc(now: DateTime<Utc>, day_start_hour: i64) -> DateTime<Utc> {
+    let secs_of_day = now.num_seconds_from_midnight() as i64;
     let start_seconds = day_start_hour * 3600;
-    if seconds_past_midnight >= start_seconds {
-        now - (seconds_past_midnight - start_seconds)
+    let offset = if secs_of_day >= start_seconds {
+        secs_of_day - start_seconds
     } else {
-        now - (seconds_past_midnight + 86400 - start_seconds)
-    }
+        secs_of_day + 86400 - start_seconds
+    };
+    now - Duration::seconds(offset)
 }
 
 /// Resolve the student's start-of-day hour (Anki's "Next day starts at",
 /// default 4 AM). Falls back to 4 when no preference row exists.
 async fn day_start_hour(db: &sqlx::PgPool, student_id: i64) -> i64 {
     sqlx::query_scalar!(
-        "SELECT day_start_hour FROM user_preferences WHERE user_id = ?",
+        "SELECT day_start_hour FROM user_preferences WHERE user_id = $1",
         student_id
     )
     .fetch_optional(db)
@@ -97,9 +96,9 @@ async fn day_start_hour(db: &sqlx::PgPool, student_id: i64) -> i64 {
 }
 
 /// Start of the current study day for a student.
-async fn start_of_day(db: &sqlx::PgPool, student_id: i64) -> i64 {
+async fn start_of_day(db: &sqlx::PgPool, student_id: i64) -> DateTime<Utc> {
     let hour = day_start_hour(db, student_id).await;
-    day_start_utc(now_secs(), hour)
+    day_start_utc(Utc::now(), hour)
 }
 
 /// Resolve the student's learn-ahead limit (in seconds).
@@ -108,7 +107,7 @@ async fn start_of_day(db: &sqlx::PgPool, student_id: i64) -> i64 {
 /// Falls back to 1200 when no preference row exists.
 async fn learn_ahead_seconds(db: &sqlx::PgPool, student_id: i64) -> i64 {
     sqlx::query_scalar!(
-        "SELECT learn_ahead_seconds FROM user_preferences WHERE user_id = ?",
+        "SELECT learn_ahead_seconds FROM user_preferences WHERE user_id = $1",
         student_id
     )
     .fetch_optional(db)
@@ -127,18 +126,19 @@ async fn ensure_card_states_for_deck(
 ) -> Result<(), StatusCode> {
     sqlx::query!(
         r#"
-        INSERT OR IGNORE INTO student_card_states
+        INSERT INTO student_card_states
             (student_id, card_id, state, stability, difficulty, reps, lapses)
-        SELECT ?, c.id, 'new', 0.0, 0.0, 0, 0
+        SELECT $1, c.id, 'new', 0.0, 0.0, 0, 0
         FROM cards c
         WHERE c.deck_id IN (
             WITH RECURSIVE subtree(id) AS (
-                SELECT ?
+                SELECT $2::bigint
                 UNION ALL
                 SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
             )
             SELECT id FROM subtree
         )
+        ON CONFLICT (student_id, card_id) DO NOTHING
         "#,
         student_id,
         deck_id
@@ -171,7 +171,7 @@ async fn seen_today(db: &sqlx::PgPool, student_id: i64) -> Result<(i64, i64), St
             COALESCE(SUM(CASE WHEN state_before = 'new' THEN 1 ELSE 0 END), 0) as "new_seen!: i64",
             COALESCE(SUM(CASE WHEN state_before IN ('review', 'relearning') THEN 1 ELSE 0 END), 0) as "review_seen!: i64"
         FROM reviews
-        WHERE student_id = ? AND reviewed_at >= ?
+        WHERE student_id = $1 AND reviewed_at >= $2
         "#,
         student_id,
         day_start
@@ -198,31 +198,30 @@ pub async fn deck_counts_for_student(
     let (new_seen, review_seen) = seen_today(db, student_id).await?;
     let learn_ahead = learn_ahead_seconds(db, student_id).await;
     let day_start = start_of_day(db, student_id).await;
+    let now = Utc::now();
+    let learn_ahead_deadline = now + Duration::seconds(learn_ahead);
 
     let row = sqlx::query!(
         r#"
         WITH RECURSIVE subtree(id) AS (
-            SELECT ?
+            SELECT $1::bigint
             UNION ALL
             SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
         )
         SELECT
-            COALESCE(SUM(CASE WHEN (scs.state = 'new') AND (scs.suspended = 0 AND (scs.buried_at IS NULL OR scs.buried_at < ?)) THEN 1 ELSE 0 END), 0) as "new_total!: i64",
-            COALESCE(SUM(CASE WHEN scs.state = 'learning' AND scs.due_at <= unixepoch() + ? AND (scs.suspended = 0 AND (scs.buried_at IS NULL OR scs.buried_at < ?)) THEN 1 ELSE 0 END), 0) as "learning_total!: i64",
-            COALESCE(SUM(CASE WHEN scs.state = 'review' AND scs.due_at <= unixepoch() AND (scs.suspended = 0 AND (scs.buried_at IS NULL OR scs.buried_at < ?)) THEN 1 ELSE 0 END), 0) as "review_total!: i64",
-            COALESCE(SUM(CASE WHEN scs.state = 'relearning' AND scs.due_at <= unixepoch() + ? AND (scs.suspended = 0 AND (scs.buried_at IS NULL OR scs.buried_at < ?)) THEN 1 ELSE 0 END), 0) as "relearning_total!: i64"
+            COALESCE(SUM(CASE WHEN (scs.state = 'new') AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "new_total!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'learning' AND scs.due_at <= $3 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "learning_total!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'review' AND scs.due_at <= $4 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "review_total!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'relearning' AND scs.due_at <= $3 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "relearning_total!: i64"
         FROM cards c
         JOIN student_card_states scs
-            ON scs.card_id = c.id AND scs.student_id = ?
+            ON scs.card_id = c.id AND scs.student_id = $5
         WHERE c.deck_id IN (SELECT id FROM subtree)
         "#,
         deck_id,
         day_start,
-        learn_ahead,
-        day_start,
-        day_start,
-        learn_ahead,
-        day_start,
+        learn_ahead_deadline,
+        now,
         student_id
     )
     .fetch_one(db)
@@ -257,6 +256,7 @@ async fn next_due_card(
     let (new_seen, review_seen) = seen_today(db, student_id).await?;
     let learn_ahead = learn_ahead_seconds(db, student_id).await;
     let day_start = start_of_day(db, student_id).await;
+    let now = Utc::now();
 
     let new_remaining = (options.new_per_day - new_seen).max(0);
     let review_remaining = (options.review_per_day - review_seen).max(0);
@@ -267,33 +267,33 @@ async fn next_due_card(
         CardRow,
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
-               scs.state, scs.due_at, scs.stability as "stability: f64",
+               COALESCE(scs.state::text, '') as state, scs.due_at, scs.stability as "stability: f64",
                scs.difficulty as "difficulty: f64", scs.reps, scs.lapses,
-               scs.flag as "flag: i64", scs.suspended as "suspended: i64",
+               scs.flag as "flag: i64", scs.suspended as "suspended: bool",
                scs.buried_at, scs.bury_reason, scs.step_index as "step_index: i64"
         FROM cards c
         JOIN notes n ON n.id = c.note_id
         JOIN decks cd ON cd.id = c.deck_id
         JOIN student_card_states scs
-            ON scs.card_id = c.id AND scs.student_id = ?
+            ON scs.card_id = c.id AND scs.student_id = $1
         LEFT JOIN deck_option_steps dos
             ON dos.options_id = COALESCE(cd.options_id, 0)
-           AND dos.kind = CASE scs.state WHEN 'relearning' THEN 'relearning' ELSE 'learning' END
+           AND dos.kind = (CASE scs.state WHEN 'relearning' THEN 'relearning' ELSE 'learning' END)::step_kind
            AND dos.step_index = scs.step_index
         WHERE c.deck_id IN (
             WITH RECURSIVE subtree(id) AS (
-                SELECT ?
+                SELECT $2::bigint
                 UNION ALL
                 SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
             )
             SELECT id FROM subtree
         )
-          AND scs.suspended = 0
-          AND (scs.buried_at IS NULL OR scs.buried_at < ?)
+          AND scs.suspended = FALSE
+          AND (scs.buried_at IS NULL OR scs.buried_at < $3)
           AND (
-                (scs.state IN ('learning', 'relearning') AND scs.due_at <= unixepoch())
-             OR (scs.state = 'review' AND scs.due_at <= unixepoch() AND ? > 0)
-             OR (scs.state = 'new' AND ? > 0)
+                (scs.state IN ('learning', 'relearning') AND scs.due_at <= $4)
+             OR (scs.state = 'review' AND scs.due_at <= $4 AND $5::bigint > 0)
+             OR (scs.state = 'new' AND $6::bigint > 0)
           )
         ORDER BY
             CASE
@@ -309,6 +309,7 @@ async fn next_due_card(
         student_id,
         deck_id,
         day_start,
+        now,
         review_remaining,
         new_remaining
     )
@@ -322,38 +323,40 @@ async fn next_due_card(
 
     // Learn-ahead fallback: no card is actually due, but a learning/relearning
     // card is due within the learn-ahead window. Show the soonest one.
+    let learn_ahead_deadline = now + Duration::seconds(learn_ahead);
     let ahead = sqlx::query_as!(
         CardRow,
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
-               scs.state, scs.due_at, scs.stability as "stability: f64",
+               COALESCE(scs.state::text, '') as state, scs.due_at, scs.stability as "stability: f64",
                scs.difficulty as "difficulty: f64", scs.reps, scs.lapses,
-               scs.flag as "flag: i64", scs.suspended as "suspended: i64",
+               scs.flag as "flag: i64", scs.suspended as "suspended: bool",
                scs.buried_at, scs.bury_reason, scs.step_index as "step_index: i64"
         FROM cards c
         JOIN notes n ON n.id = c.note_id
         JOIN student_card_states scs
-            ON scs.card_id = c.id AND scs.student_id = ?
+            ON scs.card_id = c.id AND scs.student_id = $1
         WHERE c.deck_id IN (
             WITH RECURSIVE subtree(id) AS (
-                SELECT ?
+                SELECT $2::bigint
                 UNION ALL
                 SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
             )
             SELECT id FROM subtree
         )
-          AND scs.suspended = 0
-          AND (scs.buried_at IS NULL OR scs.buried_at < ?)
+          AND scs.suspended = FALSE
+          AND (scs.buried_at IS NULL OR scs.buried_at < $3)
           AND scs.state IN ('learning', 'relearning')
-          AND scs.due_at > unixepoch()
-          AND scs.due_at <= unixepoch() + ?
+          AND scs.due_at > $4
+          AND scs.due_at <= $5
         ORDER BY scs.due_at ASC
         LIMIT 1
         "#,
         student_id,
         deck_id,
         day_start,
-        learn_ahead
+        now,
+        learn_ahead_deadline
     )
     .fetch_optional(db)
     .await
@@ -373,8 +376,12 @@ async fn row_to_study_card(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let fields: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(&c.fields_json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let fields: serde_json::Map<String, serde_json::Value> = c
+        .fields_json
+        .0
+        .as_object()
+        .map(|m| m.clone())
+        .unwrap_or_default();
 
     let rendered = note_types::render_card(&nt.templates, c.template_id, &fields)
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -385,11 +392,11 @@ async fn row_to_study_card(
     let predicted_interval = predict_intervals(&c, options);
 
     Ok(StudyCard {
-        card_id: c.id.expect("card.id is NOT NULL"),
+        card_id: c.id,
         note_id: c.note_id,
         front: rendered.front,
         back: rendered.back,
-        state: c.state,
+        state: c.state.unwrap_or_default(),
         due_at: c.due_at,
         stability: c.stability,
         difficulty: c.difficulty,
@@ -413,7 +420,7 @@ fn predict_intervals(
 ) -> Option<HashMap<String, i64>> {
     let fsrs = fsrs::FSRS::default();
     let desired_retention = options.desired_retention as f32;
-    let now = now_secs();
+    let now = Utc::now();
 
     // FSRS memory-state intervals (in days) for graduation, converted to secs.
     let fsrs_intervals = {
@@ -427,7 +434,7 @@ fn predict_intervals(
         };
         let elapsed = c
             .due_at
-            .map(|due| ((now - due).max(0) as f64 / 86400.0) as u32)
+            .map(|due| (now - due).num_days().max(0) as u32)
             .unwrap_or(0);
         fsrs.next_states(previous, desired_retention, elapsed)
             .ok()
@@ -447,8 +454,8 @@ fn predict_intervals(
 
     let mut map = HashMap::new();
 
-    match c.state.as_str() {
-        "new" => {
+    match c.state.as_deref() {
+        Some("new") => {
             // Again/Hard: first learning step; Good: next step; Easy: graduate.
             map.insert(
                 "1".to_string(),
@@ -473,7 +480,7 @@ fn predict_intervals(
                 .unwrap_or(86400 * 4);
             map.insert("4".to_string(), easy);
         }
-        "learning" => {
+        Some("learning") => {
             // Again: first step; Hard/Good: next step (or graduate); Easy: graduate.
             map.insert(
                 "1".to_string(),
@@ -496,7 +503,7 @@ fn predict_intervals(
                 .unwrap_or(86400 * 4);
             map.insert("4".to_string(), easy);
         }
-        "review" => {
+        Some("review") => {
             // Again: first relearning step; Hard/Good/Easy: FSRS intervals.
             map.insert(
                 "1".to_string(),
@@ -512,7 +519,7 @@ fn predict_intervals(
                 map.insert("4".to_string(), 86400 * 4);
             }
         }
-        "relearning" => {
+        Some("relearning") => {
             // Again: first relearning step; Hard/Good: next step (or graduate).
             map.insert(
                 "1".to_string(),
@@ -581,7 +588,7 @@ async fn deck_advance(
     decks::check_deck_visible(db, deck_id, claims.school_id, claims).await?;
 
     let deck = sqlx::query!(
-        "SELECT id, title FROM decks WHERE id = ? AND school_id = ?",
+        "SELECT id, title FROM decks WHERE id = $1 AND school_id = $2",
         deck_id,
         claims.school_id
     )
@@ -603,10 +610,10 @@ async fn deck_advance(
                 r#"
                 SELECT COUNT(*)
                 FROM cards c
-                WHERE c.id = ?
+                WHERE c.id = $1
                   AND c.deck_id IN (
                       WITH RECURSIVE subtree(id) AS (
-                          SELECT ?
+                          SELECT $2::bigint
                           UNION ALL
                           SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
                       )

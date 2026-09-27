@@ -3,7 +3,7 @@
 // GET /dashboard — Aggregated overview across all the teacher's classes.
 
 use axum::{Json, extract::State, http::StatusCode};
-use chrono::TimeZone;
+use chrono::Utc;
 use sqlx::FromRow;
 
 use anjuman_contracts::analytics::{AttentionStudent, ClassCard, DashboardResponse};
@@ -31,14 +31,14 @@ struct RetentionRow {
 struct InactiveStudentRow {
     id: i64,
     email: String,
-    last_active: Option<i64>,
+    last_active: Option<chrono::DateTime<Utc>>,
 }
 
 #[derive(FromRow)]
 struct LowRetentionRow {
     id: i64,
     email: String,
-    last_active: Option<i64>,
+    last_active: Option<chrono::DateTime<Utc>>,
     total: i64,
     good: i64,
 }
@@ -47,37 +47,28 @@ struct LowRetentionRow {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+fn start_of_today() -> chrono::DateTime<Utc> {
+    Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
         .unwrap()
-        .as_secs() as i64
-}
-
-fn start_of_today() -> i64 {
-    let now = now_secs();
-    now - (now % 86400)
-}
-
-fn format_date(ts: i64) -> String {
-    chrono::Utc
-        .timestamp_opt(ts, 0)
-        .unwrap()
-        .format("%Y-%m-%d")
-        .to_string()
+        .and_utc()
 }
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
 }
 
-fn build_in_clause(count: usize) -> String {
-    let placeholders: Vec<&str> = vec!["?"; count];
-    placeholders.join(",")
+/// Build a positional `IN (...)` clause spanning `start..start+count`.
+fn build_in_clause(start: usize, count: usize) -> String {
+    (start..start + count)
+        .map(|i| format!("${i}"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 async fn student_retention(db: &sqlx::PgPool, student_id: i64) -> Result<f64, StatusCode> {
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = ?")
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = $1")
         .bind(student_id)
         .fetch_one(db)
         .await
@@ -86,7 +77,7 @@ async fn student_retention(db: &sqlx::PgPool, student_id: i64) -> Result<f64, St
         return Ok(0.0);
     }
     let good: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = ? AND rating >= 3")
+        sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = $1 AND rating >= 3")
             .bind(student_id)
             .fetch_one(db)
             .await
@@ -110,15 +101,15 @@ pub async fn dashboard(
     }
 
     let today = start_of_today();
-    let seven_days_ago = today - 7 * 86400;
+    let seven_days_ago = today - chrono::Duration::days(7);
 
     // --- Get all classes ---
     let classes: Vec<ClassRow> = if claims.role == UserRole::Admin {
-        sqlx::query_as("SELECT id as class_id, name FROM classes WHERE school_id = ? ORDER BY name")
+        sqlx::query_as("SELECT id as class_id, name FROM classes WHERE school_id = $1 ORDER BY name")
             .bind(claims.school_id)
             .fetch_all(&state.db).await
     } else {
-        sqlx::query_as("SELECT id as class_id, name FROM classes WHERE school_id = ? AND created_by = ? ORDER BY name")
+        sqlx::query_as("SELECT id as class_id, name FROM classes WHERE school_id = $1 AND created_by = $2 ORDER BY name")
             .bind(claims.school_id).bind(claims.sub)
             .fetch_all(&state.db).await
     }.map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -129,7 +120,7 @@ pub async fn dashboard(
     let (total_students, reviews_today, average_retention) = if class_ids.is_empty() {
         (0, 0, 0.0)
     } else {
-        let in_clause = build_in_clause(class_ids.len());
+        let in_clause = build_in_clause(1, class_ids.len());
 
         let total: i64 = {
             let sql = format!(
@@ -146,9 +137,10 @@ pub async fn dashboard(
         };
 
         let today_reviews: i64 = {
+            let today_param = format!("${}", class_ids.len() + 1);
             let sql = format!(
-                "SELECT COUNT(*) FROM reviews r JOIN class_members cm ON cm.user_id = r.student_id WHERE cm.class_id IN ({}) AND r.reviewed_at >= ?",
-                in_clause
+                "SELECT COUNT(*) FROM reviews r JOIN class_members cm ON cm.user_id = r.student_id WHERE cm.class_id IN ({}) AND r.reviewed_at >= {}",
+                in_clause, today_param
             );
             let mut q = sqlx::query_scalar(&sql);
             for id in &class_ids {
@@ -190,7 +182,7 @@ pub async fn dashboard(
     let mut class_cards: Vec<ClassCard> = Vec::new();
     for class in &classes {
         let student_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM class_members WHERE class_id = ? AND role = 'student'",
+            "SELECT COUNT(*) FROM class_members WHERE class_id = $1 AND role = 'student'",
         )
         .bind(class.class_id)
         .fetch_one(&state.db)
@@ -198,7 +190,7 @@ pub async fn dashboard(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
         let retention_row = sqlx::query_as::<_, RetentionRow>(
-            "SELECT COUNT(*) as total_reviews, SUM(CASE WHEN r.rating >= 3 THEN 1 ELSE 0 END) as good_reviews FROM reviews r JOIN class_members cm ON cm.user_id = r.student_id WHERE cm.class_id = ?"
+            "SELECT COUNT(*) as total_reviews, SUM(CASE WHEN r.rating >= 3 THEN 1 ELSE 0 END) as good_reviews FROM reviews r JOIN class_members cm ON cm.user_id = r.student_id WHERE cm.class_id = $1"
         ).bind(class.class_id).fetch_one(&state.db).await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -208,8 +200,8 @@ pub async fn dashboard(
             0.0
         };
 
-        let last_active: Option<i64> = sqlx::query_scalar(
-            "SELECT MAX(r.reviewed_at) FROM reviews r JOIN class_members cm ON cm.user_id = r.student_id WHERE cm.class_id = ?"
+        let last_active: Option<chrono::DateTime<Utc>> = sqlx::query_scalar(
+            "SELECT MAX(r.reviewed_at) FROM reviews r JOIN class_members cm ON cm.user_id = r.student_id WHERE cm.class_id = $1"
         ).bind(class.class_id).fetch_one(&state.db).await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -218,7 +210,7 @@ pub async fn dashboard(
             name: class.name.clone(),
             student_count,
             avg_retention: avg_ret,
-            last_activity: last_active.map(format_date),
+            last_activity: last_active,
         });
     }
 
@@ -233,9 +225,9 @@ pub async fn dashboard(
             FROM class_members cm
             JOIN users u ON u.id = cm.user_id
             LEFT JOIN reviews r ON r.student_id = cm.user_id
-            WHERE cm.class_id = ? AND cm.role = 'student'
+            WHERE cm.class_id = $1 AND cm.role = 'student'
             GROUP BY u.id
-            HAVING last_active IS NULL OR last_active < ?
+            HAVING MAX(r.reviewed_at) IS NULL OR MAX(r.reviewed_at) < $2
             "#,
         )
         .bind(class.class_id)
@@ -250,7 +242,7 @@ pub async fn dashboard(
                 student_id: s.id,
                 email: s.email,
                 reason: "inactive_7d".to_string(),
-                last_active: s.last_active.map(format_date),
+                last_active: s.last_active,
                 retention: round2(ret),
                 class_name: class.name.clone(),
             });
@@ -264,9 +256,9 @@ pub async fn dashboard(
             FROM class_members cm
             JOIN users u ON u.id = cm.user_id
             JOIN reviews r ON r.student_id = cm.user_id
-            WHERE cm.class_id = ? AND cm.role = 'student'
+            WHERE cm.class_id = $1 AND cm.role = 'student'
             GROUP BY u.id
-            HAVING total >= 10 AND CAST(good AS REAL) / CAST(total AS REAL) < 0.5
+            HAVING COUNT(*) >= 10 AND (SUM(CASE WHEN r.rating >= 3 THEN 1 ELSE 0 END)::float / COUNT(*)::float) < 0.5
             "#,
         )
         .bind(class.class_id)
@@ -285,7 +277,7 @@ pub async fn dashboard(
                     student_id: s.id,
                     email: s.email,
                     reason: "low_retention".to_string(),
-                    last_active: s.last_active.map(format_date),
+                    last_active: s.last_active,
                     retention: round2(ret),
                     class_name: class.name.clone(),
                 });

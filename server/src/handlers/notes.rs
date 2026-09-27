@@ -19,6 +19,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
+use chrono::Utc;
 use serde_json::Value;
 
 use anjuman_contracts::notes::{CardSummary, CreateNote, ListNotesQuery, NoteResponse, UpdateNote};
@@ -65,10 +66,11 @@ async fn sync_card_rows(
     // Insert a card per template (by template id), preserving template order.
     for template in &nt.templates {
         sqlx::query!(
-            "INSERT OR IGNORE INTO cards (note_id, deck_id, template_id, created_at) VALUES (?, ?, ?, unixepoch())",
+            "INSERT INTO cards (note_id, deck_id, template_id, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (note_id, template_id) DO NOTHING",
             note_id,
             deck_id,
-            template.id
+            template.id,
+            Utc::now()
         )
         .execute(&mut **tx)
         .await
@@ -77,7 +79,7 @@ async fn sync_card_rows(
 
     // Remove cards whose template no longer belongs to this note type.
     sqlx::query!(
-        "DELETE FROM cards WHERE note_id = ? AND deck_id = ? AND template_id NOT IN (SELECT id FROM note_type_templates WHERE note_type_id = ?)",
+        "DELETE FROM cards WHERE note_id = $1 AND deck_id = $2 AND template_id NOT IN (SELECT id FROM note_type_templates WHERE note_type_id = $3)",
         note_id,
         deck_id,
         nt.id
@@ -92,7 +94,7 @@ async fn sync_card_rows(
 /// Fetch the deck IDs a note's cards are in.
 async fn note_deck_ids(db: &sqlx::PgPool, note_id: i64) -> Result<Vec<i64>, StatusCode> {
     let rows = sqlx::query!(
-        "SELECT DISTINCT deck_id FROM cards WHERE note_id = ?",
+        "SELECT DISTINCT deck_id FROM cards WHERE note_id = $1",
         note_id
     )
     .fetch_all(db)
@@ -128,7 +130,7 @@ async fn fetch_note_with_cards(
     note_id: i64,
 ) -> Result<NoteResponse, StatusCode> {
     let note = sqlx::query!(
-        "SELECT id, note_type_id, fields_json, created_at FROM notes WHERE id = ?",
+        "SELECT id, note_type_id, fields_json, created_at FROM notes WHERE id = $1",
         note_id
     )
     .fetch_optional(db)
@@ -137,14 +139,14 @@ async fn fetch_note_with_cards(
     .ok_or(StatusCode::NOT_FOUND)?;
 
     let fields: serde_json::Map<String, Value> =
-        serde_json::from_str(&note.fields_json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        serde_json::from_value(note.fields_json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let nt = note_types::get_note_type(db, note.note_type_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let card_rows = sqlx::query!(
-        "SELECT id, deck_id, template_id FROM cards WHERE note_id = ? ORDER BY deck_id",
+        "SELECT id, deck_id, template_id FROM cards WHERE note_id = $1 ORDER BY deck_id",
         note_id
     )
     .fetch_all(db)
@@ -162,7 +164,7 @@ async fn fetch_note_with_cards(
                     .map(|t| t.name.clone())
                     .unwrap_or_else(|| format!("Card {}", c.template_id));
                 CardSummary {
-                    id: c.id.expect("card.id is NOT NULL"),
+                    id: c.id,
                     template_id: c.template_id,
                     template_name,
                     deck_id: c.deck_id,
@@ -205,8 +207,7 @@ pub async fn create_note(
     note_types::validate_fields(&nt.field_names, &body.fields)
         .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
 
-    let fields_json = serde_json::to_string(&body.fields)
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid fields JSON".to_string()))?;
+    let fields_json = sqlx::types::Json(body.fields.clone());
 
     // Create the note and its cards atomically.
     let mut tx = crate::db::begin_immediate(&state.db).await.map_err(|_| {
@@ -216,12 +217,13 @@ pub async fn create_note(
         )
     })?;
 
-    let result = sqlx::query!(
-        "INSERT INTO notes (note_type_id, fields_json, created_at) VALUES (?, ?, unixepoch())",
+    let inserted = sqlx::query!(
+        "INSERT INTO notes (note_type_id, fields_json, created_at) VALUES ($1, $2, $3) RETURNING id",
         body.note_type_id,
-        fields_json
+        fields_json as _,
+        Utc::now()
     )
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|_| {
         (
@@ -230,7 +232,7 @@ pub async fn create_note(
         )
     })?;
 
-    let note_id = result.last_insert_rowid();
+    let note_id = inserted.id;
 
     sync_card_rows(&mut tx, note_id, body.deck_id, &nt)
         .await
@@ -271,7 +273,7 @@ pub async fn list_notes(
 
     let rows: Vec<NoteIdRow> = if let Some(deck_id) = params.deck_id {
         sqlx::query_as::<_, NoteIdRow>(
-            "SELECT DISTINCT n.id FROM notes n JOIN cards c ON c.note_id = n.id WHERE c.deck_id = ? ORDER BY n.id",
+            "SELECT DISTINCT n.id FROM notes n JOIN cards c ON c.note_id = n.id WHERE c.deck_id = $1 ORDER BY n.id",
         )
         .bind(deck_id)
         .fetch_all(&state.db)
@@ -279,7 +281,7 @@ pub async fn list_notes(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     } else if claims.role == UserRole::Admin {
         sqlx::query_as::<_, NoteIdRow>(
-            "SELECT DISTINCT n.id FROM notes n JOIN cards c ON c.note_id = n.id JOIN decks d ON d.id = c.deck_id WHERE d.school_id = ? ORDER BY n.id",
+            "SELECT DISTINCT n.id FROM notes n JOIN cards c ON c.note_id = n.id JOIN decks d ON d.id = c.deck_id WHERE d.school_id = $1 ORDER BY n.id",
         )
         .bind(claims.school_id)
         .fetch_all(&state.db)
@@ -293,8 +295,8 @@ pub async fn list_notes(
             JOIN cards c ON c.note_id = n.id
             JOIN decks d ON d.id = c.deck_id
             LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id
-            WHERE d.school_id = ?
-              AND (d.created_by = ? OR dc.user_id = ?)
+            WHERE d.school_id = $1
+              AND (d.created_by = $2 OR dc.user_id = $3)
             ORDER BY n.id
             "#,
         )
@@ -348,7 +350,7 @@ pub async fn update_note(
         .map_err(|(s, m)| (s, m.to_string()))?;
 
     let existing = sqlx::query!(
-        "SELECT note_type_id, fields_json FROM notes WHERE id = ?",
+        "SELECT note_type_id, fields_json FROM notes WHERE id = $1",
         note_id
     )
     .fetch_optional(&state.db)
@@ -364,7 +366,7 @@ pub async fn update_note(
     let new_note_type_id = body.note_type_id.unwrap_or(existing.note_type_id);
     let new_fields = match body.fields {
         Some(f) => f,
-        None => serde_json::from_str(&existing.fields_json).map_err(|_| {
+        None => serde_json::from_value(existing.fields_json).map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Invalid stored JSON".to_string(),
@@ -379,8 +381,7 @@ pub async fn update_note(
     note_types::validate_fields(&nt.field_names, &new_fields)
         .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
 
-    let fields_json = serde_json::to_string(&new_fields)
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid fields JSON".to_string()))?;
+    let fields_json = sqlx::types::Json(new_fields);
 
     // Read the note's deck set up front (pool read; not part of the write unit).
     let deck_ids = if new_note_type_id != existing.note_type_id {
@@ -403,9 +404,9 @@ pub async fn update_note(
     })?;
 
     sqlx::query!(
-        "UPDATE notes SET note_type_id = ?, fields_json = ? WHERE id = ?",
+        "UPDATE notes SET note_type_id = $1, fields_json = $2 WHERE id = $3",
         new_note_type_id,
-        fields_json,
+        fields_json as _,
         note_id
     )
     .execute(&mut *tx)
@@ -454,7 +455,7 @@ pub async fn delete_note(
     check_teacher_or_admin(&claims)?;
     check_note_authorization(&state.db, note_id, claims.school_id, &claims).await?;
 
-    let result = sqlx::query!("DELETE FROM notes WHERE id = ?", note_id)
+    let result = sqlx::query!("DELETE FROM notes WHERE id = $1", note_id)
         .execute(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;

@@ -7,6 +7,7 @@
 use axum::{Json, extract::State, http::StatusCode};
 
 use anjuman_contracts::MessageResponse;
+use chrono::{TimeZone, Utc};
 
 use crate::{
     auth::{self, AuthUser},
@@ -24,7 +25,12 @@ pub async fn logout(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<MessageResponse>, StatusCode> {
-    auth::revoke_token(&claims.jti, claims.sub, claims.exp as i64, &state.db)
+    let expires_at = Utc
+        .timestamp_opt(claims.exp as i64, 0)
+        .single()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    auth::revoke_token(&claims.jti, claims.sub, expires_at, &state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

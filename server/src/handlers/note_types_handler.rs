@@ -11,6 +11,8 @@ use axum::{
     http::StatusCode,
 };
 
+use chrono::Utc;
+
 use anjuman_contracts::note_types::{
     CreateTemplate, NoteTypeResponse, ReorderTemplates, UpdateNoteType, UpdateTemplate,
 };
@@ -43,7 +45,7 @@ async fn check_note_type_owner(
     school_id: i64,
 ) -> Result<(), (StatusCode, &'static str)> {
     let exists = sqlx::query!(
-        "SELECT id FROM note_types WHERE id = ? AND school_id = ?",
+        "SELECT id FROM note_types WHERE id = $1 AND school_id = $2",
         note_type_id,
         school_id
     )
@@ -63,7 +65,7 @@ async fn to_response(
     nt: note_types::NoteType,
 ) -> Result<NoteTypeResponse, (StatusCode, &'static str)> {
     let count: i64 = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!: i64" FROM notes WHERE note_type_id = ?"#,
+        r#"SELECT COUNT(*) as "count!: i64" FROM notes WHERE note_type_id = $1"#,
         nt.id
     )
     .fetch_one(db)
@@ -86,7 +88,7 @@ async fn next_ord(
     note_type_id: i64,
 ) -> Result<i64, (StatusCode, &'static str)> {
     let max_ord: i64 = sqlx::query_scalar!(
-        "SELECT COALESCE(MAX(ord), -1) FROM note_type_templates WHERE note_type_id = ?",
+        "SELECT COALESCE(MAX(ord), -1) as \"max_ord!: i64\" FROM note_type_templates WHERE note_type_id = $1",
         note_type_id
     )
     .fetch_one(db)
@@ -159,22 +161,18 @@ pub async fn clone_note_type(
         )
     })?;
 
-    let source_field_names_json = serde_json::to_string(&source.field_names).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Invalid field names".to_string(),
-        )
-    })?;
+    let source_field_names_json = sqlx::types::Json(source.field_names.clone());
 
     let result = sqlx::query!(
-        "INSERT INTO note_types (school_id, name, field_names, sort_field, created_by, created_at) VALUES (?, ?, ?, ?, ?, unixepoch())",
+        "INSERT INTO note_types (school_id, name, field_names, sort_field, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
         claims.school_id,
         new_name,
-        source_field_names_json,
+        source_field_names_json as _,
         source.sort_field,
         claims.sub,
+        Utc::now(),
     )
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         if e.to_string().contains("UNIQUE") {
@@ -184,13 +182,13 @@ pub async fn clone_note_type(
         }
     })?;
 
-    let new_id = result.last_insert_rowid();
+    let new_id = result.id;
 
     // Copy templates (new ids), preserving order.
     for template in &source.templates {
         let ord = template.ord;
         sqlx::query!(
-            "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES ($1, $2, $3, $4, $5)",
             new_id,
             ord,
             template.name,
@@ -254,8 +252,7 @@ pub async fn update_note_type(
 
     let field_names_json = match &body.field_names {
         Some(field_names) => Some(
-            serde_json::to_string(field_names)
-                .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid field names".to_string()))?,
+            sqlx::types::Json(field_names.clone()),
         ),
         None => None,
     };
@@ -268,7 +265,7 @@ pub async fn update_note_type(
     })?;
 
     if let Some(name) = &body.name {
-        sqlx::query!("UPDATE note_types SET name = ? WHERE id = ?", name, id)
+        sqlx::query!("UPDATE note_types SET name = $1 WHERE id = $2", name, id)
             .execute(&mut *tx)
             .await
             .map_err(|e| {
@@ -287,8 +284,8 @@ pub async fn update_note_type(
     }
     if let Some(json) = &field_names_json {
         sqlx::query!(
-            "UPDATE note_types SET field_names = ? WHERE id = ?",
-            json,
+            "UPDATE note_types SET field_names = $1 WHERE id = $2",
+            json as _,
             id
         )
         .execute(&mut *tx)
@@ -302,7 +299,7 @@ pub async fn update_note_type(
     }
     if let Some(sort_field) = &body.sort_field {
         sqlx::query!(
-            "UPDATE note_types SET sort_field = ? WHERE id = ?",
+            "UPDATE note_types SET sort_field = $1 WHERE id = $2",
             sort_field,
             id
         )
@@ -348,7 +345,7 @@ pub async fn delete_note_type(
     check_teacher_or_admin(&claims)?;
 
     let result = sqlx::query!(
-        "DELETE FROM note_types WHERE id = ? AND school_id = ?",
+        "DELETE FROM note_types WHERE id = $1 AND school_id = $2",
         id,
         claims.school_id
     )
@@ -398,18 +395,18 @@ pub async fn create_template(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES ($1, $2, $3, $4, $5) RETURNING id",
         id,
         ord,
         body.name,
         body.front_pattern,
         body.back_pattern,
     )
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
 
-    let template_id = result.last_insert_rowid();
+    let template_id = result.id;
 
     // Generate a card for every existing note, in the note's first card's deck.
     sqlx::query!(
@@ -417,12 +414,13 @@ pub async fn create_template(
         INSERT INTO cards (note_id, deck_id, template_id, created_at)
         SELECT n.id,
                (SELECT c.deck_id FROM cards c WHERE c.note_id = n.id ORDER BY c.id ASC LIMIT 1),
-               ?,
-               unixepoch()
+               $1,
+               $2
         FROM notes n
-        WHERE n.note_type_id = ?
+        WHERE n.note_type_id = $3
         "#,
         template_id,
+        Utc::now(),
         id,
     )
     .execute(&mut *tx)
@@ -475,7 +473,7 @@ pub async fn update_template(
 
     if let Some(name) = &body.name {
         sqlx::query!(
-            "UPDATE note_type_templates SET name = ? WHERE id = ? AND note_type_id = ?",
+            "UPDATE note_type_templates SET name = $1 WHERE id = $2 AND note_type_id = $3",
             name,
             template_id,
             id
@@ -491,7 +489,7 @@ pub async fn update_template(
     }
     if let Some(fp) = &body.front_pattern {
         sqlx::query!(
-            "UPDATE note_type_templates SET front_pattern = ? WHERE id = ? AND note_type_id = ?",
+            "UPDATE note_type_templates SET front_pattern = $1 WHERE id = $2 AND note_type_id = $3",
             fp,
             template_id,
             id
@@ -507,7 +505,7 @@ pub async fn update_template(
     }
     if let Some(bp) = &body.back_pattern {
         sqlx::query!(
-            "UPDATE note_type_templates SET back_pattern = ? WHERE id = ? AND note_type_id = ?",
+            "UPDATE note_type_templates SET back_pattern = $1 WHERE id = $2 AND note_type_id = $3",
             bp,
             template_id,
             id
@@ -530,7 +528,7 @@ pub async fn update_template(
     })?;
 
     let row = sqlx::query!(
-        "SELECT id, ord, name, front_pattern, back_pattern FROM note_type_templates WHERE id = ? AND note_type_id = ?",
+        "SELECT id, ord, name, front_pattern, back_pattern FROM note_type_templates WHERE id = $1 AND note_type_id = $2",
         template_id,
         id
     )
@@ -558,7 +556,7 @@ pub async fn delete_template(
     check_teacher_or_admin(&claims)?;
 
     let result = sqlx::query!(
-        "DELETE FROM note_type_templates WHERE id = ? AND note_type_id = ?",
+        "DELETE FROM note_type_templates WHERE id = $1 AND note_type_id = $2",
         template_id,
         id
     )
@@ -601,7 +599,7 @@ pub async fn reorder_templates(
     // apply the final contiguous order.
     const OFFSET: i64 = 1_000_000;
     sqlx::query!(
-        "UPDATE note_type_templates SET ord = ord + ? WHERE note_type_id = ?",
+        "UPDATE note_type_templates SET ord = ord + $1 WHERE note_type_id = $2",
         OFFSET,
         id
     )
@@ -617,7 +615,7 @@ pub async fn reorder_templates(
     for (ord, template_id) in body.template_ids.iter().enumerate() {
         let ord = ord as i64;
         sqlx::query!(
-            "UPDATE note_type_templates SET ord = ? WHERE id = ? AND note_type_id = ?",
+            "UPDATE note_type_templates SET ord = $1 WHERE id = $2 AND note_type_id = $3",
             ord,
             template_id,
             id

@@ -44,7 +44,7 @@ pub async fn list_deck_options(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<DeckOptions>>, (StatusCode, &'static str)> {
     let rows = sqlx::query!(
-        "SELECT id FROM deck_options WHERE school_id = ? ORDER BY name",
+        "SELECT id FROM deck_options WHERE school_id = $1 ORDER BY name",
         claims.school_id
     )
     .fetch_all(&state.db)
@@ -53,7 +53,7 @@ pub async fn list_deck_options(
 
     let mut options = Vec::new();
     for row in rows {
-        let opt = deck_options::get_options(&state.db, row.id.expect("id is NOT NULL"))
+        let opt = deck_options::get_options(&state.db, row.id)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
         options.push(opt);
@@ -96,9 +96,9 @@ pub async fn create_deck_options(
     let relearning_steps =
         parse_steps(&body.relearning_steps).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
-    let bury_new = body.bury_new as i64;
-    let bury_review = body.bury_review as i64;
-    let bury_interday = body.bury_interday as i64;
+    let bury_new = body.bury_new;
+    let bury_review = body.bury_review;
+    let bury_interday = body.bury_interday;
 
     // Create the preset and its steps atomically.
     let mut tx = crate::db::begin_immediate(&state.db).await.map_err(|_| {
@@ -109,7 +109,7 @@ pub async fn create_deck_options(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
         claims.school_id,
         body.name,
         body.desired_retention,
@@ -119,7 +119,7 @@ pub async fn create_deck_options(
         body.new_per_day,
         body.review_per_day,
     )
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         if e.to_string().contains("UNIQUE") {
@@ -135,7 +135,7 @@ pub async fn create_deck_options(
         }
     })?;
 
-    let new_id = result.last_insert_rowid();
+    let new_id = result.id;
     deck_options::replace_steps(&mut tx, new_id, &learning_steps, &relearning_steps)
         .await
         .map_err(|_| {
@@ -218,7 +218,7 @@ pub async fn update_deck_options(
     })?;
 
     if let Some(name) = &body.name {
-        sqlx::query!("UPDATE deck_options SET name = ? WHERE id = ?", name, id)
+        sqlx::query!("UPDATE deck_options SET name = $1 WHERE id = $2", name, id)
             .execute(&mut *tx)
             .await
             .map_err(|e| {
@@ -238,7 +238,7 @@ pub async fn update_deck_options(
 
     if let Some(retention) = body.desired_retention {
         sqlx::query!(
-            "UPDATE deck_options SET desired_retention = ? WHERE id = ?",
+            "UPDATE deck_options SET desired_retention = $1 WHERE id = $2",
             retention,
             id
         )
@@ -253,10 +253,9 @@ pub async fn update_deck_options(
     }
 
     if let Some(v) = body.bury_new {
-        let v_i64 = v as i64;
         sqlx::query!(
-            "UPDATE deck_options SET bury_new = ? WHERE id = ?",
-            v_i64,
+            "UPDATE deck_options SET bury_new = $1 WHERE id = $2",
+            v,
             id
         )
         .execute(&mut *tx)
@@ -270,10 +269,9 @@ pub async fn update_deck_options(
     }
 
     if let Some(v) = body.bury_review {
-        let v_i64 = v as i64;
         sqlx::query!(
-            "UPDATE deck_options SET bury_review = ? WHERE id = ?",
-            v_i64,
+            "UPDATE deck_options SET bury_review = $1 WHERE id = $2",
+            v,
             id
         )
         .execute(&mut *tx)
@@ -287,10 +285,9 @@ pub async fn update_deck_options(
     }
 
     if let Some(v) = body.bury_interday {
-        let v_i64 = v as i64;
         sqlx::query!(
-            "UPDATE deck_options SET bury_interday = ? WHERE id = ?",
-            v_i64,
+            "UPDATE deck_options SET bury_interday = $1 WHERE id = $2",
+            v,
             id
         )
         .execute(&mut *tx)
@@ -305,7 +302,7 @@ pub async fn update_deck_options(
 
     if let Some(v) = body.new_per_day {
         sqlx::query!(
-            "UPDATE deck_options SET new_per_day = ? WHERE id = ?",
+            "UPDATE deck_options SET new_per_day = $1 WHERE id = $2",
             v,
             id
         )
@@ -321,7 +318,7 @@ pub async fn update_deck_options(
 
     if let Some(v) = body.review_per_day {
         sqlx::query!(
-            "UPDATE deck_options SET review_per_day = ? WHERE id = ?",
+            "UPDATE deck_options SET review_per_day = $1 WHERE id = $2",
             v,
             id
         )
@@ -382,7 +379,7 @@ pub async fn delete_deck_options(
         return Err((StatusCode::NOT_FOUND, "Deck options not found"));
     }
 
-    sqlx::query!("DELETE FROM deck_options WHERE id = ?", id)
+    sqlx::query!("DELETE FROM deck_options WHERE id = $1", id)
         .execute(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;

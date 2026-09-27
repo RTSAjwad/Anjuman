@@ -5,6 +5,8 @@
 
 use axum::{Json, extract::State, http::StatusCode};
 
+use chrono::Utc;
+
 use anjuman_contracts::users::{CreateUser, User};
 
 use crate::state::AppState;
@@ -44,8 +46,7 @@ pub async fn create_user(
 
     // Insert the new user row.
     //
-    // The `created_at` field uses `unixepoch()` — SQLite's function
-    // that returns the current Unix timestamp in seconds.
+    // `created_at` is set to the current time in Rust (`Utc::now()`).
     let result = sqlx::query!(
         r#"
         INSERT INTO users
@@ -59,21 +60,23 @@ pub async fn create_user(
             created_at
         )
         VALUES
-        (?, ?, ?, ?, ?, ?, unixepoch())
+        ($1, $2, $3, $4::text::user_role, $5, $6, $7)
+        RETURNING id
         "#,
         body.school_id,
         body.email,
         password_hash,
         role_str,
         body.first_name,
-        body.last_name
+        body.last_name,
+        Utc::now()
     )
-    .execute(&state.db)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
-        // SQLite returns a UNIQUE constraint error when the email already
+        // Postgres returns a UNIQUE constraint error when the email already
         // exists. We check for the word "UNIQUE" in the error message
-        // because the exact error code varies by SQLite version.
+        // because the exact error code varies.
         let msg = if e.to_string().contains("UNIQUE") {
             "A user with that email already exists".into()
         } else {
@@ -82,10 +85,10 @@ pub async fn create_user(
         (StatusCode::CONFLICT, msg)
     })?;
 
-    // `last_insert_rowid()` returns the `INTEGER PRIMARY KEY` that SQLite
+    // `RETURNING id` returns the `BIGINT` identity value that Postgres
     // auto-generated for the new row.
     Ok(Json(User {
-        id: result.last_insert_rowid(),
+        id: result.id,
         email: body.email,
         first_name: body.first_name,
         last_name: body.last_name,

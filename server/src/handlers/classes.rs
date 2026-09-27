@@ -26,6 +26,8 @@ use axum::{
     http::StatusCode,
 };
 
+use chrono::Utc;
+
 use anjuman_contracts::classes::{
     AddMember, ClassResponse, CreateClass, MemberResponse, RenameClass, RosterResponse,
 };
@@ -59,7 +61,7 @@ pub async fn check_class_owner(
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
     let row = sqlx::query!(
-        "SELECT id, created_by FROM classes WHERE id = ? AND school_id = ?",
+        "SELECT id, created_by FROM classes WHERE id = $1 AND school_id = $2",
         class_id,
         school_id
     )
@@ -93,7 +95,7 @@ pub async fn check_class_member(
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
     let row = sqlx::query!(
-        "SELECT id, created_by FROM classes WHERE id = ? AND school_id = ?",
+        "SELECT id, created_by FROM classes WHERE id = $1 AND school_id = $2",
         class_id,
         school_id
     )
@@ -114,13 +116,14 @@ pub async fn check_class_member(
 
     // Check if the user is a class member.
     let is_member = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM class_members WHERE class_id = ? AND user_id = ?",
+        "SELECT COUNT(*) FROM class_members WHERE class_id = $1 AND user_id = $2",
         class_id,
         claims.sub
     )
     .fetch_one(db)
     .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    .unwrap_or(0);
 
     if is_member > 0 {
         return Ok(());
@@ -137,7 +140,7 @@ async fn fetch_class(
     let row = sqlx::query!(
         r#"
         SELECT id, school_id, name, description, archived, created_by, created_at
-        FROM classes WHERE id = ?
+        FROM classes WHERE id = $1
         "#,
         class_id
     )
@@ -150,7 +153,7 @@ async fn fetch_class(
         school_id: row.school_id,
         name: row.name,
         description: row.description,
-        archived: row.archived != 0,
+        archived: row.archived,
         created_by: row.created_by,
         created_at: row.created_at,
     })
@@ -171,18 +174,20 @@ pub async fn create_class(
     let result = sqlx::query!(
         r#"
         INSERT INTO classes (school_id, name, description, created_by, created_at)
-        VALUES (?, ?, ?, ?, unixepoch())
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
         "#,
         claims.school_id,
         body.name,
         body.description,
-        claims.sub
+        claims.sub,
+        Utc::now()
     )
-    .execute(&state.db)
+    .fetch_one(&state.db)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    let class = fetch_class(&state.db, result.last_insert_rowid()).await?;
+    let class = fetch_class(&state.db, result.id).await?;
     Ok((StatusCode::CREATED, Json(class)))
 }
 
@@ -201,7 +206,7 @@ pub async fn list_classes(
             r#"
             SELECT id, school_id, name, description, archived, created_by, created_at
             FROM classes
-            WHERE school_id = ?
+            WHERE school_id = $1
             ORDER BY name
             "#,
             claims.school_id
@@ -213,11 +218,11 @@ pub async fn list_classes(
         let classes: Vec<ClassResponse> = rows
             .into_iter()
             .map(|r| ClassResponse {
-                id: r.id.expect("id from simple SELECT is never null"),
+                id: r.id,
                 school_id: r.school_id,
                 name: r.name,
                 description: r.description,
-                archived: r.archived != 0,
+                archived: r.archived,
                 created_by: r.created_by,
                 created_at: r.created_at,
             })
@@ -232,9 +237,9 @@ pub async fn list_classes(
                c.archived, c.created_by, c.created_at
         FROM classes c
         LEFT JOIN class_members cm ON cm.class_id = c.id
-        WHERE c.school_id = ?
-          AND c.archived = 0
-          AND (c.created_by = ? OR cm.user_id = ?)
+        WHERE c.school_id = $1
+          AND c.archived = FALSE
+          AND (c.created_by = $2 OR cm.user_id = $3)
         ORDER BY c.name
         "#,
         claims.school_id,
@@ -248,11 +253,11 @@ pub async fn list_classes(
     let classes: Vec<ClassResponse> = rows
         .into_iter()
         .map(|r| ClassResponse {
-            id: r.id.expect("id from SELECT DISTINCT is never null"),
+            id: r.id,
             school_id: r.school_id,
             name: r.name,
             description: r.description,
-            archived: r.archived != 0,
+            archived: r.archived,
             created_by: r.created_by,
             created_at: r.created_at,
         })
@@ -285,7 +290,7 @@ pub async fn rename_class(
     check_class_member(&state.db, class_id, claims.school_id, &claims).await?;
 
     sqlx::query!(
-        "UPDATE classes SET name = ? WHERE id = ?",
+        "UPDATE classes SET name = $1 WHERE id = $2",
         body.name,
         class_id
     )
@@ -311,15 +316,15 @@ pub async fn archive_class(
     check_class_member(&state.db, class_id, claims.school_id, &claims).await?;
 
     // Fetch current state, flip it, and update.
-    let current = sqlx::query!("SELECT archived FROM classes WHERE id = ?", class_id)
+    let current = sqlx::query!("SELECT archived FROM classes WHERE id = $1", class_id)
         .fetch_one(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    let new_archived = if current.archived != 0 { 0 } else { 1 };
+    let new_archived = !current.archived;
 
     sqlx::query!(
-        "UPDATE classes SET archived = ? WHERE id = ?",
+        "UPDATE classes SET archived = $1 WHERE id = $2",
         new_archived,
         class_id
     )
@@ -342,7 +347,7 @@ pub async fn delete_class(
     check_teacher_or_admin(&claims)?;
     check_class_owner(&state.db, class_id, claims.school_id, &claims).await?;
 
-    sqlx::query!("DELETE FROM classes WHERE id = ?", class_id)
+    sqlx::query!("DELETE FROM classes WHERE id = $1", class_id)
         .execute(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -371,7 +376,7 @@ pub async fn view_roster(
         r#"
         SELECT id, school_id, name, description, archived, created_by, created_at
         FROM classes
-        WHERE id = ? AND school_id = ?
+        WHERE id = $1 AND school_id = $2
         "#,
         class_id,
         claims.school_id
@@ -384,10 +389,10 @@ pub async fn view_roster(
     // Fetch all members with their user details.
     let members = sqlx::query!(
         r#"
-        SELECT cm.user_id, u.email, u.first_name, u.last_name, cm.role, cm.joined_at
+        SELECT cm.user_id, u.email, u.first_name, u.last_name, cm.role::text AS role, cm.joined_at
         FROM class_members cm
         JOIN users u ON u.id = cm.user_id
-        WHERE cm.class_id = ?
+        WHERE cm.class_id = $1
         ORDER BY cm.role, u.email
         "#,
         class_id
@@ -406,6 +411,7 @@ pub async fn view_roster(
                 last_name: m.last_name,
                 role: m
                     .role
+                    .expect("role is NOT NULL in schema")
                     .parse()
                     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
                 joined_at: m.joined_at,
@@ -419,7 +425,7 @@ pub async fn view_roster(
             school_id: class_row.school_id,
             name: class_row.name,
             description: class_row.description,
-            archived: class_row.archived != 0,
+            archived: class_row.archived,
             created_by: class_row.created_by,
             created_at: class_row.created_at,
         },
@@ -441,7 +447,7 @@ pub async fn add_member(
     check_class_member(&state.db, class_id, claims.school_id, &claims).await?;
 
     let target = sqlx::query!(
-        "SELECT id, email, first_name, last_name, role FROM users WHERE id = ? AND school_id = ?",
+        "SELECT id, email, first_name, last_name, role::text AS role FROM users WHERE id = $1 AND school_id = $2",
         body.user_id,
         claims.school_id
     )
@@ -450,19 +456,16 @@ pub async fn add_member(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "User not found in your school"))?;
 
-    if target.role == "admin" {
+    if target.role.as_deref() == Some("admin") {
         return Err((StatusCode::BAD_REQUEST, "Admins cannot be added to classes"));
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = Utc::now();
 
     sqlx::query!(
         r#"
         INSERT INTO class_members (class_id, user_id, role, joined_at)
-        VALUES (?, ?, ?, ?)
+        VALUES ($1, $2, $3::text::membership_role, $4)
         ON CONFLICT(class_id, user_id) DO UPDATE SET role = excluded.role
         "#,
         class_id,
@@ -483,6 +486,7 @@ pub async fn add_member(
             last_name: target.last_name,
             role: target
                 .role
+                .expect("role is NOT NULL in schema")
                 .parse()
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid role"))?,
             joined_at: now,
@@ -500,7 +504,7 @@ pub async fn remove_member(
     check_class_member(&state.db, class_id, claims.school_id, &claims).await?;
 
     let result = sqlx::query!(
-        "DELETE FROM class_members WHERE class_id = ? AND user_id = ?",
+        "DELETE FROM class_members WHERE class_id = $1 AND user_id = $2",
         class_id,
         user_id
     )
