@@ -84,7 +84,7 @@ fn day_start_utc(now: i64, day_start_hour: i64) -> i64 {
 
 /// Resolve the student's start-of-day hour (Anki's "Next day starts at",
 /// default 4 AM). Falls back to 4 when no preference row exists.
-async fn day_start_hour(db: &sqlx::SqlitePool, student_id: i64) -> i64 {
+async fn day_start_hour(db: &sqlx::PgPool, student_id: i64) -> i64 {
     sqlx::query_scalar!(
         "SELECT day_start_hour FROM user_preferences WHERE user_id = ?",
         student_id
@@ -97,7 +97,7 @@ async fn day_start_hour(db: &sqlx::SqlitePool, student_id: i64) -> i64 {
 }
 
 /// Start of the current study day for a student.
-async fn start_of_day(db: &sqlx::SqlitePool, student_id: i64) -> i64 {
+async fn start_of_day(db: &sqlx::PgPool, student_id: i64) -> i64 {
     let hour = day_start_hour(db, student_id).await;
     day_start_utc(now_secs(), hour)
 }
@@ -106,7 +106,7 @@ async fn start_of_day(db: &sqlx::SqlitePool, student_id: i64) -> i64 {
 ///
 /// This is a per-user option (Anki's "Learn ahead limit", default 20 minutes).
 /// Falls back to 1200 when no preference row exists.
-async fn learn_ahead_seconds(db: &sqlx::SqlitePool, student_id: i64) -> i64 {
+async fn learn_ahead_seconds(db: &sqlx::PgPool, student_id: i64) -> i64 {
     sqlx::query_scalar!(
         "SELECT learn_ahead_seconds FROM user_preferences WHERE user_id = ?",
         student_id
@@ -121,7 +121,7 @@ async fn learn_ahead_seconds(db: &sqlx::SqlitePool, student_id: i64) -> i64 {
 /// Create `student_card_states` rows for any card in `deck_id`'s subtree the
 /// student has not seen yet (so `new` cards are studyable on first fetch).
 async fn ensure_card_states_for_deck(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     deck_id: i64,
 ) -> Result<(), StatusCode> {
@@ -152,7 +152,7 @@ async fn ensure_card_states_for_deck(
 
 /// The effective deck options (limits) for a deck.
 async fn options_for(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     deck_id: i64,
 ) -> Result<crate::deck_options::DeckOptions, StatusCode> {
     crate::deck_options::options_for_deck(db, deck_id)
@@ -163,7 +163,7 @@ async fn options_for(
 /// How many new / review cards the student has already seen today, derived
 /// from the `reviews` table (and its `state_before` column). Returns
 /// (new_seen_today, review_seen_today).
-async fn seen_today(db: &sqlx::SqlitePool, student_id: i64) -> Result<(i64, i64), StatusCode> {
+async fn seen_today(db: &sqlx::PgPool, student_id: i64) -> Result<(i64, i64), StatusCode> {
     let day_start = start_of_day(db, student_id).await;
     let row = sqlx::query!(
         r#"
@@ -190,7 +190,7 @@ async fn seen_today(db: &sqlx::SqlitePool, student_id: i64) -> Result<(i64, i64)
 /// due-now counts are computed, then `new` and `review` are clamped to the
 /// remaining daily budget.
 pub async fn deck_counts_for_student(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     deck_id: i64,
 ) -> Result<StudyCounts, StatusCode> {
@@ -249,7 +249,7 @@ pub async fn deck_counts_for_student(
 /// join to `deck_option_steps` (intraday learning → interday learning → review
 /// → new).
 async fn next_due_card(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     deck_id: i64,
 ) -> Result<Option<CardRow>, StatusCode> {
@@ -365,7 +365,7 @@ async fn next_due_card(
 /// Render a single card row into a full `StudyCard`, including predicted
 /// intervals (in seconds) for each possible rating.
 async fn row_to_study_card(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     c: CardRow,
     options: &crate::deck_options::DeckOptions,
 ) -> Result<StudyCard, StatusCode> {
@@ -572,7 +572,7 @@ pub async fn deck_study_advance(
 
 /// Shared implementation for GET (start) and POST (advance).
 async fn deck_advance(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     claims: &crate::auth::Claims,
     deck_id: i64,
     review: Option<StudyAdvanceBody>,

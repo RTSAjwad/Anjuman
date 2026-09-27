@@ -18,7 +18,7 @@ use anjuman_contracts::cards::{CardBrowserPage, CardBrowserQuery, CardBrowserRes
 use crate::{auth::AuthUser, note_types, state::AppState};
 
 async fn rows_to_responses(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     rows: Vec<CardBrowserRow>,
     new_card_offset: i64,
 ) -> Result<Vec<CardBrowserResponse>, StatusCode> {

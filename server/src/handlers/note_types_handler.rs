@@ -38,7 +38,7 @@ fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCod
 
 /// Verify a note type exists in the caller's school and return its row id.
 async fn check_note_type_owner(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     note_type_id: i64,
     school_id: i64,
 ) -> Result<(), (StatusCode, &'static str)> {
@@ -59,7 +59,7 @@ async fn check_note_type_owner(
 
 /// Build a `NoteTypeResponse` from a `NoteType`, resolving the note count.
 async fn to_response(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     nt: note_types::NoteType,
 ) -> Result<NoteTypeResponse, (StatusCode, &'static str)> {
     let count: i64 = sqlx::query_scalar!(
@@ -82,7 +82,7 @@ async fn to_response(
 
 /// The next `ord` for a template appended to a note type.
 async fn next_ord(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     note_type_id: i64,
 ) -> Result<i64, (StatusCode, &'static str)> {
     let max_ord: i64 = sqlx::query_scalar!(

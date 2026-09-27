@@ -126,7 +126,7 @@ struct CoreMetrics {
 }
 
 async fn compute_core_metrics(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
 ) -> Result<CoreMetrics, StatusCode> {
     let today = start_of_today();
@@ -268,7 +268,7 @@ async fn compute_core_metrics(
 }
 
 async fn compute_daily_breakdown(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     days: i64,
 ) -> Result<Vec<DailyPoint>, StatusCode> {
@@ -344,7 +344,7 @@ pub async fn my_daily(
 // ---------------------------------------------------------------------------
 
 async fn check_class_access(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     class_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,

@@ -38,7 +38,7 @@ fn now_secs() -> i64 {
 /// operations (suspend, bury, flag, reschedule) work on cards the student
 /// has never studied. Mirrors the study flow's `ensure_card_states_for_deck`.
 async fn ensure_card_state(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     card_id: i64,
 ) -> Result<(), (StatusCode, &'static str)> {
@@ -56,7 +56,7 @@ async fn ensure_card_state(
 
 /// Fetch the current card state for the authenticated student.
 async fn fetch_state(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     card_id: i64,
 ) -> Result<(String, Option<i64>, i64, Option<i64>, Option<String>), (StatusCode, &'static str)> {
@@ -81,7 +81,7 @@ async fn fetch_state(
 
 /// Fetch the card IDs belonging to a note for the given student.
 async fn fetch_note_card_ids(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     note_id: i64,
 ) -> Result<Vec<i64>, (StatusCode, &'static str)> {
@@ -99,7 +99,7 @@ async fn fetch_note_card_ids(
 
 /// Ensure `student_card_states` rows exist for every card of a note.
 async fn ensure_note_card_states(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     note_id: i64,
 ) -> Result<(), (StatusCode, &'static str)> {
@@ -124,7 +124,7 @@ async fn ensure_note_card_states(
 /// Read the actual `(suspended, buried_at, bury_reason)` of a note's cards after
 /// a bulk operation. All cards are set uniformly, so reading one is sufficient.
 async fn fetch_note_result_state(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     note_id: i64,
 ) -> Result<(i64, Option<i64>, Option<String>), (StatusCode, &'static str)> {

@@ -4,19 +4,17 @@
 // It holds long-lived resources that all handlers need — currently
 // just the database connection pool.
 //
-// Because `SqlitePool` is `Clone` (it's backed by an `Arc` internally),
+// Because `PgPool` is `Clone` (it's backed by an `Arc` internally),
 // `AppState` can also be `Clone`. Axum clones it once per request so
 // handlers can access it without any locking.
 
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 /// The application state available to every request handler.
 #[derive(Clone)]
 pub struct AppState {
-    /// The SQLite connection pool.
+    /// The Postgres connection pool.
     ///
     /// Handlers borrow connections from this pool to run queries.
-    /// The pool manages up to 5 concurrent connections — more than
-    /// that will queue until a connection is free.
-    pub db: SqlitePool,
+    pub db: PgPool,
 }

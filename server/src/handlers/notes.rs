@@ -57,7 +57,7 @@ fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCod
 /// given deck. Cards reference templates by stable `template_id`.
 /// Must be called inside a caller's transaction for atomicity.
 async fn sync_card_rows(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     note_id: i64,
     deck_id: i64,
     nt: &note_types::NoteType,
@@ -90,7 +90,7 @@ async fn sync_card_rows(
 }
 
 /// Fetch the deck IDs a note's cards are in.
-async fn note_deck_ids(db: &sqlx::SqlitePool, note_id: i64) -> Result<Vec<i64>, StatusCode> {
+async fn note_deck_ids(db: &sqlx::PgPool, note_id: i64) -> Result<Vec<i64>, StatusCode> {
     let rows = sqlx::query!(
         "SELECT DISTINCT deck_id FROM cards WHERE note_id = ?",
         note_id
@@ -104,7 +104,7 @@ async fn note_deck_ids(db: &sqlx::SqlitePool, note_id: i64) -> Result<Vec<i64>, 
 
 /// Require the caller to have collaborator access to every deck the note spans.
 async fn check_note_authorization(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     note_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
@@ -124,7 +124,7 @@ async fn check_note_authorization(
 /// Fetch a note and render its cards at display time. Each card includes its
 /// deck_id so callers know where the note's cards live.
 async fn fetch_note_with_cards(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     note_id: i64,
 ) -> Result<NoteResponse, StatusCode> {
     let note = sqlx::query!(

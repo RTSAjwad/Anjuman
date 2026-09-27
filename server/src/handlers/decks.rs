@@ -58,7 +58,7 @@ pub fn check_teacher_or_admin(
 /// Check whether the caller can manage (edit/delete/share) a deck.
 /// Admins can manage any deck in their school. Teachers must be the owner.
 pub async fn check_deck_owner(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     deck_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
@@ -91,7 +91,7 @@ pub async fn check_deck_owner(
 /// Admins can manage any deck in their school. Teachers must be
 /// the owner OR a collaborator on the deck.
 pub async fn check_deck_collaborator(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     deck_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
@@ -138,7 +138,7 @@ pub async fn check_deck_collaborator(
 /// Check whether the caller can view a deck. The caller can view if they
 /// are the owner, an admin, a collaborator, or in a class that has the deck.
 pub async fn check_deck_visible(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     deck_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
@@ -199,7 +199,7 @@ pub async fn check_deck_visible(
 
 /// Fetch a deck row and convert to response DTO.
 async fn fetch_deck(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     deck_id: i64,
 ) -> Result<DeckResponse, (StatusCode, &'static str)> {
     let row = sqlx::query!(

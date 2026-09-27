@@ -7,7 +7,7 @@
 // Scheduling steps (learning/relearning) are stored normalised in
 // `deck_option_steps` (one row per step) and re-assembled into `Vec<i64>` here.
 
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 pub use anjuman_contracts::deck_options::DeckOptions;
 
@@ -27,7 +27,7 @@ pub use anjuman_contracts::deck_options::DeckOptions;
 /// in order. `step_index` is derived from the vector position. Must be called
 /// inside a caller's transaction so the delete+insert is atomic.
 pub async fn replace_steps(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     options_id: i64,
     learning_steps: &[i64],
     relearning_steps: &[i64],
@@ -74,7 +74,7 @@ pub async fn replace_steps(
 // ---------------------------------------------------------------------------
 
 /// Fetch a preset by id, including its normalised steps.
-pub async fn get_options(db: &SqlitePool, id: i64) -> Result<DeckOptions, String> {
+pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
     let row = sqlx::query!(
         "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day FROM deck_options WHERE id = ?",
         id
@@ -102,7 +102,7 @@ pub async fn get_options(db: &SqlitePool, id: i64) -> Result<DeckOptions, String
 }
 
 /// Load a preset's learning and relearning steps from `deck_option_steps`.
-async fn load_steps(db: &SqlitePool, options_id: i64) -> Result<Steps, String> {
+async fn load_steps(db: &PgPool, options_id: i64) -> Result<Steps, String> {
     let rows = sqlx::query!(
         "SELECT kind, step_index, seconds FROM deck_option_steps WHERE options_id = ? ORDER BY kind, step_index",
         options_id
@@ -136,7 +136,7 @@ struct Steps {
 ///
 /// If the deck has an `options_id`, return that preset; otherwise return the
 /// global default preset (owned by the system school, id 0).
-pub async fn options_for_deck(db: &SqlitePool, deck_id: i64) -> Result<DeckOptions, String> {
+pub async fn options_for_deck(db: &PgPool, deck_id: i64) -> Result<DeckOptions, String> {
     let options_id: Option<Option<i64>> =
         sqlx::query_scalar("SELECT options_id FROM decks WHERE id = ?")
             .bind(deck_id)

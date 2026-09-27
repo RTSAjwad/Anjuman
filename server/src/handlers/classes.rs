@@ -53,7 +53,7 @@ fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCod
 /// Admins can manage any class in their school. Teachers can only manage
 /// classes they created. Returns Ok(()) if authorised, Err otherwise.
 pub async fn check_class_owner(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     class_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
@@ -87,7 +87,7 @@ pub async fn check_class_owner(
 /// Check whether the caller is a member of the class (or owner, or admin).
 /// Returns Ok(()) if the caller can view the class.
 pub async fn check_class_member(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     class_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
@@ -131,7 +131,7 @@ pub async fn check_class_member(
 
 /// Fetch a class row and convert to response DTO.
 async fn fetch_class(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     class_id: i64,
 ) -> Result<ClassResponse, (StatusCode, &'static str)> {
     let row = sqlx::query!(

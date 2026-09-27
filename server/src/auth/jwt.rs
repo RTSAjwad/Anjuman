@@ -35,7 +35,7 @@ use std::env;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use anjuman_contracts::UserRole;
@@ -113,7 +113,7 @@ pub fn create_token(user_id: i64, school_id: i64, role: UserRole) -> Result<Stri
 /// Verify a JWT's signature and expiration, then check the revocation
 /// blocklist. Returns the decoded `Claims` only if the token is valid
 /// AND has not been revoked.
-pub async fn verify_token(token: &str, db: &SqlitePool) -> Result<Claims, AuthError> {
+pub async fn verify_token(token: &str, db: &PgPool) -> Result<Claims, AuthError> {
     let secret = jwt_secret();
 
     // Step 1: Verify signature and expiration.
@@ -154,7 +154,7 @@ pub async fn revoke_token(
     jti: &str,
     user_id: i64,
     expires_at: i64,
-    db: &SqlitePool,
+    db: &PgPool,
 ) -> Result<(), AuthError> {
     sqlx::query!(
         "INSERT OR IGNORE INTO revoked_tokens (jti, user_id, expires_at) VALUES (?, ?, ?)",

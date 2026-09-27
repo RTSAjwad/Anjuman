@@ -76,7 +76,7 @@ fn build_in_clause(count: usize) -> String {
     placeholders.join(",")
 }
 
-async fn student_retention(db: &sqlx::SqlitePool, student_id: i64) -> Result<f64, StatusCode> {
+async fn student_retention(db: &sqlx::PgPool, student_id: i64) -> Result<f64, StatusCode> {
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE student_id = ?")
         .bind(student_id)
         .fetch_one(db)

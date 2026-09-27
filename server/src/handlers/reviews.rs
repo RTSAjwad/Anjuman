@@ -127,8 +127,8 @@ fn is_interday_step(step_index: i64, steps: &[i64]) -> bool {
 /// card's deck preset) is enabled. Intraday learning is never buried.
 #[allow(clippy::too_many_arguments)]
 async fn bury_siblings(
-    db: &sqlx::SqlitePool,
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    db: &sqlx::PgPool,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     student_id: i64,
     note_id: i64,
     answered_card_id: i64,
@@ -215,7 +215,7 @@ async fn bury_siblings(
 ///
 /// `card_id` is validated against the owning deck's visibility by the caller.
 pub async fn apply_review(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     student_id: i64,
     card_id: i64,
     rating: i32,

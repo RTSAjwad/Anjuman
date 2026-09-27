@@ -7,7 +7,7 @@
 // Cards are rendered at display time from the template patterns + note fields.
 
 use serde::Serialize;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 pub use anjuman_contracts::note_types::Template;
 
@@ -57,7 +57,7 @@ pub struct RenderedCard {
 // ---------------------------------------------------------------------------
 
 /// Look up a note type by ID, including its templates.
-pub async fn get_note_type(db: &SqlitePool, id: i64) -> Result<NoteType, String> {
+pub async fn get_note_type(db: &PgPool, id: i64) -> Result<NoteType, String> {
     let row = sqlx::query!(
         "SELECT id, name, field_names, sort_field FROM note_types WHERE id = ?",
         id
@@ -99,7 +99,7 @@ pub async fn get_note_type(db: &SqlitePool, id: i64) -> Result<NoteType, String>
 }
 
 /// Look up a note type by name (for legacy compatibility).
-pub async fn get_note_type_by_name(db: &SqlitePool, name: &str) -> Result<NoteType, String> {
+pub async fn get_note_type_by_name(db: &PgPool, name: &str) -> Result<NoteType, String> {
     let row = sqlx::query!("SELECT id FROM note_types WHERE name = ?", name)
         .fetch_optional(db)
         .await
@@ -110,7 +110,7 @@ pub async fn get_note_type_by_name(db: &SqlitePool, name: &str) -> Result<NoteTy
 }
 
 /// List all note types in a school.
-pub async fn list_note_types(db: &SqlitePool, school_id: i64) -> Result<Vec<NoteType>, String> {
+pub async fn list_note_types(db: &PgPool, school_id: i64) -> Result<Vec<NoteType>, String> {
     let rows = sqlx::query!(
         "SELECT id, name, field_names FROM note_types WHERE school_id = ? ORDER BY name",
         school_id
