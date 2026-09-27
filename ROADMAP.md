@@ -30,9 +30,10 @@ are discarded, not converted one-for-one.
 
 ### Sub-tasks (summary)
 
-- [ ] **Phase 0** — decide + implement the Nix-idiomatic Postgres runtime
-      (services-flake / process-compose / NixOS module / Docker); set
-      `DATABASE_URL`; update `.env.example`.
+- [x] **Phase 0** — implement the Nix-idiomatic Postgres runtime: converted
+      the flake to `flake-parts` + `services-flake`; `nix run .#anjuman` runs
+      PostgreSQL 17 and creates the `anjuman` DB; `DATABASE_URL` defaults to
+      `postgres://127.0.0.1:5432/anjuman`. *(done — commit 411b862)*
 - [ ] **Phase 1** — sqlx `postgres` feature (drop `sqlite`); rewrite `db.rs`
       (`PgPool`, drop `PRAGMA`, replace `BEGIN IMMEDIATE`); rename
       `SqlitePool`→`PgPool` across `state.rs`, `auth/jwt.rs`, `deck_options.rs`,

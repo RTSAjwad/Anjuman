@@ -17,27 +17,20 @@ independently verifiable.
 
 ---
 
-## Phase 0 — Decide the Postgres runtime, before any code
+## Phase 0 — Decide the Postgres runtime, before any code  ✅ DONE
 
-The flake must provision Postgres "in a Nix-flake-idiomatic way". Decide and
-implement this *first*, because `cargo build` (`sqlx::query!` compile-time
-checks) and `sqlx migrate run` both need a reachable database. Options (pick
-one):
+**Settled:** `services-flake` (via `flake-parts` + `process-compose-flake`).
+`nix run .#anjuman` brings up PostgreSQL 17.11 on `127.0.0.1:5432`, creating the
+`anjuman` database on first start. The flake was converted from `flake-utils`
+to `flake-parts` (a hard requirement of services-flake). The dev shell does
+**not** auto-start Postgres — run it in a separate terminal.
 
-- **(A) NixOS module / `services.postgresql`** in the user's NixOS config (if
-  the dev machine is NixOS) — the flake only documents `DATABASE_URL`.
-- **(B) `services-flake` / `process-compose`** — a dev-shell that spins up a
-  throwaway `postgres` on `nix develop` (idiomatic for flake-based dev).
-- **(C) Docker Compose** — a `compose.yaml` with `postgres`, documented in the
-  README (not "Nix-idiomatic", but simplest).
+- Default `DATABASE_URL=postgres://127.0.0.1:5432/anjuman`.
+- Local `trust` auth (services-flake default), so no password in the URL.
 
-> Recommendation: **(B)** `services-flake` (or `process-compose`) so
-> `nix develop` gives you a live local Postgres automatically, keeping the
-> "everything via Nix" story. This is the one decision to lock **before** Phase 1.
-
-**Deliverable:** a documented, reproducible local Postgres + a default
-`DATABASE_URL=postgres://anjuman:anjuman@localhost:5432/anjuman` (or similar).
-Update `server/.env.example` to the Postgres URL.
+> The `initialDatabases = [{ name = "anjuman"; }]` option creates the empty DB;
+> schema + seed are still applied by `sqlx migrate` (migrations `0001`/`0002`),
+> NOT by services-flake — keeping all schema in one place.
 
 ---
 
@@ -219,8 +212,8 @@ smoke-test CRUD + study flow.
 
 ## Risks / open decisions — ALL RESOLVED (2026-09-27)
 
-1. **Postgres runtime** (Phase 0) → **in the flake** (`services-flake`/
-   `process-compose` so `nix develop` brings up a local Postgres).
+1. **Postgres runtime** (Phase 0) → **in the flake** via `services-flake`/
+   `flake-parts`; `nix run .#anjuman`. ✅ implemented.
 2. **Timestamp model** → **`TIMESTAMPTZ`** (Rust side: `chrono::DateTime<Utc>`,
    sqlx `chrono` feature). Broader rewrite than epoch-seconds — replaces
    `now_secs()`/`SystemTime`/`as_secs()` helpers and the `unixepoch()` SQL.
