@@ -12,47 +12,29 @@ Legend:
 
 ---
 
-## 1. Migrate SQLite → Postgres   `[ ]`
+## 1. Migrate SQLite → Postgres   `[x]`
 
-The server currently uses SQLite (via `sqlx` with the `sqlite` feature) and an
-embedded `platform.db` file. Migrate to Postgres.
+Done. The server runs on Postgres (TIMESTAMPTZ, JSONB, ENUM types, BOOLEAN)
+via a consolidated `0001_create_schema.sql` + `0002_seed_data.sql`, provisioned
+by `services-flake` (`nix run .#anjuman`). All handler SQL + the full
+`DateTime<Utc>` timestamp migration landed; `cargo build`/`test` pass and
+OpenAPI route coverage is unchanged (71 operations).
 
-**Approach (settled):** clean consolidated schema — **one** migration that
-creates the full schema, plus a **second** migration that inserts seed data.
-The ~34 existing `migrations/*.sql` files (all dev-stage, no production data)
-are discarded, not converted one-for-one.
-
-> **Detailed plan:** [`docs/postgres-migration.md`](./docs/postgres-migration.md)
-> — phased: (0) Postgres runtime → (1) deps + `db.rs` → (2) consolidated schema
-> → (3) seed → (4) handler SQL conversion → (5) flake/OpenAPI/cleanup. Read it
-> before starting; it enumerates every SQLite-ism by file and the open decisions
-> to lock first.
+> Detailed plans: `docs/postgres-migration.md`, `docs/timestamptz-migration.md`.
 
 ### Sub-tasks (summary)
 
-- [x] **Phase 0** — implement the Nix-idiomatic Postgres runtime: converted
-      the flake to `flake-parts` + `services-flake`; `nix run .#anjuman` runs
-      PostgreSQL 17 and creates the `anjuman` DB; `DATABASE_URL` defaults to
-      `postgres://127.0.0.1:5432/anjuman`. *(done — commit 411b862)*
-- [ ] **Phase 1** — sqlx `postgres` feature (drop `sqlite`); rewrite `db.rs`
-      (`PgPool`, drop `PRAGMA`, replace `BEGIN IMMEDIATE`); rename
-      `SqlitePool`→`PgPool` across `state.rs`, `auth/jwt.rs`, `deck_options.rs`,
-      `note_types.rs`, and handler helpers.
-- [ ] **Phase 2** — write `0001_schema.sql` (full consolidated schema; see plan
-      §Phase 2 for the column-type mapping and the 17-table checklist).
-- [ ] **Phase 3** — write `0002_seed.sql` (system school, default preset,
-      built-in note types, dev school/users/class/deck/notes).
-- [ ] **Phase 4** — convert handler SQL: `?`→`$n`, `unixepoch()`→epoch-now,
-      `last_insert_rowid()`→`RETURNING id`, `INSERT OR IGNORE`→`ON CONFLICT`,
-      int-booleans→`bool` (with SQL casts where the wire stays `i64`),
-      `Option<i64>` PK guards removed.
-- [ ] **Phase 5** — flake Postgres provisioning, `.env.example`/`.gitignore`
-      cleanup, delete old migrations + `platform.db*`, confirm OpenAPI coverage
-      unchanged, update ROADMAP/AGENTS.
+- [x] **Phase 0** — Nix-idiomatic Postgres runtime (`flake-parts` +
+      `services-flake`; `nix run .#anjuman`).
+- [x] **Phase 1** — sqlx `postgres` feature; `db.rs` `PgPool`; type renames.
+- [x] **Phase 2** — `0001_create_schema.sql` consolidated schema.
+- [x] **Phase 3** — `0002_seed_data.sql`.
+- [x] **Phase 4** — handler SQL conversion + full `TIMESTAMPTZ`/
+      `JSONB`/`ENUM`/`bool` migration.
+- [x] **Phase 5** — flake/docs/cleanup; OpenAPI coverage unchanged.
 
-**Definition of done:** server boots against Postgres, all existing endpoints
-work, migrations run cleanly from scratch (drop + recreate), and the SQLite
-footprint (feature flag, `platform.db`, sqlite-isms) is gone from the repo.
+**Definition of done:** ✅ server boots against Postgres, all 71 endpoints
+work, migrations run cleanly from empty, SQLite footprint removed.
 
 ---
 
