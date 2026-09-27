@@ -1,0 +1,11 @@
+# Anjuman — environment
+
+If you use [direnv](https://direnv.net/) and the `nix-direnv` integration,
+place this in a `.envrc` file at the project root so the dev shell loads
+automatically:
+
+```sh
+use flake
+```
+
+Then run `direnv allow`.

@@ -1,0 +1,71 @@
+# BoltFFI configuration for the Anjuman shared core.
+#
+# Generates foreign-language bindings (Swift, Kotlin, C#, TypeScript) that call
+# the core's FFI surface (`shared/src/ffi.rs`). The core passes serialized bytes
+# across the boundary — `update(&[u8]) -> Vec<u8>`, `resolve(u32, &[u8]) ->
+# Vec<u8>`, `view() -> Vec<u8>` — which BoltFFI maps to native byte-buffer
+# types (Data / ByteArray / byte[] / Uint8Array).
+#
+# Output paths are relative to this directory (shared/) and target each shell's
+# checked-in binding location, mirroring the official Crux `counter` example.
+#
+# Run from `shared/`: `boltffi pack all` (or a single target, e.g.
+# `boltffi pack apple`).
+
+[package]
+name = "shared"
+crate = "shared"
+version = "0.1.0"
+
+# --- Apple (SwiftUI shell) ---------------------------------------------
+# NOTE: `apple` defaults to `enabled = true`; `include_macos = true` also
+# produces a macOS slice for desktop SwiftUI.
+[targets.apple]
+output = "../shells/swiftui/generated/Shared"
+include_macos = true
+
+[targets.apple.swift]
+module_name = "Shared"
+
+[targets.apple.spm]
+package_name = "Shared"
+layout = "ffi-only"
+
+# --- Android (Jetpack Compose shell) ------------------------------------
+# NOTE: `android` defaults to `enabled = true`.
+[targets.android]
+output = "../shells/jetpack-compose/generated"
+min_sdk = 34
+
+[targets.android.kotlin]
+package = "com.anjuman.shared"
+output = "../shells/jetpack-compose/generated/kotlin"
+
+[targets.android.pack]
+output = "../shells/jetpack-compose/generated/jniLibs"
+
+# --- Web / WASM (TypeScript bindings) -----------------------------------
+# NOTE: the Leptos shell drives `CoreFfi` in-process (Rust -> Rust), so it does
+# not consume these bindings yet. This target generates the TypeScript bindings
+# available to a future JS/hybrid shell.
+[targets.wasm]
+output = "../shells/leptos/generated"
+profile = "release"
+artifact_path = "../target/wasm32-unknown-unknown/release/shared.wasm"
+
+[targets.wasm.typescript]
+output = "../shells/leptos/generated/pkg"
+
+[targets.wasm.npm]
+package_name = "shared"
+
+# --- .NET (WinUI shell) -------------------------------------------------
+# NOTE: `csharp` defaults to `enabled = false`, so it is explicitly enabled.
+[targets.csharp]
+enabled = true
+namespace = "Anjuman.Shared"
+output = "../shells/winui/generated/boltffi"
+package_output = "../shells/winui/generated/nuget"
+package_id = "Anjuman.Shared.Ffi"
+target_framework = "net8.0"
+runtime_identifiers = ["win-x64", "win-arm64"]

@@ -1,0 +1,32 @@
+# Anjuman — monorepo root .gitignore
+#
+# This repo is a single git repository containing three independent Cargo
+# workspaces as subdirectories: `client/`, `server/`, and `contracts/`.
+# Per-folder .gitignore files handle workspace-specific ignores.
+
+# Rust / Cargo build output (each workspace may have its own /target)
+target/
+**/target/
+
+# Environment / secrets — never commit real credentials.
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# SQLite databases (generated at runtime)
+*.db
+*.db-shm
+*.db-wal
+*.db.backup
+*.db.bak
+
+# Nix / direnv
+.direnv/
+result/
+
+# Editor / OS cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/

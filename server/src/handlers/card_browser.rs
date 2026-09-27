@@ -1,0 +1,237 @@
+// Card browser handler.
+//
+// GET /cards?deck_id=1,2&note_type_id=2,3&state=review,learning&q=DNA&sort=created_at&page=1&per_page=50
+//
+// Filters support comma-separated lists for multi-value matching:
+//   deck_id=1,2      → cards in deck 1 OR 2
+//   note_type_id=2,3  → cards of note type 2 OR 3
+//   state=new,review  → cards in 'new' OR 'review' state
+
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::StatusCode,
+};
+
+use anjuman_contracts::cards::{CardBrowserPage, CardBrowserQuery, CardBrowserResponse};
+
+use crate::{auth::AuthUser, note_types, state::AppState};
+
+async fn rows_to_responses(
+    db: &sqlx::SqlitePool,
+    rows: Vec<CardBrowserRow>,
+    new_card_offset: i64,
+) -> Result<Vec<CardBrowserResponse>, StatusCode> {
+    let mut cards = Vec::new();
+    let mut new_pos = new_card_offset;
+    for r in rows {
+        let fields: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&r.fields_json).unwrap_or_default();
+        let nt = note_types::get_note_type(db, r.note_type_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let rendered = note_types::render_card(&nt.templates, r.template_id, &fields)
+            .unwrap_or_else(|| note_types::RenderedCard {
+                template_id: r.template_id,
+                front: "(unknown)".to_string(),
+                back: String::new(),
+            });
+        // A card is "new" if it has no scheduling state yet (no row) or is
+        // explicitly marked 'new'. `reps` is no longer used as a new-card
+        // signal — `state` is authoritative.
+        let is_new = r.state.as_deref().is_none_or(|s| s == "new");
+        let new_card_position = if is_new {
+            new_pos += 1;
+            Some(new_pos)
+        } else {
+            None
+        };
+        let template_name = nt
+            .templates
+            .iter()
+            .find(|t| t.id == r.template_id)
+            .map(|t| t.name.clone())
+            .unwrap_or_else(|| format!("Card {}", r.template_id));
+        cards.push(CardBrowserResponse {
+            card_id: r.card_id,
+            note_id: r.note_id,
+            deck_id: r.deck_id,
+            deck_title: r.deck_title,
+            template_id: r.template_id,
+            front: rendered.front,
+            back: rendered.back,
+            note_type_name: r.note_type_name,
+            note_type_id: r.note_type_id,
+            template_name,
+            fields,
+            state: r.state,
+            due_at: r.due_at,
+            stability: Some(r.stability),
+            difficulty: Some(r.difficulty),
+            reps: Some(r.reps),
+            lapses: Some(r.lapses),
+            flag: Some(r.flag),
+            suspended: Some(r.suspended),
+            buried_at: r.buried_at,
+            bury_reason: r.bury_reason,
+            created_at: r.created_at,
+            new_card_position,
+        });
+    }
+    Ok(cards)
+}
+
+/// Build a comma-separated integer list into an `IN (...)` clause.
+/// Returns empty string if the input is empty.
+fn in_clause(column: &str, csv: &str) -> String {
+    let vals: Vec<&str> = csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if vals.is_empty() {
+        return String::new();
+    }
+    // All values come from our own parsing of i64 strings — safe to interpolate.
+    format!("AND {} IN ({})", column, vals.join(","))
+}
+
+/// Build a WHERE fragment for comma-separated state filters.
+/// Supports: new, learning, review, relearning.
+fn state_where(csv: &str) -> String {
+    let states: Vec<&str> = csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if states.is_empty() {
+        return String::new();
+    }
+
+    let mut clauses: Vec<String> = Vec::new();
+    for state in states {
+        match state {
+            "new" => clauses.push("(scs.state = 'new' OR scs.state IS NULL)".into()),
+            "learning" => clauses.push("scs.state = 'learning'".into()),
+            "review" => clauses.push("scs.state = 'review'".into()),
+            "relearning" => clauses.push("scs.state = 'relearning'".into()),
+            _ => {}
+        }
+    }
+    if clauses.is_empty() {
+        return String::new();
+    }
+    format!("AND ({})", clauses.join(" OR "))
+}
+
+fn sort_clause(sort: &str) -> &'static str {
+    match sort {
+        "due_at" => "scs.due_at ASC NULLS LAST, c.created_at DESC",
+        "deck" => "d.title ASC, c.created_at DESC",
+        "question" => "n.fields_json ASC, c.created_at DESC",
+        _ => "c.created_at DESC",
+    }
+}
+
+pub async fn browse_cards(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Query(params): Query<CardBrowserQuery>,
+) -> Result<Json<CardBrowserPage>, (StatusCode, &'static str)> {
+    let page = params.page.max(1);
+    let per_page = params.per_page.max(1).min(100);
+    let offset = (page - 1) * per_page;
+
+    let deck_filter = in_clause("c.deck_id", &params.deck_id);
+    let note_type_filter = in_clause("n.note_type_id", &params.note_type_id);
+    let q_filter = params
+        .q
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+        .map(|q| format!("AND n.fields_json LIKE '%{}%'", q.trim()))
+        .unwrap_or_default();
+    let state_filter = state_where(&params.state);
+    let flag_filter = in_clause("scs.flag", &params.flag);
+    let order = sort_clause(&params.sort);
+
+    let base_from = "FROM cards c JOIN notes n ON n.id = c.note_id JOIN decks d ON d.id = c.deck_id JOIN note_types nt ON nt.id = n.note_type_id LEFT JOIN student_card_states scs ON scs.card_id = c.id AND scs.student_id = $1";
+    let base_where = format!(
+        "WHERE d.school_id = $2 {} {} {} {} {}",
+        deck_filter, note_type_filter, q_filter, state_filter, flag_filter
+    );
+
+    // Count
+    let count_sql = format!("SELECT COUNT(*) {} {}", base_from, base_where);
+    let total: i64 = sqlx::query_scalar(&count_sql)
+        .bind(claims.sub)
+        .bind(claims.school_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    // Fetch
+    let fetch_sql = format!(
+        "SELECT c.id as card_id, c.note_id, c.deck_id, c.template_id, d.title as deck_title, n.note_type_id, nt.name as note_type_name, n.fields_json, c.created_at, scs.state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason {} {} ORDER BY {} LIMIT {} OFFSET {}",
+        base_from, base_where, order, per_page, offset
+    );
+
+    let rows: Vec<CardBrowserRow> = sqlx::query_as(&fetch_sql)
+        .bind(claims.sub)
+        .bind(claims.school_id)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    // New card offset for position numbering.
+    // We build a separate WHERE that excludes the state filter — we always
+    // want to count only new cards regardless of which state the user filtered by.
+    let new_card_offset = if let Some(first) = rows.first() {
+        let new_where = format!("WHERE d.school_id = $2 {} {}", deck_filter, q_filter);
+        let off_sql = format!(
+            "SELECT COUNT(*) {} {} AND (scs.state = 'new' OR scs.state IS NULL) AND c.created_at > '{}'",
+            base_from, new_where, first.created_at
+        );
+        sqlx::query_scalar(&off_sql)
+            .bind(claims.sub)
+            .bind(claims.school_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    } else {
+        0i64
+    };
+
+    let cards = rows_to_responses(&state.db, rows, new_card_offset)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    Ok(Json(CardBrowserPage {
+        cards,
+        page,
+        per_page,
+        total,
+    }))
+}
+
+#[derive(sqlx::FromRow)]
+struct CardBrowserRow {
+    card_id: i64,
+    note_id: i64,
+    deck_id: i64,
+    template_id: i64,
+    deck_title: String,
+    note_type_id: i64,
+    note_type_name: String,
+    fields_json: String,
+    created_at: String,
+    state: Option<String>,
+    due_at: Option<i64>,
+    stability: f64,
+    difficulty: f64,
+    reps: i64,
+    lapses: i64,
+    flag: i64,
+    suspended: i64,
+    buried_at: Option<i64>,
+    bury_reason: Option<String>,
+}

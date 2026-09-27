@@ -1,0 +1,20 @@
+[package]
+name = "leptos_shell"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# CSR-only: a single binary target (no separate `lib`), so there is no Cargo
+# artifact name collision for trunk to trip over.
+[[bin]]
+name = "leptos_shell"
+path = "src/main.rs"
+
+[dependencies]
+leptos = { workspace = true, features = ["csr"] }
+thaw = { workspace = true }
+
+shared = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+console_error_panic_hook = { workspace = true }

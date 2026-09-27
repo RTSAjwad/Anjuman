@@ -1,0 +1,18 @@
+[package]
+name = "anjuman_contracts"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# OpenAPI schema generation. Not needed by the client (which only consumes the
+# DTOs to (de)serialize JSON), so it is gated behind a feature the server opts
+# into. This keeps `utoipa` (and its feature tree) out of the client's
+# WASM/FFI/cross-platform builds.
+utoipa = { version = "5", features = ["chrono"], optional = true }
+
+[features]
+default = []
+openapi = ["dep:utoipa"]

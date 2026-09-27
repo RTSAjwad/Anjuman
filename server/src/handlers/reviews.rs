@@ -1,0 +1,576 @@
+// Review handler.
+//
+// A student submits a rating (1-4) for a card they just reviewed.
+// The FSRS algorithm calculates the next review interval and updates
+// the student's scheduling state. A review record is created for
+// analytics and future parameter optimisation.
+//
+// ## Ratings
+//
+//  1 — Again (failed, show again soon)
+//  2 — Hard  (recalled with significant difficulty)
+//  3 — Good  (recalled with acceptable effort)
+//  4 — Easy  (recalled effortlessly)
+
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
+
+use anjuman_contracts::reviews::{
+    FlagResponse, ReviewResponse, ReviewedCardState, SetFlag, SubmitReview,
+};
+
+use crate::{auth::AuthUser, state::AppState};
+
+// ---------------------------------------------------------------------------
+// Learning & relearning step parsing
+// ---------------------------------------------------------------------------
+
+/// Parse an Anki-style step string into seconds.
+///
+/// Supports units:
+///   - `s` = seconds, `m` = minutes, `h` = hours, `d` = days
+///   - bare numbers default to minutes (Anki convention)
+///   - decimals are allowed (e.g. `1.5d`)
+///
+/// Example: `"1m 1d"` → `[60, 86400]`.
+#[allow(dead_code)] // used once a config endpoint is added
+pub fn parse_steps(input: &str) -> Result<Vec<i64>, String> {
+    let mut steps = Vec::new();
+    for token in input.split_whitespace() {
+        // Find the split point between the numeric part and the unit suffix.
+        let split_at = token
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
+            .unwrap_or(token.len());
+        let (num_str, unit) = token.split_at(split_at);
+
+        let value: f64 = num_str
+            .parse()
+            .map_err(|_| format!("Invalid step value: '{token}'"))?;
+
+        let multiplier: f64 = match unit {
+            "" | "m" => 60.0,
+            "s" => 1.0,
+            "h" => 3600.0,
+            "d" => 86400.0,
+            other => return Err(format!("Unknown step unit: '{other}'")),
+        };
+
+        let seconds = (value * multiplier).round() as i64;
+        if seconds <= 0 {
+            return Err(format!("Step must be positive: '{token}'"));
+        }
+        steps.push(seconds);
+    }
+
+    if steps.is_empty() {
+        return Err("At least one step is required".to_string());
+    }
+
+    Ok(steps)
+}
+
+// ---------------------------------------------------------------------------
+// Sibling burying
+// ---------------------------------------------------------------------------
+
+/// A sibling candidate row (another card of the answered card's note).
+struct SiblingRow {
+    card_id: i64,
+    state: String,
+    step_index: i64,
+    suspended: i64,
+    buried_at: Option<i64>,
+    deck_id: i64,
+}
+
+/// Classify a card into an Anki gathering-order rank.
+///
+/// 0 = intraday learning, 1 = interday learning, 2 = review, 3 = new.
+fn queue_class_rank(
+    state: &str,
+    step_index: i64,
+    learning_steps: &[i64],
+    relearning_steps: &[i64],
+) -> i64 {
+    match state {
+        "learning" => {
+            if is_interday_step(step_index, learning_steps) {
+                1
+            } else {
+                0
+            }
+        }
+        "relearning" => {
+            if is_interday_step(step_index, relearning_steps) {
+                1
+            } else {
+                0
+            }
+        }
+        "review" => 2,
+        _ => 3, // new
+    }
+}
+
+fn is_interday_step(step_index: i64, steps: &[i64]) -> bool {
+    steps.get(step_index as usize).is_some_and(|s| *s >= 86400)
+}
+
+/// Bury siblings of the answered card (same note), following Anki's
+/// directional gathering-order rule.
+///
+/// A sibling is buried iff its own queue class is later-or-equal to the
+/// answered card's class AND the corresponding toggle (from the answered
+/// card's deck preset) is enabled. Intraday learning is never buried.
+#[allow(clippy::too_many_arguments)]
+async fn bury_siblings(
+    db: &sqlx::SqlitePool,
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    student_id: i64,
+    note_id: i64,
+    answered_card_id: i64,
+    answered_rank: i64,
+    toggles: &crate::deck_options::DeckOptions,
+    now: i64,
+) -> Result<(), StatusCode> {
+    // Read sibling candidates from within the same transaction so the
+    // read→write decision is made against a consistent snapshot.
+    let siblings = sqlx::query_as!(
+        SiblingRow,
+        r#"
+        SELECT scs.card_id, scs.state, scs.step_index as "step_index: i64",
+               scs.suspended as "suspended: i64", scs.buried_at, c.deck_id
+        FROM student_card_states scs
+        JOIN cards c ON c.id = scs.card_id
+        WHERE scs.student_id = ? AND c.note_id = ? AND scs.card_id != ?
+        "#,
+        student_id,
+        note_id,
+        answered_card_id
+    )
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    for s in siblings {
+        if s.suspended != 0 || s.buried_at.is_some() {
+            continue;
+        }
+
+        // Classify using the sibling's own deck steps (read-only; pool is fine).
+        let opts = crate::deck_options::options_for_deck(db, s.deck_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        let rank = queue_class_rank(
+            &s.state,
+            s.step_index,
+            &opts.learning_steps,
+            &opts.relearning_steps,
+        );
+
+        // Intraday learning (0) is never buried; earlier-priority siblings
+        // (lower rank) can't be buried by a later-priority answered card.
+        if rank == 0 || rank < answered_rank {
+            continue;
+        }
+
+        let (enabled, reason) = match rank {
+            1 => (toggles.bury_interday, "sibling_interday"),
+            2 => (toggles.bury_review, "sibling_review"),
+            _ => (toggles.bury_new, "sibling_new"),
+        };
+
+        if !enabled {
+            continue;
+        }
+
+        sqlx::query!(
+            "UPDATE student_card_states SET buried_at = ?, bury_reason = ? WHERE student_id = ? AND card_id = ?",
+            now,
+            reason,
+            student_id,
+            s.card_id
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
+
+/// Apply a review to a card and return its post-review scheduling state.
+///
+/// This is the single authority for the FSRS + learning/relearning step logic.
+/// It writes the updated `student_card_states` row and inserts a `reviews`
+/// record (including `state_before` for daily-limit accounting).
+///
+/// `card_id` is validated against the owning deck's visibility by the caller.
+pub async fn apply_review(
+    db: &sqlx::SqlitePool,
+    student_id: i64,
+    card_id: i64,
+    rating: i32,
+    response_time_ms: Option<i64>,
+) -> Result<ReviewedCardState, (StatusCode, &'static str)> {
+    if !(1..=4).contains(&rating) {
+        return Err((StatusCode::BAD_REQUEST, "Rating must be between 1 and 4"));
+    }
+
+    // Fetch the current scheduling state (and the card's deck + note).
+    let current = sqlx::query!(
+        r#"
+        SELECT scs.state, scs.stability, scs.difficulty, scs.last_reviewed_at,
+               scs.reps, scs.lapses, scs.step_index, c.deck_id, c.note_id
+        FROM student_card_states scs
+        JOIN cards c ON c.id = scs.card_id
+        WHERE scs.student_id = ? AND scs.card_id = ?
+        "#,
+        student_id,
+        card_id
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    .ok_or((StatusCode::NOT_FOUND, "Card state not found"))?;
+
+    // Resolve this deck's effective scheduling options (preset or defaults).
+    let options = crate::deck_options::options_for_deck(db, current.deck_id)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load deck options",
+            )
+        })?;
+    let learning_steps = &options.learning_steps;
+    let relearning_steps = &options.relearning_steps;
+    let desired_retention = options.desired_retention;
+
+    // The answered card's queue class (pre-review), used to decide which
+    // siblings it may bury.
+    let answered_rank = queue_class_rank(
+        &current.state,
+        current.step_index,
+        learning_steps,
+        relearning_steps,
+    );
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    // Calculate elapsed days since last review.
+    let elapsed_days = if let Some(last_reviewed) = current.last_reviewed_at {
+        ((now - last_reviewed).max(0) as f64 / 86400.0) as u32
+    } else {
+        0
+    };
+
+    // Build the previous memory state for FSRS.
+    let previous_memory = if current.reps > 0 {
+        Some(fsrs::MemoryState {
+            stability: current.stability as f32,
+            difficulty: current.difficulty as f32,
+        })
+    } else {
+        None
+    };
+
+    // Run the FSRS scheduler.
+    let fsrs = fsrs::FSRS::default();
+
+    let next_states = fsrs
+        .next_states(previous_memory, desired_retention as f32, elapsed_days)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "FSRS scheduling failed"))?;
+
+    // Choose the output based on the rating.
+    let next = match rating {
+        1 => next_states.again,
+        2 => next_states.hard,
+        3 => next_states.good,
+        4 => next_states.easy,
+        _ => unreachable!(),
+    };
+
+    let interval_days = next.interval.round().max(1.0) as i64;
+    let interval_fsrs_secs = interval_days * 86400;
+    // `interval_days`/`interval_fsrs_secs` are the FSRS *graduation* interval,
+    // used only when the card transitions to 'review'. Step outcomes below
+    // ignore these in favour of explicit learning/relearning step intervals.
+
+    // Determine the new state, step index, and due timestamp.
+    //
+    // Learning/relearning cards follow Anki's step model:
+    //   - Steps are fixed intervals (in seconds).
+    //   - "Good" advances one step; graduating past the last step → review.
+    //   - "Easy" graduates immediately.
+    //   - "Again" resets to the first step.
+    //   - "Hard" advances one step like "Good" (FSRS still records lower
+    //     stability, affecting future intervals after graduation).
+    // Review cards lapse back to relearning on "Again".
+    let mut step_index = current.step_index;
+    let new_state: String;
+    let due_at: i64;
+
+    match current.state.as_str() {
+        "new" => match rating {
+            4 => {
+                // Easy: graduate immediately.
+                new_state = "review".to_string();
+                step_index = 0;
+                due_at = now + interval_fsrs_secs;
+            }
+            3 => {
+                // Good: advance one step; graduate if past last.
+                step_index += 1;
+                if step_index >= learning_steps.len() as i64 {
+                    new_state = "review".to_string();
+                    step_index = 0;
+                    due_at = now + interval_fsrs_secs;
+                } else {
+                    new_state = "learning".to_string();
+                    due_at = now + learning_steps[step_index as usize];
+                }
+            }
+            _ => {
+                // Again or Hard: stay in learning at first step.
+                new_state = "learning".to_string();
+                step_index = 0;
+                due_at = now + learning_steps[0];
+            }
+        },
+        "learning" => match rating {
+            1 => {
+                // Again: reset to first step.
+                step_index = 0;
+                due_at = now + learning_steps[0];
+                new_state = "learning".to_string();
+            }
+            2 | 3 => {
+                // Hard or Good: advance one step; graduate if past last.
+                step_index += 1;
+                if step_index >= learning_steps.len() as i64 {
+                    new_state = "review".to_string();
+                    step_index = 0;
+                    due_at = now + interval_fsrs_secs;
+                } else {
+                    new_state = "learning".to_string();
+                    due_at = now + learning_steps[step_index as usize];
+                }
+            }
+            _ => {
+                // Easy: graduate immediately.
+                new_state = "review".to_string();
+                step_index = 0;
+                due_at = now + interval_fsrs_secs;
+            }
+        },
+        "review" => match rating {
+            1 => {
+                // Again: lapse to relearning.
+                new_state = "relearning".to_string();
+                step_index = 0;
+                due_at = now + relearning_steps[0];
+            }
+            _ => {
+                // Hard/Good/Easy: stay review.
+                new_state = "review".to_string();
+                due_at = now + interval_fsrs_secs;
+            }
+        },
+        "relearning" => match rating {
+            1 => {
+                // Again: restart relearning steps.
+                step_index = 0;
+                due_at = now + relearning_steps[0];
+                new_state = "relearning".to_string();
+            }
+            2 | 3 => {
+                // Hard or Good: advance one step; graduate if past last.
+                step_index += 1;
+                if step_index >= relearning_steps.len() as i64 {
+                    new_state = "review".to_string();
+                    step_index = 0;
+                    due_at = now + interval_fsrs_secs;
+                } else {
+                    new_state = "relearning".to_string();
+                    due_at = now + relearning_steps[step_index as usize];
+                }
+            }
+            _ => {
+                // Easy: graduate immediately.
+                new_state = "review".to_string();
+                step_index = 0;
+                due_at = now + interval_fsrs_secs;
+            }
+        },
+        other => {
+            new_state = other.to_string();
+            due_at = now + interval_fsrs_secs;
+        }
+    }
+
+    let new_reps = current.reps + 1;
+    let new_lapses = if rating == 1 {
+        current.lapses + 1
+    } else {
+        current.lapses
+    };
+
+    // Wrap the review's writes (scheduling state, review record, and any
+    // sibling buries) in a single IMMEDIATE transaction so the action is
+    // atomic: either all of it lands or none of it does.
+    let mut tx = crate::db::begin_immediate(db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    // Update the scheduling state.
+    sqlx::query!(
+        r#"
+        UPDATE student_card_states
+        SET state = ?, stability = ?, difficulty = ?,
+            step_index = ?, due_at = ?, last_reviewed_at = ?, reps = ?, lapses = ?
+        WHERE student_id = ? AND card_id = ?
+        "#,
+        new_state,
+        next.memory.stability,
+        next.memory.difficulty,
+        step_index,
+        due_at,
+        now,
+        new_reps,
+        new_lapses,
+        student_id,
+        card_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    // Record the review (with the pre-review state for daily-limit accounting).
+    sqlx::query!(
+        "INSERT INTO reviews (student_id, card_id, rating, reviewed_at, response_time_ms, state_before) VALUES (?, ?, ?, ?, ?, ?)",
+        student_id,
+        card_id,
+        rating,
+        now,
+        response_time_ms,
+        current.state
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    // Bury siblings (same note) as appropriate, per the deck's sibling-bury
+    // toggles and Anki's directional gathering-order rule.
+    bury_siblings(
+        db,
+        &mut tx,
+        student_id,
+        current.note_id,
+        card_id,
+        answered_rank,
+        &options,
+        now,
+    )
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit()
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    Ok(ReviewedCardState {
+        card_id,
+        state: new_state.to_string(),
+        due_at: Some(due_at),
+        stability: next.memory.stability as f64,
+        difficulty: next.memory.difficulty as f64,
+        reps: new_reps,
+        lapses: new_lapses,
+        step_index,
+        applied_interval_secs: due_at - now,
+    })
+}
+
+/// `POST /reviews` — Submit a card review rating.
+pub async fn submit_review(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<SubmitReview>,
+) -> Result<Json<ReviewResponse>, (StatusCode, &'static str)> {
+    let reviewed = apply_review(
+        &state.db,
+        claims.sub,
+        body.card_id,
+        body.rating,
+        body.response_time_ms,
+    )
+    .await?;
+
+    Ok(Json(ReviewResponse {
+        card_id: reviewed.card_id,
+        state: reviewed.state,
+        due_at: reviewed.due_at,
+        stability: reviewed.stability,
+        difficulty: reviewed.difficulty,
+        reps: reviewed.reps,
+        lapses: reviewed.lapses,
+        applied_interval_secs: reviewed.applied_interval_secs,
+    }))
+}
+
+/// `PATCH /cards/:card_id/flag` — Set or clear a flag on a card.
+///
+/// Flags are per-student, per-card markers (Anki-style).
+/// Values: 0 (none), 1 (red), 2 (orange), 3 (green), 4 (blue),
+/// 5 (pink), 6 (turquoise), 7 (purple).
+pub async fn set_flag(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Path(card_id): Path<i64>,
+    Json(body): Json<SetFlag>,
+) -> Result<Json<FlagResponse>, (StatusCode, &'static str)> {
+    if !(0..=7).contains(&body.flag) {
+        return Err((StatusCode::BAD_REQUEST, "Flag must be between 0 and 7"));
+    }
+
+    // Ensure a state row exists so flags work on never-studied cards too.
+    sqlx::query!(
+        "INSERT OR IGNORE INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses) VALUES (?, ?, 'new', 0.0, 0.0, 0, 0)",
+        claims.sub,
+        card_id
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    let result = sqlx::query!(
+        "UPDATE student_card_states SET flag = ? WHERE student_id = ? AND card_id = ?",
+        body.flag,
+        claims.sub,
+        card_id
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Card not found"));
+    }
+
+    Ok(Json(FlagResponse {
+        card_id,
+        flag: body.flag as i64,
+    }))
+}

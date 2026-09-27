@@ -1,0 +1,47 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# `cdylib` + `staticlib` are the crate types BoltFFI requires for native
+# artifacts. `lib` (the rlib) is also kept so other Rust crates (the Leptos
+# shell) can depend on `shared` directly.
+crate-type = ["cdylib", "lib", "staticlib"]
+
+# Type-generation binary. Generates Swift/Kotlin/C#/TypeScript types from the
+# `shared` core's `Event`/`ViewModel`/`Effect` via the Facet type registry.
+[[bin]]
+name = "codegen"
+required-features = ["codegen"]
+
+[features]
+default = ["facet_typegen"]
+# Facet-based type generation for the `Effect` enum. Always-on (the default) so
+# `shared` always compiles the `Export` impl required by the type generation and
+# the BoltFFI bindings.
+facet_typegen = ["crux_core/facet_typegen", "crux_macros/facet_typegen"]
+# Enables the `codegen` binary (and its CLI dependencies).
+codegen = [
+    "dep:anyhow",
+    "dep:clap",
+    "dep:log",
+    "dep:pretty_env_logger",
+    "facet_typegen",
+]
+
+[dependencies]
+crux_core = { workspace = true }
+crux_macros = { workspace = true }
+facet = { workspace = true }
+serde = { workspace = true }
+boltffi = { workspace = true }
+
+# Optional dependencies for the `codegen` binary.
+anyhow = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+pretty_env_logger = { workspace = true, optional = true }
+
+[dev-dependencies]
+crux_core = { workspace = true, features = ["testing"] }

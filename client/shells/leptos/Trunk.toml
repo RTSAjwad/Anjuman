@@ -1,0 +1,3 @@
+[build]
+# Build the Leptos shell as a client-side rendered (CSR) WASM app.
+target = "index.html"
