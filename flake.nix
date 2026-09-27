@@ -2,7 +2,7 @@
   description = "Anjuman — Anki-inspired spaced repetition platform (monorepo)";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     # Rust toolchain (stable, with wasm target) via rust-overlay, shared across
     # both the client and the server so there is exactly one Rust in the shell.
