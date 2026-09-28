@@ -69,6 +69,9 @@ matrix's "Summary of the biggest gaps" is the working list:
       buttons each open a distinct simulator (different graphs). Both are UI-
       heavy (and may need server-side simulation endpoints), so descoped until
       after the client lands (stage 4); no server work now.
+- [ ] **Maximum answer seconds (server-side cap)** — in-app it is a number
+      (min 1, max 7200); the recorded `response_time_ms` is capped at this value
+      when written. Small server behaviour (not a selection-only option).
 - [x] **Lapses** — leech threshold/action + empty relearning steps. Done
       (US-2.2–US-2.4). Minimum interval is SM-2 — out of scope.
 - [x] **US-2.2 — Leech threshold**

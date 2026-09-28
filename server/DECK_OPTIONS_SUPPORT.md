@@ -146,12 +146,18 @@ each in-app selection to what we implemented and flags where the two diverge.
 | Don't play audio automatically | ❌ | selection-only / client | Boolean. When on, audio is not auto-played; playback is a client behaviour (stage 4). Server only persists the toggle. |
 | Skip question when replaying answer | ❌ | selection-only / client | Boolean. Controls whether question audio is included in the Replay action on the answer side — purely client behaviour (stage 4). |
 
-## Timers / Auto Advance / Easy Days
+## Timers
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Internal timer (max answer seconds) | 🟡 | server+client | We record `response_time_ms` but do not cap it at 60s; the cap is a server-side write, the on-screen timer is client. |
-| On-screen timer options | ❌ | selection-only / client | Pure client UI (show timer; stop on answer). Server only persists the toggle. |
+| Maximum answer seconds | 🟡 | server | In-app it is a **number (min 1, max 7200)**. The manual's "default 60" is the value, not the bound. We record `response_time_ms` but do **not** cap it server-side yet — capping the recorded time is the server behaviour to add. |
+| Show on-screen timer | ❌ | selection-only / client | Boolean, default off. Pure client UI — counts time per card on the Study screen. Server only persists the toggle. |
+| Stop on-screen timer on answer | ❌ | selection-only / client | Boolean, default off; "doesn't affect statistics". Client behaviour only. Server only persists the toggle. |
+
+## Auto Advance / Easy Days
+
+| Anki feature | Status | Kind | Notes |
+|---|---|---|---|
 | Auto advance (show question/answer seconds) | ❌ | selection-only / client | Stores seconds-to-show; the advancing action is a client behaviour (stage 4). **Decision:** treated as client-side (the server only persists the timing values; it performs no scheduling or advancing). |
 | Easy Days (reduce workload on certain weekdays) | ❌ | server-side | Adjusts FSRS due dates — a genuine server scheduling gap, not client. |
 
@@ -189,7 +195,10 @@ each in-app selection to what we implemented and flags where the two diverge.
 2. **FSRS parameter optimization** — `FSRS::default()` weights with no stored per-user/school parameters and no optimizer endpoint. (`desired_retention` *is* supported.)
 3. **Subdeck limit aggregation** — per-deck limits only; no "selected deck total" semantics.
 4. **Daily-limit fine controls** — no "new cards ignore review limit", no "limits start from top", no "today only".
-5. **Comfort/UX options** — audio, timers, auto-advance, easy days all absent.
+5. **Comfort/UX options** — audio, on-screen timer, and auto-advance are
+   selection-only (client-side, no server behaviour); "Maximum answer seconds"
+   is a small server-side gap (cap `response_time_ms`), and Easy Days is a
+   server-side scheduling gap.
 
 ## Key architectural differences vs. Anki
 
