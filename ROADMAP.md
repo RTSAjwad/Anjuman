@@ -120,12 +120,39 @@ matrix's "Summary of the biggest gaps" is the working list:
         API). Place after Display order / parameter optimization / daily limits.
 - [ ] **Subdeck limit aggregation** — "selected deck governs the total" across
       a subtree.
-- [ ] **Daily-limit fine controls** — per-deck "today only" (and "this deck")
-      overrides on `new_per_day`/`review_per_day`.
+- [ ] **Daily-limit fine controls** — implemented as US-2.6 below (per-deck
+      `preset`/`this_deck`/`today_only` override on `new_per_day`/`review_per_day`).
 - [ ] **`new_cards_ignore_review_limit` + `limits_start_from_top`** — descoped
       until after stage 7. These are "collection-wide" in Anki; our multi-tenant
       school/user split makes their scope a stage-7 decision (see stage 7 design
       question #6).
+- [ ] **US-2.6 — Per-deck daily-limit overrides**
+
+      **As** a teacher tailoring one deck,
+      **I want** a per-deck `preset`/`this deck`/`today only` override on the
+      new-cards and review limits,
+      **so that** one deck can have its own caps without forking a whole preset.
+
+      **Acceptance criteria**
+      - [ ] A deck in `preset` mode uses its shared preset's limit (unchanged).
+      - [ ] `this_deck` overrides the limit for that deck only; sibling decks
+            sharing the preset are unaffected.
+      - [ ] `today_only` applies today and falls back to the preset limit on the
+            next study day (lazy expiry).
+      - [ ] New and review limits are independently selectable (per-limit mode).
+      - [ ] `this_deck`/`today_only` without a value → `400`.
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - Subdeck limit aggregation (separate gap).
+      - Stage-7 per-user personalisation (precedence reconciled later).
+
+      **Model**
+      - Columns on `decks` (school-authored, teacher/admin): `new_per_day_mode`
+        + `review_per_day_mode` (`ENUM preset/this_deck/today_only`, default
+        `preset`), nullable `new_per_day_override`/`review_per_day_override`, and
+        `new_per_day_today_date`/`review_per_day_today_date` for lazy expiry.
+        `deck_options.new_per_day`/`review_per_day` remain the preset base.
 - [x] **US-2.1 — Hard-button step behaviour** — implement Anki's exact
       learning/relearning Hard rules. See `PLANNING.md` §2.
 

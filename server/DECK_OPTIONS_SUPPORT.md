@@ -38,7 +38,7 @@ Legend:
 |---|---|---|
 | New cards/day | ✅ | `new_per_day` (default 20); counted via `state_before = 'new'` reviews per day. |
 | Max reviews/day | ✅ | `review_per_day` (default 200). |
-| Per-deck daily limits (preset / this deck / today only) | 🟡 | Per-deck limits via presets are supported; no "today only" override, no per-deck override independent of the preset. |
+| Per-deck daily limits (preset / this deck / today only) | 🟡 | Planned (US-2.6): per-deck `preset`/`this_deck`/`today_only` override stored on `decks`. Currently only the preset-scoped limit exists. |
 | New cards ignore review limit | ⏳ | Deferred to after stage 7 — "collection-wide" in Anki; our school/user split makes its scope a stage-7 decision. |
 | Limits start from top (parent limits apply to subdecks) | ⏳ | Deferred to after stage 7 (same rationale as above). |
 
