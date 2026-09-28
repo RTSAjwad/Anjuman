@@ -79,10 +79,9 @@ Legend:
 | New card sort order (card type / gathered / card-type+random / random note+card type / random) | ✅ US-2.9 (`new_sort_order`); card-type ordering uses `note_type_templates.ord`, random uses the per-student-day seed. |
 | New/review order (mix / before / after) | ✅ US-2.10 (`new_review_order`). `before` moves new ahead of review; `mix`/`after` keep reviews first (true interleave of `mix` is a stateless limitation — see the divergence note). |
 | Interday learning/review order (mix / before / after) | ✅ US-2.11 (`interday_order`). Interday learning is always gathered first (limit applied first); the option controls its display rank vs review. |
-| Review sort order (due/random, due/deck, deck/due, intervals, ease, ascending retrievability) | 📝 US-2.12 — FSRS uses **ascending retrievability**; SM-2 "relative overdueness" is ⚪. |
+| Review sort order (due-then-random, due-then-deck, deck-then-due, ascending/descending intervals, easy/difficult first, ascending/descending retrievability, relative overdueness, random, order added, latest added first) | ✅ US-2.12 (`review_sort_order`). All 13 in-app options supported; `interval` ↦ FSRS `stability`, `easy`/`difficult` ↦ FSRS `difficulty`. Two documented inconsistencies below. |
 
-> Currently `next_due_card` uses a single hardcoded gathering order; the five
-> selectors above are decomposed into US-2.8–US-2.12.
+> The five selectors above are implemented across US-2.8–US-2.12.
 
 ## Burying
 
@@ -133,7 +132,7 @@ Legend:
 
 ## Summary of the biggest gaps
 
-1. **Display order** — none of Anki's gather/sort/review-order options; a single hardcoded order. The single largest missing feature area.
+1. **Display order** — now complete for gather/sort/review-order (US-2.8–US-2.12); see the architectural divergences below.
 2. **FSRS parameter optimization** — `FSRS::default()` weights with no stored per-user/school parameters and no optimizer endpoint. (`desired_retention` *is* supported.)
 3. **Subdeck limit aggregation** — per-deck limits only; no "selected deck total" semantics.
 4. **Daily-limit fine controls** — no "new cards ignore review limit", no "limits start from top", no "today only".
@@ -182,6 +181,20 @@ Legend:
   modes as their gathered-first default (interday before review, review before
   new) — a documented approximation, since a true interleave needs a materialized
   queue (stateless limitation).
+- **Review sort "ease" is surfaced via FSRS `difficulty`, not SM-2 ease.** Anki's
+  "Easy cards first" / "Difficult cards first" sort on the SM-2 *ease* factor,
+  which FSRS has no analogue for; we map them to FSRS `difficulty` ASC/DESC. The
+  in-app label still says "easy"/"difficult", but the underlying key is FSRS
+  difficulty — a documented FSRS-vs-SM-2 inconsistency.
+- **"Relative overdueness" appears in-app despite the manual marking it removed
+  under FSRS.** The in-app FSRS review-sort selector lists all 13 options
+  including "relative overdueness"; the web manual describes it as removed in
+  favour of retrievability. We implement it (`(now - due)/stability DESC`, most
+  overdue first) to match the in-app list. Note it and retrievability are
+  monotonic transforms of the same underlying overdue-ratio, so "relative
+  overdueness" and "descending retrievability" (and their ascending counterparts)
+  produce the *same* ordering — overdueness is Anki's linear proxy for the exact
+  FSRS forgetting-curve retrievability.
 
 ## Open questions / under-documented Anki behaviour
 

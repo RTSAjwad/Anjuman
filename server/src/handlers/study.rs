@@ -446,6 +446,79 @@ async fn next_due_card(
     };
     let sort_comma = if new_sort.is_empty() { "" } else { ", " };
 
+    // Review-card sort order (US-2.12), scoped to review cards only. Each
+    // variant maps to an ordering key inside a `CASE WHEN state = 'review'`
+    // guard so learning/new cards (sorted by their own keys) are unaffected.
+    //
+    // Mapping (see DECK_OPTIONS_SUPPORT.md):
+    //   due date        -> scs.due_at
+    //   deck            -> cd.title
+    //   interval        -> scs.stability
+    //   easy/difficult  -> scs.difficulty (FSRS difficulty; SM-2 "ease" has no
+    //                      FSRS analogue — documented divergence)
+    //   order added     -> c.id (creation-order proxy; monotonic identity)
+    //   random          -> md5(per-student-day seed || card id)
+    //   retrievability  -> (stability + overdue) / stability ASC/DESC
+    //   overdueness     -> overdue / stability DESC (most overdue first)
+    //
+    // Retrievability and overdueness order by the overdue ratio rather than the
+    // raw `current_retrievability` probability: the probability is strictly
+    // monotonic decreasing in `days_since_review / stability`, and
+    // `days_since_review = stability + overdue`, so ordering by the ratio is
+    // exactly equivalent (documented in DECK_OPTIONS_SUPPORT.md).
+    let review_sort_option = options.review_sort_order;
+
+    // Days-overdue per card, as a seconds-derived float (bound `now` = $4).
+    // Used by both retrievability and overdueness: they differ only by a +1
+    // shift of `days_since_last_review = stability + days_overdue`, and
+    // current_retrievability is strictly monotonic decreasing in
+    // `days_since_last_review / stability`, so ordering by the ratio is exactly
+    // equivalent to ordering by the raw probability (documented in
+    // DECK_OPTIONS_SUPPORT.md).
+    let overdue = "(EXTRACT(EPOCH FROM ($4 - scs.due_at)) / 86400.0)";
+
+    let review_sort = match review_sort_option {
+        anjuman_contracts::deck_options::ReviewSortOrder::DueThenRandom => format!(
+            "CASE WHEN scs.state = 'review' THEN scs.due_at END ASC NULLS LAST, CASE WHEN scs.state = 'review' THEN md5('{seed}:' || c.id::text) END ASC"
+        ),
+        anjuman_contracts::deck_options::ReviewSortOrder::DueThenDeck => {
+            "CASE WHEN scs.state = 'review' THEN scs.due_at END ASC NULLS LAST, CASE WHEN scs.state = 'review' THEN cd.title END ASC".to_string()
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::DeckThenDue => {
+            "CASE WHEN scs.state = 'review' THEN cd.title END ASC, CASE WHEN scs.state = 'review' THEN scs.due_at END ASC NULLS LAST".to_string()
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::AscendingInterval => {
+            "CASE WHEN scs.state = 'review' THEN scs.stability END ASC".to_string()
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::DescendingInterval => {
+            "CASE WHEN scs.state = 'review' THEN scs.stability END DESC".to_string()
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::EasyFirst => {
+            "CASE WHEN scs.state = 'review' THEN scs.difficulty END ASC".to_string()
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::DifficultFirst => {
+            "CASE WHEN scs.state = 'review' THEN scs.difficulty END DESC".to_string()
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::AscendingRetrievability => {
+            format!("CASE WHEN scs.state = 'review' THEN (scs.stability + {overdue}) / scs.stability END ASC")
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::DescendingRetrievability => {
+            format!("CASE WHEN scs.state = 'review' THEN (scs.stability + {overdue}) / scs.stability END DESC")
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::RelativeOverdueness => {
+            format!("CASE WHEN scs.state = 'review' THEN {overdue} / scs.stability END DESC")
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::Random => {
+            format!("CASE WHEN scs.state = 'review' THEN md5('{seed}:' || c.id::text) END ASC")
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::OrderAdded => {
+            "CASE WHEN scs.state = 'review' THEN c.id END ASC".to_string()
+        }
+        anjuman_contracts::deck_options::ReviewSortOrder::LatestAddedFirst => {
+            "CASE WHEN scs.state = 'review' THEN c.id END DESC".to_string()
+        }
+    };
+
     // Class ordering (US-2.10 + US-2.11): assign each state an explicit rank.
     // Resolve the relative order of {interday learning, review, new} in Rust and
     // emit a fixed CASE. Intraday learning is always first (rank 0).
@@ -513,7 +586,8 @@ async fn next_due_card(
           )
         ORDER BY
             {class_case},
-            scs.due_at ASC NULLS LAST,
+            CASE WHEN scs.state IN ('learning', 'relearning') THEN scs.due_at END ASC NULLS LAST,
+            {review_sort},
             CASE WHEN scs.state = 'new' THEN 0 ELSE 1 END,
             {new_order}{sort_comma}{new_sort},
             c.id ASC

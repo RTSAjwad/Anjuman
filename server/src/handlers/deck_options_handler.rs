@@ -15,7 +15,8 @@ use anjuman_contracts::UserRole;
 
 use crate::{
     auth::AuthUser,
-    db_types::{DbInterdayOrder, DbLeechAction, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder},
+    db_types::{DbInterdayOrder, DbLeechAction, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder,
+        DbReviewSortOrder},
     deck_options::{self, DeckOptions},
     handlers::{reviews::parse_steps},
     state::AppState,
@@ -119,7 +120,7 @@ pub async fn create_deck_options(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order) RETURNING id",
+        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order, review_sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order, $15::text::review_sort_order) RETURNING id",
         claims.school_id,
         body.name,
         body.desired_retention,
@@ -134,6 +135,7 @@ pub async fn create_deck_options(
         DbNewSortOrder::from(body.new_sort_order).as_str(),
         DbNewReviewOrder::from(body.new_review_order).as_str(),
         DbInterdayOrder::from(body.interday_order).as_str(),
+        DbReviewSortOrder::from(body.review_sort_order).as_str(),
     )
     .fetch_one(&mut *tx)
     .await
@@ -438,6 +440,22 @@ pub async fn update_deck_options(
         sqlx::query!(
             "UPDATE deck_options SET interday_order = $1::text::interday_order WHERE id = $2",
             DbInterdayOrder::from(order).as_str(),
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
+    }
+
+    if let Some(order) = body.review_sort_order {
+        sqlx::query!(
+            "UPDATE deck_options SET review_sort_order = $1::text::review_sort_order WHERE id = $2",
+            DbReviewSortOrder::from(order).as_str(),
             id
         )
         .execute(&mut *tx)

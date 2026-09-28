@@ -82,6 +82,36 @@ impl Default for InterdayOrder {
     }
 }
 
+/// How review cards are sorted (US-2.12).
+///
+/// Mirrors the 13 in-app review-sort options. `interval` maps to FSRS
+/// `stability`; `easy`/`difficult` map to FSRS `difficulty`; `retrievability`
+/// uses `fsrs::current_retrievability`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum ReviewSortOrder {
+    DueThenRandom,
+    DueThenDeck,
+    DeckThenDue,
+    AscendingInterval,
+    DescendingInterval,
+    EasyFirst,
+    DifficultFirst,
+    AscendingRetrievability,
+    DescendingRetrievability,
+    RelativeOverdueness,
+    Random,
+    OrderAdded,
+    LatestAddedFirst,
+}
+
+impl Default for ReviewSortOrder {
+    fn default() -> Self {
+        ReviewSortOrder::DueThenRandom
+    }
+}
+
 /// The action taken when a card reaches the leech threshold.
 ///
 /// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
@@ -138,6 +168,8 @@ pub struct CreateDeckOptions {
     pub new_review_order: NewReviewOrder,
     #[serde(default)]
     pub interday_order: InterdayOrder,
+    #[serde(default)]
+    pub review_sort_order: ReviewSortOrder,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -159,6 +191,7 @@ pub struct UpdateDeckOptions {
     pub new_sort_order: Option<NewSortOrder>,
     pub new_review_order: Option<NewReviewOrder>,
     pub interday_order: Option<InterdayOrder>,
+    pub review_sort_order: Option<ReviewSortOrder>,
 }
 
 /// A deck options preset as returned to clients.
@@ -185,6 +218,7 @@ pub struct DeckOptions {
     pub new_sort_order: NewSortOrder,
     pub new_review_order: NewReviewOrder,
     pub interday_order: InterdayOrder,
+    pub review_sort_order: ReviewSortOrder,
 }
 
 fn default_learning_steps() -> String {

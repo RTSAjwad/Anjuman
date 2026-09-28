@@ -43,8 +43,8 @@ work, migrations run cleanly from empty, SQLite footprint removed.
 Close the gaps in `server/DECK_OPTIONS_SUPPORT.md` as far as practical. The
 matrix's "Summary of the biggest gaps" is the working list:
 
-- [ ] **Display order** (largest gap) — Decomposed into US-2.8–US-2.12 (gather,
-      sort, new/review, interday, review-sort). See below.
+- [x] **Display order** — US-2.8–US-2.12 (gather, sort, new/review, interday,
+      review-sort) all done. See below.
 - [ ] **FSRS parameter optimization** — store per-school/user FSRS weights and
       add an optimizer endpoint (`compute_parameters`); today it's
       `FSRS::default()` weights only.
@@ -257,22 +257,33 @@ matrix's "Summary of the biggest gaps" is the working list:
       - [x] Interday learning is always *gathered* first (limit applied first),
             but its *display* rank vs review follows the setting.
       - [x] Each criterion has a `server/tests/` test.
-- [ ] **US-2.12 — Review sort order**
+- [x] **US-2.12 — Review sort order**
 
       **As** a student,
-      **I want** to choose the review sort order (due/random, due/deck,
-      deck/due, ascending/descending interval, ascending/descending ease,
-      ascending retrievability),
+      **I want** to choose the review sort order,
       **so that** I can clear a backlog or prioritise due cards sensibly.
 
       **Acceptance criteria**
-      - [ ] `review_sort_order` enum (default due-date-then-random).
-      - [ ] **Ascending retrievability** (FSRS `R`) is the FSRS sort; SM-2
-            "relative overdueness" is ⚪ out of scope.
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] `review_sort_order` enum (default `due_then_random`) covering all
+            13 in-app options: due-then-random, due-then-deck, deck-then-due,
+            ascending/descending interval, easy/difficult first, ascending/
+            descending retrievability, relative overdueness, random, order
+            added, latest-added first.
+      - [x] "interval" maps to FSRS `stability`; "easy/difficult" maps to
+            FSRS `difficulty`.
+      - [x] "order added"/"latest added" map to `c.id` (creation-order proxy;
+            `created_at`/position are distinct concerns).
+      - [x] Retrievability orders by the monotonic ratio
+            `(stability + overdue)/stability`, which is exactly equivalent to
+            `fsrs::current_retrievability` (strictly monotonic in that ratio).
+      - [x] Each criterion has a `server/tests/` test.
 
-      **Out of scope**
-      - SM-2 "relative overdueness" (FSRS uses ascending retrievability).
+      **Documented inconsistencies** (also recorded in the support matrix):
+      - "Relative overdueness" appears in the in-app list *despite* the manual
+        saying it is removed under FSRS; implemented (overdueness = elapsed ÷
+        interval).
+      - "Ascending/descending ease" (SM-2) is surfaced as easy/difficult-first
+        under FSRS via `difficulty`.
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 

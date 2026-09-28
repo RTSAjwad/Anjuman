@@ -113,6 +113,25 @@ pub enum DbInterdayOrder {
     After,
 }
 
+/// Mirrors the `review_sort_order` enum (13 in-app review-sort options).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "review_sort_order", rename_all = "snake_case")]
+pub enum DbReviewSortOrder {
+    DueThenRandom,
+    DueThenDeck,
+    DeckThenDue,
+    AscendingInterval,
+    DescendingInterval,
+    EasyFirst,
+    DifficultFirst,
+    AscendingRetrievability,
+    DescendingRetrievability,
+    RelativeOverdueness,
+    Random,
+    OrderAdded,
+    LatestAddedFirst,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions (server-local DB enums <-> contract enum / application strings)
 // ---------------------------------------------------------------------------
@@ -397,6 +416,72 @@ impl DbInterdayOrder {
             DbInterdayOrder::Mix => "mix",
             DbInterdayOrder::Before => "before",
             DbInterdayOrder::After => "after",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::ReviewSortOrder> for DbReviewSortOrder {
+    fn from(o: anjuman_contracts::deck_options::ReviewSortOrder) -> Self {
+        use anjuman_contracts::deck_options::ReviewSortOrder as R;
+        use DbReviewSortOrder as D;
+        match o {
+            R::DueThenRandom => D::DueThenRandom,
+            R::DueThenDeck => D::DueThenDeck,
+            R::DeckThenDue => D::DeckThenDue,
+            R::AscendingInterval => D::AscendingInterval,
+            R::DescendingInterval => D::DescendingInterval,
+            R::EasyFirst => D::EasyFirst,
+            R::DifficultFirst => D::DifficultFirst,
+            R::AscendingRetrievability => D::AscendingRetrievability,
+            R::DescendingRetrievability => D::DescendingRetrievability,
+            R::RelativeOverdueness => D::RelativeOverdueness,
+            R::Random => D::Random,
+            R::OrderAdded => D::OrderAdded,
+            R::LatestAddedFirst => D::LatestAddedFirst,
+        }
+    }
+}
+
+impl From<DbReviewSortOrder> for anjuman_contracts::deck_options::ReviewSortOrder {
+    fn from(o: DbReviewSortOrder) -> Self {
+        use anjuman_contracts::deck_options::ReviewSortOrder as R;
+        use DbReviewSortOrder as D;
+        match o {
+            D::DueThenRandom => R::DueThenRandom,
+            D::DueThenDeck => R::DueThenDeck,
+            D::DeckThenDue => R::DeckThenDue,
+            D::AscendingInterval => R::AscendingInterval,
+            D::DescendingInterval => R::DescendingInterval,
+            D::EasyFirst => R::EasyFirst,
+            D::DifficultFirst => R::DifficultFirst,
+            D::AscendingRetrievability => R::AscendingRetrievability,
+            D::DescendingRetrievability => R::DescendingRetrievability,
+            D::RelativeOverdueness => R::RelativeOverdueness,
+            D::Random => R::Random,
+            D::OrderAdded => R::OrderAdded,
+            D::LatestAddedFirst => R::LatestAddedFirst,
+        }
+    }
+}
+
+impl DbReviewSortOrder {
+    /// The order as a lowercase string, for binding enum columns via a
+    /// `::review_sort_order` SQL cast in `query!` macros.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbReviewSortOrder::DueThenRandom => "due_then_random",
+            DbReviewSortOrder::DueThenDeck => "due_then_deck",
+            DbReviewSortOrder::DeckThenDue => "deck_then_due",
+            DbReviewSortOrder::AscendingInterval => "ascending_interval",
+            DbReviewSortOrder::DescendingInterval => "descending_interval",
+            DbReviewSortOrder::EasyFirst => "easy_first",
+            DbReviewSortOrder::DifficultFirst => "difficult_first",
+            DbReviewSortOrder::AscendingRetrievability => "ascending_retrievability",
+            DbReviewSortOrder::DescendingRetrievability => "descending_retrievability",
+            DbReviewSortOrder::RelativeOverdueness => "relative_overdueness",
+            DbReviewSortOrder::Random => "random",
+            DbReviewSortOrder::OrderAdded => "order_added",
+            DbReviewSortOrder::LatestAddedFirst => "latest_added_first",
         }
     }
 }
