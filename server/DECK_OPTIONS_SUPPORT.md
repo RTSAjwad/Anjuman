@@ -42,7 +42,7 @@ Legend:
 | Anki feature | Status | Notes |
 |---|---|---|
 | Learning steps (e.g. `1m 10m`) | ✅ | Stored normalized in `deck_option_steps`; parsed from Anki-style `"1m 10m"` strings. |
-| Hard button step behaviour (avg of first two steps; 1.5× single step) | 🟡 | Some Hard handling exists, but the exact "average of first two steps" / "1.5× single step" computation is **not** implemented — Hard advances via simplified logic. |
+| Hard button step behaviour (avg of first two steps; 1.5× single step) | ✅ | Implemented in `apply_review` + `predict_intervals` via `hard_step_delay` (first step → avg of first two; single step → 1.5× capped at +1 day; other steps → repeat current). |
 | Learn-ahead (show learning cards early) | ✅ | `learn_ahead_seconds` user pref, default 1200s (20 min). Matches Anki default. |
 | Day boundaries (steps crossing a day boundary converted to days) | ✅ | `day_start_hour` user pref (default 4 AM); intraday vs interday learning computed in SQL. |
 
@@ -137,3 +137,21 @@ Legend:
 - **Steps are normalized** into `deck_option_steps` (one row per step) rather than stored as a space-separated string — enabling the SQL-side intraday/interday computation.
 - **Day boundary is UTC-anchored** via a per-user `day_start_hour`, with no per-user timezone yet (Anki stores a full "next day starts at" timestamp per collection).
 - **Burying defaults are OFF**, diverging from Anki's documented ON default.
+- **Hard-button delay precision**: Anki's manual says the first-step Hard delay for
+  `1m 10m` is "6m", but the raw average is `5m30s`; the real client shows `<6m`.
+  We store the exact average in seconds (`330s`) rather than replicating Anki's
+  minute-rounded *display*. The internal value matches Anki; only the rendered
+  label differs.
+
+## Open questions / under-documented Anki behaviour
+
+Where Anki's manual is imprecise and we had to make a judgement call:
+
+- **Hard-button "average of first two steps" rounding** — the manual states the
+  rule but not the unit/rounding; its `6m` example is a display-rounded value
+  (`5m30s`), confirmed by testing (`<6m`). We use the exact averaged seconds.
+- **1.5× single-step "at most 1 day longer" cap** — we implement
+  `min(1.5×step, step + 86400)` using round-to-nearest for the 1.5× factor. Anki
+  does not specify whether it rounds or floors the fractional result. We chose
+  round-to-nearest as the standard, unbiased default; revisit only if a concrete
+  fractional-step case shows Anki diverging.

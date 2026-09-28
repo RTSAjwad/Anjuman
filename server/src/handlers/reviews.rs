@@ -121,6 +121,30 @@ fn is_interday_step(step_index: i64, steps: &[i64]) -> bool {
     steps.get(step_index as usize).is_some_and(|s| *s >= 86400)
 }
 
+/// The Hard-button delay (seconds) for a card on a (re)learning step,
+/// following Anki's rules:
+///
+/// - **First step** → the average of the first two steps.
+/// - **Single step** → 1.5× that step, capped at one day longer than the step.
+/// - **Any other step** → the current step's delay (i.e. Hard repeats the step).
+///
+/// See <https://docs.ankiweb.net/deck-options.html#learning-steps>.
+pub fn hard_step_delay(steps: &[i64], step_index: i64) -> i64 {
+    match steps.len() {
+        0 => 0,
+        1 => {
+            // 1.5× the single step, at most 1 day longer than the step.
+            let step = steps[0];
+            ((step as f64 * 1.5).round() as i64).min(step + 86400)
+        }
+        _ if step_index == 0 => {
+            // Average of the first two steps.
+            ((steps[0] + steps[1]) as f64 / 2.0).round() as i64
+        }
+        _ => steps.get(step_index as usize).copied().unwrap_or(0),
+    }
+}
+
 /// Bury siblings of the answered card (same note), following Anki's
 /// directional gathering-order rule.
 ///
@@ -341,8 +365,15 @@ pub async fn apply_review(
                     due_at = now + Duration::seconds(learning_steps[step_index as usize]);
                 }
             }
+            2 => {
+                // Hard on the first step: average of the first two steps. Hard
+                // does not advance the step count, so the card stays put.
+                new_state = DbCardState::Learning;
+                step_index = 0;
+                due_at = now + Duration::seconds(hard_step_delay(learning_steps, 0));
+            }
             _ => {
-                // Again or Hard: stay in learning at first step.
+                // Again: stay in learning at first step.
                 new_state = DbCardState::Learning;
                 step_index = 0;
                 due_at = now + Duration::seconds(learning_steps[0]);
@@ -355,8 +386,14 @@ pub async fn apply_review(
                 due_at = now + Duration::seconds(learning_steps[0]);
                 new_state = DbCardState::Learning;
             }
-            2 | 3 => {
-                // Hard or Good: advance one step; graduate if past last.
+            2 => {
+                // Hard: repeats the current step (does not advance).
+                new_state = DbCardState::Learning;
+                due_at =
+                    now + Duration::seconds(hard_step_delay(learning_steps, step_index));
+            }
+            3 => {
+                // Good: advance one step; graduate if past last.
                 step_index += 1;
                 if step_index >= learning_steps.len() as i64 {
                     new_state = DbCardState::Review;
@@ -394,8 +431,14 @@ pub async fn apply_review(
                 due_at = now + Duration::seconds(relearning_steps[0]);
                 new_state = DbCardState::Relearning;
             }
-            2 | 3 => {
-                // Hard or Good: advance one step; graduate if past last.
+            2 => {
+                // Hard: repeats the current step (does not advance).
+                new_state = DbCardState::Relearning;
+                due_at =
+                    now + Duration::seconds(hard_step_delay(relearning_steps, step_index));
+            }
+            3 => {
+                // Good: advance one step; graduate if past last.
                 step_index += 1;
                 if step_index >= relearning_steps.len() as i64 {
                     new_state = DbCardState::Review;
@@ -568,4 +611,42 @@ pub async fn set_flag(
         card_id,
         flag: body.flag as i64,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hard_step_delay;
+
+    #[test]
+    fn hard_first_step_is_average_of_first_two() {
+        // Default steps "1m 10m" → Hard on the first step = (60 + 600)/2 = 330s
+        // (5m30s). The Anki manual calls this "6m" (display-rounded); the real
+        // client shows "<6m". We keep the exact seconds. See
+        // DECK_OPTIONS_SUPPORT.md "Hard-button delay precision".
+        assert_eq!(hard_step_delay(&[60, 600, 86400], 0), 330);
+    }
+
+    #[test]
+    fn hard_single_step_is_one_point_five_times() {
+        // 1.5× the single step.
+        assert_eq!(hard_step_delay(&[60], 0), 90);
+    }
+
+    #[test]
+    fn hard_single_step_is_capped_at_one_day_longer() {
+        // A 3-day single step: 1.5× = 4.5 days, but capped at 3d + 1d = 4 days.
+        let three_days = 3 * 86400;
+        assert_eq!(hard_step_delay(&[three_days], 0), three_days + 86400);
+    }
+
+    #[test]
+    fn hard_other_step_repeats_current_step() {
+        // On the second step of "1m 10m", Hard repeats the second step (10m).
+        assert_eq!(hard_step_delay(&[60, 600], 1), 600);
+    }
+
+    #[test]
+    fn hard_empty_steps_is_zero() {
+        assert_eq!(hard_step_delay(&[], 0), 0);
+    }
 }

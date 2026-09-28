@@ -35,6 +35,20 @@ pub use anjuman_contracts::UserRole;
 /// truncate-then-insert sequences against the shared database.
 static SETUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// Serializes DB-mutating *test bodies* (seed → act) against the shared
+/// database. Unlike `SETUP_LOCK`, this is async-safe (a `tokio` mutex), so a
+/// test can hold it across `.await`. Tests that insert more than one row
+/// dependency (e.g. a card + its note) must hold this for their whole body, or
+/// another test's `TestApp::new()` truncate can delete a half-seeded row.
+static TEST_DB_LOCK: LazyLock<tokio::sync::Mutex<()>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(()));
+
+/// Acquire the shared-DB test guard. Call once at the top of any `#[tokio::test]`
+/// that needs deterministic DB state across multiple sequential inserts.
+pub async fn db_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    TEST_DB_LOCK.lock().await
+}
+
 /// A fully-built router + its database pool.
 ///
 /// `Clone` leans on `Router`/`PgPool` both being cheaply cloneable, so a single
@@ -141,4 +155,73 @@ pub async fn create_user(app: &TestApp, role: UserRole) -> (i64, String) {
     .expect("insert test user");
 
     (inserted.id, app.token(inserted.id, role))
+}
+
+/// Seed a minimal studiable card (deck + note type + template + note + card +
+/// student state) and return `(student_id, card_id)`. The card starts in
+/// `state` with the given `step_index`.
+pub async fn seed_studiable_card(
+    app: &TestApp,
+    student_id: i64,
+    state: &str,
+    step_index: i64,
+) -> i64 {
+    let deck_id = sqlx::query!(
+        "INSERT INTO decks (school_id, title, created_by) VALUES (1, 'Test Deck', $1) RETURNING id",
+        student_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert deck")
+    .id;
+
+    let note_type_id = sqlx::query!(
+        "INSERT INTO note_types (school_id, name, field_names) VALUES (1, 'Basic', '[\"Front\",\"Back\"]') RETURNING id"
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert note type")
+    .id;
+
+    let template_id = sqlx::query!(
+        "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES ($1, 0, 'Card 1', '{{Front}}', '{{Front}}<hr>{{Back}}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert template")
+    .id;
+
+    let note_id = sqlx::query!(
+        "INSERT INTO notes (note_type_id, fields_json) VALUES ($1, '{\"Front\":\"Q\",\"Back\":\"A\"}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert note")
+    .id;
+
+    let card_id = sqlx::query!(
+        "INSERT INTO cards (note_id, deck_id, template_id) VALUES ($1, $2, $3) RETURNING id",
+        note_id,
+        deck_id,
+        template_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert card")
+    .id;
+
+    sqlx::query!(
+        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses, step_index) VALUES ($1, $2, $3::text::card_state, 0.0, 0.0, 0, 0, $4)",
+        student_id,
+        card_id,
+        state,
+        step_index
+    )
+    .execute(&app.db)
+    .await
+    .expect("insert student card state");
+
+    card_id
 }

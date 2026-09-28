@@ -33,7 +33,7 @@ use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyC
 use crate::{
     auth::AuthUser,
     db_types::DbCardState,
-    handlers::decks,
+    handlers::{decks, reviews::hard_step_delay},
     note_types,
     state::AppState,
 };
@@ -457,14 +457,15 @@ fn predict_intervals(
 
     match c.state {
         DbCardState::New => {
-            // Again/Hard: first learning step; Good: next step; Easy: graduate.
+            // Again: first learning step; Hard: average of first two steps;
+            // Good: next step; Easy: graduate.
             map.insert(
                 "1".to_string(),
                 learning_steps.first().copied().unwrap_or(60),
             );
             map.insert(
                 "2".to_string(),
-                learning_steps.first().copied().unwrap_or(60),
+                hard_step_delay(learning_steps, 0),
             );
             let good = if learning_steps.len() <= 1 {
                 fsrs_intervals
@@ -482,13 +483,15 @@ fn predict_intervals(
             map.insert("4".to_string(), easy);
         }
         DbCardState::Learning => {
-            // Again: first step; Hard/Good: next step (or graduate); Easy: graduate.
+            // Again: first step; Hard: repeats current step; Good: next step (or
+            // graduate); Easy: graduate.
             map.insert(
                 "1".to_string(),
                 learning_steps.first().copied().unwrap_or(60),
             );
+            map.insert("2".to_string(), hard_step_delay(learning_steps, c.step_index));
             let next_idx = (c.step_index as usize + 1).min(learning_steps.len());
-            let hard_good = if next_idx >= learning_steps.len() {
+            let good = if next_idx >= learning_steps.len() {
                 fsrs_intervals
                     .as_ref()
                     .map(|f| interval_secs(f[2]))
@@ -496,8 +499,7 @@ fn predict_intervals(
             } else {
                 learning_steps.get(next_idx).copied().unwrap_or(600)
             };
-            map.insert("2".to_string(), hard_good);
-            map.insert("3".to_string(), hard_good);
+            map.insert("3".to_string(), good);
             let easy = fsrs_intervals
                 .as_ref()
                 .map(|f| interval_secs(f[3]))
@@ -521,13 +523,18 @@ fn predict_intervals(
             }
         }
         DbCardState::Relearning => {
-            // Again: first relearning step; Hard/Good: next step (or graduate).
+            // Again: first relearning step; Hard: repeats current step; Good: next
+            // step (or graduate).
             map.insert(
                 "1".to_string(),
                 relearning_steps.first().copied().unwrap_or(600),
             );
+            map.insert(
+                "2".to_string(),
+                hard_step_delay(relearning_steps, c.step_index),
+            );
             let next_idx = (c.step_index as usize + 1).min(relearning_steps.len());
-            let hard_good = if next_idx >= relearning_steps.len() {
+            let good = if next_idx >= relearning_steps.len() {
                 fsrs_intervals
                     .as_ref()
                     .map(|f| interval_secs(f[2]))
@@ -535,8 +542,7 @@ fn predict_intervals(
             } else {
                 relearning_steps.get(next_idx).copied().unwrap_or(600)
             };
-            map.insert("2".to_string(), hard_good);
-            map.insert("3".to_string(), hard_good);
+            map.insert("3".to_string(), good);
             let easy = fsrs_intervals
                 .as_ref()
                 .map(|f| interval_secs(f[3]))

@@ -38,7 +38,7 @@ work, migrations run cleanly from empty, SQLite footprint removed.
 
 ---
 
-## 2. Deck options — feature-complete with Anki   `[ ]`
+## 2. Deck options — feature-complete with Anki   `[~]`
 
 Close the gaps in `server/DECK_OPTIONS_SUPPORT.md` as far as practical. The
 matrix's "Summary of the biggest gaps" is the working list:
@@ -56,8 +56,22 @@ matrix's "Summary of the biggest gaps" is the working list:
       a subtree.
 - [ ] **Daily-limit fine controls** — "new cards ignore review limit", "limits
       start from top", per-deck "today only" overrides.
-- [ ] **Hard-button step behaviour** — exact "average of first two steps" /
-      "1.5× single step" computation.
+- [x] **US-2.1 — Hard-button step behaviour** — implement Anki's exact
+      learning/relearning Hard rules. See `PLANNING.md` §2.
+
+      **As** a student reviewing a (re)learning card,
+      **I want** the Hard button to follow Anki's step rules,
+      **so that** my scheduling matches Anki's expected intervals.
+
+      **Acceptance criteria**
+      - [x] On the first learning step, Hard = average of the first two steps.
+      - [x] With a single step, Hard = 1.5× that step (capped at +1 day).
+      - [x] On any other step, Hard repeats the current step.
+      - [x] `predict_intervals` mirrors `apply_review` (frontend hints agree).
+      - [x] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - Review (graduated) cards: Hard already uses the FSRS interval.
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 

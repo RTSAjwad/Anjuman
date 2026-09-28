@@ -24,6 +24,7 @@ fn get(path: &str, token: &str) -> Request<Body> {
 
 #[tokio::test]
 async fn me_returns_profile_for_authenticated_user() {
+    let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (user_id, token) = create_user(&app, UserRole::Teacher).await;
 
@@ -53,6 +54,7 @@ async fn me_rejects_missing_token() {
 
 #[tokio::test]
 async fn search_users_returns_matching_users() {
+    let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     // `/users/search` excludes admins, so seed a searchable non-admin.
     let (_, token) = create_user(&app, UserRole::Teacher).await;
@@ -88,6 +90,7 @@ async fn search_users_returns_matching_users() {
 
 #[tokio::test]
 async fn preferences_default_to_anki_values_before_any_update() {
+    let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (user_id, _token) = create_user(&app, UserRole::Student).await;
 
