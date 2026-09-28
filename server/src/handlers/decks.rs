@@ -38,11 +38,37 @@ use anjuman_contracts::decks::{
 };
 use anjuman_contracts::{MessageResponse, UserRole};
 
-use crate::{auth::AuthUser, db_types::DbUserRole, state::AppState};
+use crate::{
+    auth::AuthUser,
+    db_types::{DbLimitMode, DbUserRole},
+    state::AppState,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Validate a per-deck daily-limit input and resolve it to its stored shape.
+///
+/// Returns `(mode, override_value, today_date)`. A non-`preset` mode requires a
+/// non-null override value; `today_only` also records the current date for lazy
+/// expiry.
+fn resolve_limit_input(
+    mode: anjuman_contracts::decks::LimitMode,
+    value: Option<i64>,
+) -> Result<(DbLimitMode, Option<i64>, Option<chrono::NaiveDate>), (StatusCode, &'static str)> {
+    let mode = DbLimitMode::from(mode);
+    match mode {
+        DbLimitMode::Preset => Ok((mode, value, None)),
+        DbLimitMode::ThisDeck | DbLimitMode::TodayOnly => {
+            let v = value
+                .filter(|v| *v >= 0)
+                .ok_or((StatusCode::BAD_REQUEST, "A non-negative limit value is required"))?;
+            let today = (mode == DbLimitMode::TodayOnly).then(|| Utc::now().date_naive());
+            Ok((mode, Some(v), today))
+        }
+    }
+}
 
 /// Require that the authenticated user is a teacher or admin.
 pub fn check_teacher_or_admin(
@@ -210,7 +236,13 @@ async fn fetch_deck(
                d.created_by, d.parent_id, d.created_at,
                u.email as owner_email,
                u.first_name as owner_first_name,
-               u.last_name as owner_last_name
+               u.last_name as owner_last_name,
+               d.new_per_day_mode as "new_per_day_mode!: DbLimitMode",
+               d.review_per_day_mode as "review_per_day_mode!: DbLimitMode",
+               d.new_per_day_override,
+               d.review_per_day_override,
+               d.new_per_day_today_date,
+               d.review_per_day_today_date
         FROM decks d
         JOIN users u ON u.id = d.created_by
         WHERE d.id = $1
@@ -232,6 +264,12 @@ async fn fetch_deck(
         owner_last_name: row.owner_last_name,
         parent_id: row.parent_id,
         created_at: row.created_at,
+        new_per_day_mode: Some(row.new_per_day_mode.into()),
+        review_per_day_mode: Some(row.review_per_day_mode.into()),
+        new_per_day_override: row.new_per_day_override,
+        review_per_day_override: row.review_per_day_override,
+        new_per_day_today_date: row.new_per_day_today_date,
+        review_per_day_today_date: row.review_per_day_today_date,
         new_count: None,
         learning_count: None,
         review_count: None,
@@ -267,10 +305,18 @@ pub async fn create_deck(
         }
     }
 
+    // Validate per-deck daily-limit override inputs.
+    let (new_mode, new_override, new_today) =
+        resolve_limit_input(body.new_per_day_mode, body.new_per_day_override)?;
+    let (review_mode, review_override, review_today) =
+        resolve_limit_input(body.review_per_day_mode, body.review_per_day_override)?;
+
     let result = sqlx::query!(
         r#"
-        INSERT INTO decks (school_id, title, description, parent_id, created_by, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO decks (school_id, title, description, parent_id, created_by, created_at,
+            new_per_day_mode, review_per_day_mode, new_per_day_override, review_per_day_override,
+            new_per_day_today_date, review_per_day_today_date)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::text::limit_mode, $8::text::limit_mode, $9, $10, $11, $12)
         RETURNING id
         "#,
         claims.school_id,
@@ -278,7 +324,13 @@ pub async fn create_deck(
         body.description,
         body.parent_id,
         claims.sub,
-        Utc::now()
+        Utc::now(),
+        new_mode.as_str(),
+        review_mode.as_str(),
+        new_override,
+        review_override,
+        new_today,
+        review_today,
     )
     .fetch_one(&state.db)
     .await
@@ -381,6 +433,65 @@ pub async fn rename_deck(
         sqlx::query!(
             "UPDATE decks SET options_id = $1 WHERE id = $2",
             options_id,
+            deck_id
+        )
+        .execute(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    }
+
+    // Per-deck daily-limit overflow (`new_per_day_mode`, `review_per_day_mode`,
+    // and their override values). Re-validate against the *current* stored
+    // override value when only the mode changes.
+    if let Some(mode) = body.new_per_day_mode {
+        let current_override = sqlx::query_scalar!(
+            "SELECT new_per_day_override FROM decks WHERE id = $1",
+            deck_id
+        )
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+        let (m, v, today) = resolve_limit_input(mode, current_override.or(body.new_per_day_override.flatten()))?;
+        sqlx::query!(
+            "UPDATE decks SET new_per_day_mode = $1::text::limit_mode, new_per_day_override = $2, new_per_day_today_date = $3 WHERE id = $4",
+            m.as_str(), v, today, deck_id
+        )
+        .execute(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    } else if body.new_per_day_override.is_some() {
+        let v = body.new_per_day_override.unwrap();
+        sqlx::query!(
+            "UPDATE decks SET new_per_day_override = $1 WHERE id = $2",
+            v,
+            deck_id
+        )
+        .execute(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    }
+
+    if let Some(mode) = body.review_per_day_mode {
+        let current_override = sqlx::query_scalar!(
+            "SELECT review_per_day_override FROM decks WHERE id = $1",
+            deck_id
+        )
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+        let (m, v, today) = resolve_limit_input(mode, current_override.or(body.review_per_day_override.flatten()))?;
+        sqlx::query!(
+            "UPDATE decks SET review_per_day_mode = $1::text::limit_mode, review_per_day_override = $2, review_per_day_today_date = $3 WHERE id = $4",
+            m.as_str(), v, today, deck_id
+        )
+        .execute(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    } else if body.review_per_day_override.is_some() {
+        let v = body.review_per_day_override.unwrap();
+        sqlx::query!(
+            "UPDATE decks SET review_per_day_override = $1 WHERE id = $2",
+            v,
             deck_id
         )
         .execute(&state.db)
@@ -987,6 +1098,12 @@ pub async fn list_decks(
                 owner_last_name: r.owner_last_name,
                 parent_id: r.parent_id,
                 created_at: r.created_at,
+                new_per_day_mode: None,
+                review_per_day_mode: None,
+                new_per_day_override: None,
+                review_per_day_override: None,
+                new_per_day_today_date: None,
+                review_per_day_today_date: None,
                 new_count: None,
                 learning_count: None,
                 review_count: None,
@@ -1034,6 +1151,12 @@ pub async fn list_decks(
                 owner_last_name: r.owner_last_name,
                 parent_id: r.parent_id,
                 created_at: r.created_at,
+                new_per_day_mode: None,
+                review_per_day_mode: None,
+                new_per_day_override: None,
+                review_per_day_override: None,
+                new_per_day_today_date: None,
+                review_per_day_today_date: None,
                 new_count: None,
                 learning_count: None,
                 review_count: None,
@@ -1108,6 +1231,12 @@ pub async fn list_decks(
             owner_last_name: r.owner_last_name,
             parent_id: r.parent_id,
             created_at: r.created_at,
+            new_per_day_mode: None,
+            review_per_day_mode: None,
+            new_per_day_override: None,
+            review_per_day_override: None,
+            new_per_day_today_date: None,
+            review_per_day_today_date: None,
             new_count: Some(counts.new_count),
             learning_count: Some(counts.learning_count),
             review_count: Some(counts.review_count),

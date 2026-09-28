@@ -126,7 +126,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       until after stage 7. These are "collection-wide" in Anki; our multi-tenant
       school/user split makes their scope a stage-7 decision (see stage 7 design
       question #6).
-- [ ] **US-2.6 — Per-deck daily-limit overrides**
+- [x] **US-2.6 — Per-deck daily-limit overrides**
 
       **As** a teacher tailoring one deck,
       **I want** a per-deck `preset`/`this deck`/`today only` override on the
@@ -134,17 +134,17 @@ matrix's "Summary of the biggest gaps" is the working list:
       **so that** one deck can have its own caps without forking a whole preset.
 
       **Acceptance criteria**
-      - [ ] A deck in `preset` mode uses its shared preset's limit (unchanged).
-      - [ ] `this_deck` overrides the limit for that deck only; sibling decks
+      - [x] A deck in `preset` mode uses its shared preset's limit (unchanged).
+      - [x] `this_deck` overrides the limit for that deck only; sibling decks
             sharing the preset are unaffected.
-      - [ ] `today_only` applies today and falls back to the preset limit on the
+      - [x] `today_only` applies today and falls back to the preset limit on the
             next study day (lazy expiry).
-      - [ ] New and review limits are independently selectable (per-limit mode).
-      - [ ] `this_deck`/`today_only` without a value → `400`.
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] New and review limits are independently selectable (per-limit mode).
+      - [x] `this_deck`/`today_only` without a value → `400`.
+      - [x] Each criterion has a `server/tests/` test.
 
       **Out of scope**
-      - Subdeck limit aggregation (separate gap).
+      - Subdeck limit aggregation (US-2.7).
       - Stage-7 per-user personalisation (precedence reconciled later).
 
       **Model**
@@ -153,6 +153,25 @@ matrix's "Summary of the biggest gaps" is the working list:
         `preset`), nullable `new_per_day_override`/`review_per_day_override`, and
         `new_per_day_today_date`/`review_per_day_today_date` for lazy expiry.
         `deck_options.new_per_day`/`review_per_day` remain the preset base.
+- [ ] **US-2.7 — Subdeck limit aggregation**
+
+      **As** a student studying a deck with subdecks,
+      **I want** each subdeck's own limit to cap gathering from that subdeck,
+      while the selected deck's limit caps the session total,
+      **so that** limits compose correctly across the deck tree.
+
+      **Acceptance criteria**
+      - [ ] Gathering honours each subdeck's effective limit (per-subdeck cap).
+      - [ ] The selected deck's limit caps the overall session total.
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - `limits_start_from_top` (collection-wide; deferred to after stage 7).
+        Base aggregation is algorithm-neutral and buildable now; the toggle is
+        the deferred piece.
+
+      **Relation to US-2.6** — resolves each subdeck's *effective* limit via the
+      same `effective_daily_limits` helper, so build 2.7 after 2.6.
 - [x] **US-2.1 — Hard-button step behaviour** — implement Anki's exact
       learning/relearning Hard rules. See `PLANNING.md` §2.
 

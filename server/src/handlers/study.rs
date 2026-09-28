@@ -195,12 +195,17 @@ pub async fn deck_counts_for_student(
     student_id: i64,
     deck_id: i64,
 ) -> Result<StudyCounts, StatusCode> {
-    let options = options_for(db, deck_id).await?;
     let (new_seen, review_seen) = seen_today(db, student_id).await?;
     let learn_ahead = learn_ahead_seconds(db, student_id).await;
     let day_start = start_of_day(db, student_id).await;
     let now = Utc::now();
     let learn_ahead_deadline = now + Duration::seconds(learn_ahead);
+
+    // Effective daily limits, honouring any per-deck override (US-2.6).
+    let (new_per_day, review_per_day) =
+        crate::deck_options::effective_daily_limits(db, deck_id, day_start.date_naive())
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let row = sqlx::query!(
         r#"
@@ -229,8 +234,8 @@ pub async fn deck_counts_for_student(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let new_remaining = (options.new_per_day - new_seen).max(0);
-    let review_remaining = (options.review_per_day - review_seen).max(0);
+    let new_remaining = (new_per_day - new_seen).max(0);
+    let review_remaining = (review_per_day - review_seen).max(0);
 
     Ok(StudyCounts {
         new_count: row.new_total.min(new_remaining),
@@ -253,14 +258,19 @@ async fn next_due_card(
     student_id: i64,
     deck_id: i64,
 ) -> Result<Option<CardRow>, StatusCode> {
-    let options = options_for(db, deck_id).await?;
     let (new_seen, review_seen) = seen_today(db, student_id).await?;
     let learn_ahead = learn_ahead_seconds(db, student_id).await;
     let day_start = start_of_day(db, student_id).await;
     let now = Utc::now();
 
-    let new_remaining = (options.new_per_day - new_seen).max(0);
-    let review_remaining = (options.review_per_day - review_seen).max(0);
+    // Effective daily limits, honouring any per-deck override (US-2.6).
+    let (new_per_day, review_per_day) =
+        crate::deck_options::effective_daily_limits(db, deck_id, day_start.date_naive())
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let new_remaining = (new_per_day - new_seen).max(0);
+    let review_remaining = (review_per_day - review_seen).max(0);
 
     // Single query: rank due candidates by gathering order using the
     // normalised step table. Each card uses its own deck's preset.

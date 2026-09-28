@@ -1,7 +1,27 @@
 //! Deck-management DTOs.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
+
+/// How a deck resolves its daily new/review limits.
+///
+/// - `Preset`: use the shared preset's limit (default).
+/// - `ThisDeck`: use this deck's own override value.
+/// - `TodayOnly`: use this deck's override value, but only for today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum LimitMode {
+    Preset,
+    ThisDeck,
+    TodayOnly,
+}
+
+impl Default for LimitMode {
+    fn default() -> Self {
+        LimitMode::Preset
+    }
+}
 
 /// Expected JSON body for creating a deck.
 #[derive(Debug, Clone, Deserialize)]
@@ -11,6 +31,16 @@ pub struct CreateDeck {
     pub description: Option<String>,
     /// Optional parent deck for nesting. The parent must exist in the same school.
     pub parent_id: Option<i64>,
+    /// Per-deck new-cards/day override mode (defaults to `preset`).
+    #[serde(default)]
+    pub new_per_day_mode: LimitMode,
+    /// Per-deck max-reviews/day override mode (defaults to `preset`).
+    #[serde(default)]
+    pub review_per_day_mode: LimitMode,
+    /// Override values for `this_deck`/`today_only` modes. Required when the
+    /// corresponding mode is not `preset`; ignored otherwise.
+    pub new_per_day_override: Option<i64>,
+    pub review_per_day_override: Option<i64>,
 }
 
 /// Deserialize a field that distinguishes "absent" from "explicit null".
@@ -41,6 +71,14 @@ pub struct UpdateDeck {
     /// Include with `null` to clear the description.
     #[serde(default, deserialize_with = "deserialize_some_option")]
     pub description: Option<Option<String>>,
+    /// Per-deck daily-limit override mode/values (see `LimitMode`). Omitting a
+    /// mode leaves it unchanged; omitting an override value leaves it unchanged.
+    pub new_per_day_mode: Option<LimitMode>,
+    pub review_per_day_mode: Option<LimitMode>,
+    #[serde(default, deserialize_with = "deserialize_some_option")]
+    pub new_per_day_override: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "deserialize_some_option")]
+    pub review_per_day_override: Option<Option<i64>>,
 }
 
 /// Query parameters for `DELETE /decks/{id}`.
@@ -89,6 +127,19 @@ pub struct DeckResponse {
     pub owner_last_name: String,
     pub parent_id: Option<i64>,
     pub created_at: DateTime<Utc>,
+    /// Per-deck daily-limit configuration (see `LimitMode`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_per_day_mode: Option<LimitMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review_per_day_mode: Option<LimitMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_per_day_override: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review_per_day_override: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_per_day_today_date: Option<NaiveDate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review_per_day_today_date: Option<NaiveDate>,
     /// Card counts for the requesting student. Present only in list_decks.
     /// Not populated in get_deck, create_deck, etc.
     #[serde(skip_serializing_if = "Option::is_none")]

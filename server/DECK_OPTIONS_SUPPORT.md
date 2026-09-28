@@ -29,7 +29,7 @@ Legend:
 | Anki feature | Status | Notes |
 |---|---|---|
 | Subdecks can have their own preset | ✅ | Each deck has its own `options_id`; nested decks are supported. |
-| Per-deck new/review limits vs. selected-deck total | 🟡 | Per-deck limits are supported. Anki's "selected deck governs the total" aggregation across a subtree during one session is **not** implemented — limits apply to the specific deck being studied. |
+| Per-deck new/review limits vs. selected-deck total | 🟡 | Per-deck limits are supported (US-2.6); "selected deck governs the total" aggregation across a subtree is planned (US-2.7). |
 | Display order taken from selected deck | ❌ | No configurable display order (see Display Order). |
 
 ## Daily Limits
@@ -38,7 +38,7 @@ Legend:
 |---|---|---|
 | New cards/day | ✅ | `new_per_day` (default 20); counted via `state_before = 'new'` reviews per day. |
 | Max reviews/day | ✅ | `review_per_day` (default 200). |
-| Per-deck daily limits (preset / this deck / today only) | 🟡 | Planned (US-2.6): per-deck `preset`/`this_deck`/`today_only` override stored on `decks`. Currently only the preset-scoped limit exists. |
+| Per-deck daily limits (preset / this deck / today only) | ✅ | Per-deck `preset`/`this_deck`/`today_only` override stored on `decks` (US-2.6), with `today_only` lazy expiry at the study-day boundary. |
 | New cards ignore review limit | ⏳ | Deferred to after stage 7 — "collection-wide" in Anki; our school/user split makes its scope a stage-7 decision. |
 | Limits start from top (parent limits apply to subdecks) | ⏳ | Deferred to after stage 7 (same rationale as above). |
 

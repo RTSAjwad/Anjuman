@@ -61,6 +61,15 @@ pub enum DbLeechAction {
     SuspendCard,
 }
 
+/// Mirrors the `limit_mode` enum (`preset`, `this_deck`, `today_only`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "limit_mode", rename_all = "snake_case")]
+pub enum DbLimitMode {
+    Preset,
+    ThisDeck,
+    TodayOnly,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions (server-local DB enums <-> contract enum / application strings)
 // ---------------------------------------------------------------------------
@@ -154,6 +163,38 @@ impl DbLeechAction {
         match self {
             DbLeechAction::TagOnly => "tag_only",
             DbLeechAction::SuspendCard => "suspend_card",
+        }
+    }
+}
+
+impl From<anjuman_contracts::decks::LimitMode> for DbLimitMode {
+    fn from(m: anjuman_contracts::decks::LimitMode) -> Self {
+        match m {
+            anjuman_contracts::decks::LimitMode::Preset => DbLimitMode::Preset,
+            anjuman_contracts::decks::LimitMode::ThisDeck => DbLimitMode::ThisDeck,
+            anjuman_contracts::decks::LimitMode::TodayOnly => DbLimitMode::TodayOnly,
+        }
+    }
+}
+
+impl From<DbLimitMode> for anjuman_contracts::decks::LimitMode {
+    fn from(m: DbLimitMode) -> Self {
+        match m {
+            DbLimitMode::Preset => anjuman_contracts::decks::LimitMode::Preset,
+            DbLimitMode::ThisDeck => anjuman_contracts::decks::LimitMode::ThisDeck,
+            DbLimitMode::TodayOnly => anjuman_contracts::decks::LimitMode::TodayOnly,
+        }
+    }
+}
+
+impl DbLimitMode {
+    /// The mode as a lowercase string, for binding enum columns via a
+    /// `::limit_mode` SQL cast in `query!` macros.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbLimitMode::Preset => "preset",
+            DbLimitMode::ThisDeck => "this_deck",
+            DbLimitMode::TodayOnly => "today_only",
         }
     }
 }

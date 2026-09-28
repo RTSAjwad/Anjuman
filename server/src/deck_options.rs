@@ -9,7 +9,7 @@
 
 use sqlx::PgPool;
 
-use crate::db_types::{DbLeechAction, DbStepKind};
+use crate::db_types::{DbLeechAction, DbLimitMode, DbStepKind};
 
 pub use anjuman_contracts::deck_options::DeckOptions;
 
@@ -152,5 +152,76 @@ pub async fn options_for_deck(db: &PgPool, deck_id: i64) -> Result<DeckOptions, 
         Some(Some(id)) => get_options(db, id).await,
         // Fall back to the global default preset (id 0).
         _ => get_options(db, 0).await,
+    }
+}
+
+/// The effective daily new/review limits for a deck, applying any per-deck
+/// `preset`/`this_deck`/`today_only` override (US-2.6).
+///
+/// Returns `(new_per_day, review_per_day)`. A `today_only` override whose set
+/// date is before `today` (the student's study-day start) expires and falls
+/// back to the preset limit.
+pub async fn effective_daily_limits(
+    db: &PgPool,
+    deck_id: i64,
+    today: chrono::NaiveDate,
+) -> Result<(i64, i64), String> {
+    let preset = options_for_deck(db, deck_id).await?;
+
+    let row = sqlx::query!(
+        r#"
+        SELECT new_per_day_mode as "new_per_day_mode!: DbLimitMode",
+               review_per_day_mode as "review_per_day_mode!: DbLimitMode",
+               new_per_day_override,
+               review_per_day_override,
+               new_per_day_today_date,
+               review_per_day_today_date
+        FROM decks
+        WHERE id = $1
+        "#,
+        deck_id
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("Database error: {e}"))?
+    .ok_or_else(|| format!("Deck {deck_id} not found"))?;
+
+    let new_limit = resolve_limit(
+        row.new_per_day_mode,
+        row.new_per_day_override,
+        row.new_per_day_today_date,
+        preset.new_per_day,
+        today,
+    );
+    let review_limit = resolve_limit(
+        row.review_per_day_mode,
+        row.review_per_day_override,
+        row.review_per_day_today_date,
+        preset.review_per_day,
+        today,
+    );
+
+    Ok((new_limit, review_limit))
+}
+
+/// Apply one deck's limit mode to produce its effective value.
+fn resolve_limit(
+    mode: DbLimitMode,
+    override_value: Option<i64>,
+    today_date: Option<chrono::NaiveDate>,
+    preset_value: i64,
+    today: chrono::NaiveDate,
+) -> i64 {
+    match mode {
+        DbLimitMode::Preset => preset_value,
+        DbLimitMode::ThisDeck => override_value.unwrap_or(preset_value),
+        DbLimitMode::TodayOnly => {
+            if today_date == Some(today) {
+                override_value.unwrap_or(preset_value)
+            } else {
+                // Expired today-only override; fall back to preset.
+                preset_value
+            }
+        }
     }
 }
