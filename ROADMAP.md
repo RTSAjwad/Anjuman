@@ -245,10 +245,11 @@ matrix's "Summary of the biggest gaps" is the working list:
       - [x] `before`/`after` reorder the gathering class priority.
       - [x] Each criterion has a `server/tests/` test.
 
-      **Descoped** — Anki's third option `mix` (interleave by due date) is
-      **not implemented**: it needs a materialized study queue (new cards have
-      no `due_at` to merge on). The true Anki default is `mix`; we ship `after`
-      as a placeholder default until `mix` lands (see Notes).
+      **Temporarily descoped** — Anki's third option `mix` is **not currently
+      implemented**, but not because of any queue requirement: Anki's `mix` is a
+      stateless `Intersperser` (ratio-based even distribution) that our model can
+      support directly (see Notes). The true Anki default is `mix`; we ship
+      `after` as a placeholder default until `mix` is reintroduced.
 - [x] **US-2.11 — Interday learning/review order**
 
       **As** a student,
@@ -262,9 +263,9 @@ matrix's "Summary of the biggest gaps" is the working list:
             but its *display* rank vs review follows the setting.
       - [x] Each criterion has a `server/tests/` test.
 
-      **Descoped** — Anki's `mix` option is **not implemented** (same
-      materialized-queue reason as US-2.10). Default is `after` until `mix`
-      lands.
+      **Temporarily descoped** — Anki's `mix` option is **not currently
+      implemented** (same stateless-`Intersperser` rationale as US-2.10). Default
+      is `after` until `mix` is reintroduced.
 - [x] **US-2.12 — Review sort order**
 
       **As** a student,
@@ -437,21 +438,45 @@ options belong to the single user). This stage makes the personalisation model
   `TagOnly` no-op from US-2.3. Task 7 (per-user deck options) makes scheduling
   personalisation layered (personal override → school preset) instead of
   Anki's strict single-user model.
-- **Not implemented: full Anki gather→sort parity.** True parity needs a
-  two-phase gather-then-sort pipeline with a *materialized, persistent queue*
-  (to sort the gathered set and serve it across requests), which contradicts our
-  stateless, sessionless study design. We instead approximate with gather-primary
-  sort-secondary ordering in a single query; the end-user behaviour is correct
-  for the common/preset combinations. See `DECK_OPTIONS_SUPPORT.md`
-  "New-card ordering composes as gather then sort".
-- **Future stage: materialized study queue.** A per-student-day persisted queue
-  (`study_queue`) is the enabling work for true gather→sort parity *and* for the
-  "Mix with reviews" options (`new_review_order`, `interday_order`), which are
-  currently **descoped** — `mix` is not offered, and both defaults are `after`
-  (reviews-first) as a placeholder. New cards have no `due_at`, so a faithful
-  date-merged interleave can only be produced by building the queue up-front
-  (gather → sort → merge → drain), not by a per-row `ORDER BY`. Reintroducing
-  `mix` (and restoring it as the default, matching Anki) is part of this stage.
-  Not scheduled yet — candidate for a stage after 7.
+- **Not implemented: full Anki gather→sort parity** — true parity still needs
+  a two-phase gather-then-sort pipeline, which contradicts our stateless,
+  sessionless study design, so we approximate with gather-primary sort-secondary
+  ordering in a single query. See `DECK_OPTIONS_SUPPORT.md` "New-card ordering
+  composes as gather then sort". (This limitation is narrower than it once
+  seemed: see the "Mix" finding below — the mix itself is not a queue concern.)
+- **"Mix with reviews" — de-scoped, but *not* because of the stateless model.**
+  Anki's `mix` (both `new_review_order` and `interday_order`) is implemented in
+  `rslib/src/scheduler/queue/builder/intersperser.rs` (`Intersperser`), which is a
+  pure ratio-based even-distribution of two already-sorted iterators — **not** a
+  due-date merge, and **no** materialized queue is needed. The decision to draw
+  from queue A vs B next is a function of four integers (`a_len`, `b_len`,
+  `a_idx`, `b_idx`):
+
+  ```rust
+  ratio = (a_len + 1) as f32 / (b_len + 1) as f32;
+  // take b next iff (b_idx + 1) * ratio < (a_idx + 1)
+  ```
+
+  each of which maps to a value `next_due_card` already computes (`seen_today`
+  gives `new_seen`/`review_seen`; counts give the lens). We therefore **descoped
+  `mix` for the wrong reason** initially, and will reintroduce it as a small,
+  stateless addition rather than a queue stage. The one loose end to resolve
+  before re-implementing is the *three-bucket count* question — see the next
+  bullet.
+- **Three-bucket counts vs two-bucket limit (the only real `mix` caveat).** Anki
+  gathers interday-learning and review cards against the **same** `LimitKind::Review`
+  counter (interday gathered first) — matching our own `relearning`-folds-into-
+  `review_seen` — but it still tracks them as **separate counts**
+  (`learning = intraday + interday`, `review`, `new`) and interleaves them with
+  **two nested `Intersperser`s**: first interday-vs-review, then
+  new-vs-(review+interday). Our model has no separate interday counter, so the
+  first intersperser would need an additive `interday_seen` (and an interday due
+  count) to be fully faithful; without it, a two-way
+  `new`-vs-`review` approximation is exact whenever no interday learning is due,
+  and only slightly off otherwise. This is a small, additive change — not a
+  queue redesign.
+- Reintroduce `mix` (with `MixWithReviews` as the default again, matching
+  Anki) when ready, per the finding above; it is no longer gated on a
+  "materialized study queue" stage.
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.

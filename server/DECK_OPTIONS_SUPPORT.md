@@ -77,8 +77,8 @@ Legend:
 |---|---|
 | New card gather order (deck / deck-then-random-notes / ascending / descending / random notes / random cards) | ✅ US-2.8 (`new_gather_order`); random uses a deterministic per-student-day seed. |
 | New card sort order (card type / gathered / card-type+random / random note+card type / random) | ✅ US-2.9 (`new_sort_order`); card-type ordering uses `note_type_templates.ord`, random uses the per-student-day seed. |
-| New/review order (before / after) | 🟡 US-2.10 (`new_review_order`). `before` moves new ahead of review; `after` keeps reviews first. Anki's third option `mix` (interleave by due date) is **descoped** — it needs a materialized study queue (see the mix note below). Default is `after` instead of Anki's `mix`. |
-| Interday learning/review order (before / after) | 🟡 US-2.11 (`interday_order`). Interday learning is always gathered first (limit applied first); the option controls its display rank vs review. Anki's `mix` is **descoped** (same reason); default `after` instead of `mix`. |
+| New/review order (before / after) | 🟡 US-2.10 (`new_review_order`). `before` moves new ahead of review; `after` keeps reviews first. Anki's third option `mix` is **temporarily descoped** but is a stateless `Intersperser` (not a queue concern); it will be reintroduced. Default is `after` until then instead of Anki's `mix`. |
+| Interday learning/review order (before / after) | 🟡 US-2.11 (`interday_order`). Interday learning is always gathered first (limit applied first); the option controls its display rank vs review. Anki's `mix` is **temporarily descoped** (same stateless basis); default `after` until reintroduced. |
 | Review sort order (due-then-random, due-then-deck, deck-then-due, ascending/descending intervals, easy/difficult first, ascending/descending retrievability, relative overdueness, random, order added, latest added first) | ✅ US-2.12 (`review_sort_order`). All 13 in-app options supported; `interval` ↦ FSRS `stability`, `easy`/`difficult` ↦ FSRS `difficulty`. Two documented inconsistencies below. |
 
 > The five selectors above are implemented across US-2.8–US-2.12.
@@ -101,10 +101,10 @@ each in-app selection to what we implemented and flags where the two diverge.
 | | Card type, then random | `CardTypeThenRandom` (`tpl.ord ASC, md5(…)`) | ✅ matches |
 | | Random note, then card type | `RandomNoteThenCardType` (`md5(note)‖tpl.ord`) | ✅ matches |
 | | Random | `Random` (`md5(seed‖id)`) | ✅ matches |
-| New/review order | Mix with reviews | *(descoped)* | ⚠️ **not offered** — deferred pending a materialized study queue (see "Mix" decision below) |
+| New/review order | Mix with reviews | *(descoped — will be reintroduced)* | ⚠️ **not currently offered**; Anki's mix is a stateless `Intersperser` (ratio-based even distribution), implementable in our model — see the mix note below |
 | | Show after reviews | `After` | ✅ matches |
 | | Show before reviews | `Before` | ✅ matches |
-| Interday learning/review order | Mix with reviews | *(descoped)* | ⚠️ **not offered** — deferred pending a materialized study queue (see "Mix" decision below) |
+| Interday learning/review order | Mix with reviews | *(descoped — will be reintroduced)* | ⚠️ **not currently offered**; same stateless `Intersperser` basis — see the mix note below |
 | | Show after reviews | `After` | ✅ matches |
 | | Show before reviews | `Before` | ✅ matches |
 | Review sort order | (all 13) | 13 `ReviewSortOrder` variants | ⚠️ two mappings differ from the manual — see the two review-sort bullets in "Key architectural differences" |
@@ -204,17 +204,17 @@ each in-app selection to what we implemented and flags where the two diverge.
   reorder one pair (new-vs-review, interday-vs-review), but the manual never
   fixes interday-vs-new. We resolve those gaps to the underlying gathering order
   (intraday learning → interday learning → review → new).
-- **"Mix with reviews" is descoped (not offered).** Anki's `mix` merges the two
-  classes into a single due-date-ordered queue. We cannot do this yet: (a) our
-  scheduler is single-card and stateless (no materialized queue to interleave),
-  and (b) new cards have no `due_at`, so there is no single sort key to merge
-  them with reviews by "when due" — Anki achieves the merge by *building* the
-  queue up-front (gather → sort → merge → drain). Rather than ship a `mix` that
-  silently behaves like `after`, we **removed it**; only `before`/`after` are
-  offered, defaulting to `after` (reviews-first) instead of Anki's `mix`
-  default. **Decision:** reintroduce `mix` as part of a future "materialized
-  study queue" stage (see ROADMAP Notes); the true Anki default is `mix`, not
-  `after` — `after` is a placeholder until then.
+- **"Mix with reviews" is descoped (not currently offered), but for a reason we
+  got wrong at first.** Anki's `mix` is `Intersperser`
+  (`rslib/src/scheduler/queue/builder/intersperser.rs`): a pure ratio-based even
+  distribution of two already-sorted queues — `ratio = (a_len+1)/(b_len+1)`, and
+  draw from `b` when `(b_idx+1)*ratio < (a_idx+1)`. It is **not** a due-date
+  merge and needs **no** materialized queue; it is expressible statelessly from
+  `seen_today` + due counts. We descoped it on the (mistaken) belief that it
+  required a queue. It will be reintroduced as a small stateless change, with
+  `MixWithReviews` restored as the default. The only open question is the
+  three-bucket *count* split (interday learning shares the `review` limit but is
+  separately counted in Anki) — see ROADMAP Notes.
 - **Review sort "ease" is surfaced via FSRS `difficulty`, not SM-2 ease.** Anki's
   "Easy cards first" / "Difficult cards first" sort on the SM-2 *ease* factor,
   which FSRS has no analogue for; we map them to FSRS `difficulty` ASC/DESC. The
