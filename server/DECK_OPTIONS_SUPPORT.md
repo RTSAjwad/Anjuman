@@ -13,6 +13,7 @@ Legend:
 - ❌ not supported yet
 - ⚪ SM-2-only / not applicable (no SM-2 legacy algorithm)
 - ⏳ deferred — scoping/decision outstanding (see referenced roadmap stage)
+- 📝 planned — story written, not yet implemented
 
 ## Presets
 
@@ -74,13 +75,14 @@ Legend:
 
 | Anki feature | Status |
 |---|---|
-| New card gather order (deck / deck+random / ascending / descending / random) | ❌ |
-| New card sort order (card type / gathered / random…) | ❌ |
-| New/review order (mix / before / after) | ❌ |
-| Interday learning/review order | ❌ |
-| Review sort order (due/random, relative overdueness, FSRS ascending retrievability, etc.) | 🟡 Due cards are sorted by a fixed priority (due date / state gathering order). No configurable review sort order, and specifically **no "ascending retrievability"**. |
+| New card gather order (deck / ascending / descending / random notes / random cards) | 📝 US-2.8 (needs `cards.position`, US-2.8a) |
+| New card sort order (card type / gathered / card-type+random / random note+card type / random) | 📝 US-2.9 |
+| New/review order (mix / before / after) | 📝 US-2.10 |
+| Interday learning/review order (mix / before / after) | 📝 US-2.11 |
+| Review sort order (due/random, due/deck, deck/due, intervals, ease, ascending retrievability) | 📝 US-2.12 — FSRS uses **ascending retrievability**; SM-2 "relative overdueness" is ⚪. |
 
-> This is our largest gap in content ordering: `next_due_card` uses a single hardcoded gathering order.
+> Currently `next_due_card` uses a single hardcoded gathering order; the five
+> selectors above are decomposed into US-2.8–US-2.12.
 
 ## Burying
 
@@ -158,6 +160,12 @@ Legend:
   We store the exact average in seconds (`330s`) rather than replicating Anki's
   minute-rounded *display*. The internal value matches Anki; only the rendered
   label differs.
+- **Random display-order seed is per-student-day, not per-session.** Anki seeds
+  its random gather/sort orders per *study session*; our study flow is stateless
+  (the client loops `POST /decks/:id/study` with no server session), so we seed
+  deterministically from `student_id + day_start`. The queue is stable within a
+  day and varies across days — a deliberate divergence from Anki's per-session
+  seeding.
 
 ## Open questions / under-documented Anki behaviour
 

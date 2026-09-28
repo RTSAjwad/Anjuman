@@ -43,10 +43,8 @@ work, migrations run cleanly from empty, SQLite footprint removed.
 Close the gaps in `server/DECK_OPTIONS_SUPPORT.md` as far as practical. The
 matrix's "Summary of the biggest gaps" is the working list:
 
-- [ ] **Display order** (largest gap) — implement `next_due_card`'s configurable
-      gather/sort/review-order (deck, deck+random, ascending/descending/random;
-      new/review mix order; interday ordering). Currently a single hardcoded
-      order.
+- [ ] **Display order** (largest gap) — Decomposed into US-2.8–US-2.12 (gather,
+      sort, new/review, interday, review-sort). See below.
 - [ ] **FSRS parameter optimization** — store per-school/user FSRS weights and
       add an optimizer endpoint (`compute_parameters`); today it's
       `FSRS::default()` weights only.
@@ -188,6 +186,90 @@ matrix's "Summary of the biggest gaps" is the working list:
 
       **Out of scope**
       - Review (graduated) cards: Hard already uses the FSRS interval.
+- [ ] **US-2.8a — Add `cards.position` (prereq for display order)**
+
+      **As** the scheduler,
+      **I want** a per-card position column,
+      **so that** "ascending/descending position" and several sort orders are
+      meaningful.
+
+      **Acceptance criteria**
+      - [ ] `cards.position BIGINT NOT NULL` exists, defaulting to creation
+            order (backfill = `id`-monotonic) so existing data is ordered.
+      - [ ] New cards get a monotonic position on insert.
+      - [ ] Each criterion has a `server/tests/` test (or a migration-verified
+            backfill).
+
+      **Out of scope**
+      - Manual reordering UI (separate future story).
+- [ ] **US-2.8 — New card gather order**
+
+      **As** a student,
+      **I want** to choose how new cards are gathered (deck / ascending /
+      descending / random notes / random cards),
+      **so that** I control which new cards are prioritised.
+
+      **Acceptance criteria**
+      - [ ] `new_gather_order` enum on `deck_options` (default `deck`).
+      - [ ] `deck` gathers subdecks in order, each in ascending position.
+      - [ ] `ascending`/`descending` order by `cards.position`.
+      - [ ] `random_notes`/`random_cards` use a deterministic per-student-day
+            seed (see divergence note).
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - "Deck, then random notes" (in-app variant) — treated as `deck` subset.
+- [ ] **US-2.9 — New card sort order**
+
+      **As** a student,
+      **I want** to choose how gathered new cards are sorted (card type /
+      gathered / card-type+random / random note+card type / random),
+      **so that** sibling cards are spaced the way I prefer.
+
+      **Acceptance criteria**
+      - [ ] `new_sort_order` enum on `deck_options` (default card-type order).
+      - [ ] Card-type ordering uses `note_type_templates.ord`.
+      - [ ] Deterministic per-student-day seed for random variants.
+      - [ ] Each criterion has a `server/tests/` test.
+- [ ] **US-2.10 — New/review order**
+
+      **As** a student,
+      **I want** to choose whether new cards mix with, precede, or follow
+      review cards,
+      **so that** I control the study session shape.
+
+      **Acceptance criteria**
+      - [ ] `new_review_order` enum (mix / before / after), default mix.
+      - [ ] `before`/`after` reorder the gathering class priority.
+      - [ ] Each criterion has a `server/tests/` test.
+- [ ] **US-2.11 — Interday learning/review order**
+
+      **As** a student,
+      **I want** to choose whether interday (re)learning cards mix with,
+      precede, or follow review cards,
+      **so that** I can front-load or defer harder cards.
+
+      **Acceptance criteria**
+      - [ ] `interday_order` enum (mix / before / after), default mix.
+      - [ ] Interday learning is always *gathered* first (limit applied first),
+            but its *display* order vs review follows the setting.
+      - [ ] Each criterion has a `server/tests/` test.
+- [ ] **US-2.12 — Review sort order**
+
+      **As** a student,
+      **I want** to choose the review sort order (due/random, due/deck,
+      deck/due, ascending/descending interval, ascending/descending ease,
+      ascending retrievability),
+      **so that** I can clear a backlog or prioritise due cards sensibly.
+
+      **Acceptance criteria**
+      - [ ] `review_sort_order` enum (default due-date-then-random).
+      - [ ] **Ascending retrievability** (FSRS `R`) is the FSRS sort; SM-2
+            "relative overdueness" is ⚪ out of scope.
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - SM-2 "relative overdueness" (FSRS uses ascending retrievability).
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 
