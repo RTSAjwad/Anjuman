@@ -153,7 +153,7 @@ matrix's "Summary of the biggest gaps" is the working list:
         `preset`), nullable `new_per_day_override`/`review_per_day_override`, and
         `new_per_day_today_date`/`review_per_day_today_date` for lazy expiry.
         `deck_options.new_per_day`/`review_per_day` remain the preset base.
-- [ ] **US-2.7 — Subdeck limit aggregation**
+- [x] **US-2.7 — Subdeck limit aggregation**
 
       **As** a student studying a deck with subdecks,
       **I want** each subdeck's own limit to cap gathering from that subdeck,
@@ -161,17 +161,17 @@ matrix's "Summary of the biggest gaps" is the working list:
       **so that** limits compose correctly across the deck tree.
 
       **Acceptance criteria**
-      - [ ] Gathering honours each subdeck's effective limit (per-subdeck cap).
-      - [ ] The selected deck's limit caps the overall session total.
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] Gathering honours each subdeck's effective limit (per-subdeck cap).
+      - [x] The selected deck's limit caps the overall session total.
+      - [x] Each criterion has a `server/tests/` test.
 
       **Out of scope**
       - `limits_start_from_top` (collection-wide; deferred to after stage 7).
-        Base aggregation is algorithm-neutral and buildable now; the toggle is
-        the deferred piece.
+        Base aggregation is algorithm-neutral and built now; the toggle is the
+        deferred piece.
 
       **Relation to US-2.6** — resolves each subdeck's *effective* limit via the
-      same `effective_daily_limits` helper, so build 2.7 after 2.6.
+      same `effective_daily_limits` helper.
 - [x] **US-2.1 — Hard-button step behaviour** — implement Anki's exact
       learning/relearning Hard rules. See `PLANNING.md` §2.
 

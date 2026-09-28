@@ -29,7 +29,7 @@ Legend:
 | Anki feature | Status | Notes |
 |---|---|---|
 | Subdecks can have their own preset | ✅ | Each deck has its own `options_id`; nested decks are supported. |
-| Per-deck new/review limits vs. selected-deck total | 🟡 | Per-deck limits are supported (US-2.6); "selected deck governs the total" aggregation across a subtree is planned (US-2.7). |
+| Per-deck new/review limits vs. selected-deck total | ✅ | Subdeck aggregation (US-2.7): each subdeck's effective limit caps gathering from that subdeck, while the selected deck's limit caps the total. `limits_start_from_top` (the collection-wide toggle) is deferred to after stage 7. |
 | Display order taken from selected deck | ❌ | No configurable display order (see Display Order). |
 
 ## Daily Limits

@@ -184,6 +184,102 @@ async fn seen_today(db: &sqlx::PgPool, student_id: i64) -> Result<(i64, i64), St
     Ok((row.new_seen, row.review_seen))
 }
 
+/// Today's already-reviewed counts, bucketed by the card's own deck within a
+/// deck subtree. Used for per-subdeck daily-limit caps (US-2.7).
+///
+/// Returns one row per deck in `deck_id`'s subtree that has seen activity,
+/// as `(deck_id, new_seen, review_seen)`.
+struct SubdeckSeen {
+    deck_id: i64,
+    new_seen: i64,
+    review_seen: i64,
+}
+
+async fn subdeck_seen_today(
+    db: &sqlx::PgPool,
+    student_id: i64,
+    deck_id: i64,
+) -> Result<Vec<SubdeckSeen>, StatusCode> {
+    let day_start = start_of_day(db, student_id).await;
+    let rows = sqlx::query!(
+        r#"
+        WITH RECURSIVE subtree(id) AS (
+            SELECT $1::bigint
+            UNION ALL
+            SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
+        )
+        SELECT c.deck_id,
+               COALESCE(SUM(CASE WHEN r.state_before = 'new' THEN 1 ELSE 0 END), 0) as "new_seen!: i64",
+               COALESCE(SUM(CASE WHEN r.state_before IN ('review', 'relearning') THEN 1 ELSE 0 END), 0) as "review_seen!: i64"
+        FROM reviews r
+        JOIN cards c ON c.id = r.card_id
+        WHERE r.student_id = $2 AND r.reviewed_at >= $3
+          AND c.deck_id IN (SELECT id FROM subtree)
+        GROUP BY c.deck_id
+        "#,
+        deck_id,
+        student_id,
+        day_start
+    )
+    .fetch_all(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| SubdeckSeen {
+            deck_id: r.deck_id,
+            new_seen: r.new_seen,
+            review_seen: r.review_seen,
+        })
+        .collect())
+}
+
+/// Per-deck remaining daily budget for every deck in `deck_id`'s subtree,
+/// as a map of `deck_id -> (new_remaining, review_remaining)`. Each remaining
+/// = effective_limit - seen_today (floored at 0).
+async fn subdeck_remaining_budgets(
+    db: &sqlx::PgPool,
+    student_id: i64,
+    deck_id: i64,
+    today: chrono::NaiveDate,
+) -> Result<std::collections::HashMap<i64, (i64, i64)>, StatusCode> {
+    // Discover the subtree deck ids.
+    let ids: Vec<i64> = sqlx::query!(
+        r#"
+        WITH RECURSIVE subtree(id) AS (
+            SELECT $1::bigint
+            UNION ALL
+            SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
+        )
+        SELECT id as "id!: i64" FROM subtree ORDER BY id
+        "#,
+        deck_id
+    )
+    .fetch_all(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .into_iter()
+    .map(|r| r.id)
+    .collect();
+
+    let seen = subdeck_seen_today(db, student_id, deck_id).await?;
+
+    let mut budgets = std::collections::HashMap::with_capacity(ids.len());
+    for id in ids {
+        let (new_limit, review_limit) =
+            crate::deck_options::effective_daily_limits(db, id, today)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let s = seen.iter().find(|s| s.deck_id == id);
+        let new_seen = s.map(|s| s.new_seen).unwrap_or(0);
+        let review_seen = s.map(|s| s.review_seen).unwrap_or(0);
+        budgets.insert(id, ((new_limit - new_seen).max(0), (review_limit - review_seen).max(0)));
+    }
+
+    Ok(budgets)
+}
+
 /// Limit-aware, due-now per-state counts for a student's deck subtree.
 ///
 /// This is the single source of truth shared by the study flow and
@@ -201,20 +297,27 @@ pub async fn deck_counts_for_student(
     let now = Utc::now();
     let learn_ahead_deadline = now + Duration::seconds(learn_ahead);
 
-    // Effective daily limits, honouring any per-deck override (US-2.6).
-    let (new_per_day, review_per_day) =
+    // Selected deck's effective limits + per-subdeck remaining budgets (US-2.7).
+    let (selected_new, selected_review) =
         crate::deck_options::effective_daily_limits(db, deck_id, day_start.date_naive())
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let selected_new_remaining = (selected_new - new_seen).max(0);
+    let selected_review_remaining = (selected_review - review_seen).max(0);
 
-    let row = sqlx::query!(
+    let budgets = subdeck_remaining_budgets(db, student_id, deck_id, day_start.date_naive())
+        .await?;
+
+    // Per-subdeck physical due-now counts, grouped by the card's own deck, so
+    // each subdeck's own remaining budget can cap its contribution.
+    let rows = sqlx::query!(
         r#"
         WITH RECURSIVE subtree(id) AS (
             SELECT $1::bigint
             UNION ALL
             SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
         )
-        SELECT
+        SELECT c.deck_id as "deck_id!: i64",
             COALESCE(SUM(CASE WHEN (scs.state = 'new') AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "new_total!: i64",
             COALESCE(SUM(CASE WHEN scs.state = 'learning' AND scs.due_at <= $3 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "learning_total!: i64",
             COALESCE(SUM(CASE WHEN scs.state = 'review' AND scs.due_at <= $4 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "review_total!: i64",
@@ -223,6 +326,7 @@ pub async fn deck_counts_for_student(
         JOIN student_card_states scs
             ON scs.card_id = c.id AND scs.student_id = $5
         WHERE c.deck_id IN (SELECT id FROM subtree)
+        GROUP BY c.deck_id
         "#,
         deck_id,
         day_start,
@@ -230,18 +334,28 @@ pub async fn deck_counts_for_student(
         now,
         student_id
     )
-    .fetch_one(db)
+    .fetch_all(db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let new_remaining = (new_per_day - new_seen).max(0);
-    let review_remaining = (review_per_day - review_seen).max(0);
+    let mut new_total = 0i64;
+    let mut learning_total = 0i64;
+    let mut review_total = 0i64;
+    let mut relearning_total = 0i64;
+
+    for r in rows {
+        let (new_cap, review_cap) = budgets.get(&r.deck_id).copied().unwrap_or((0, 0));
+        new_total += r.new_total.min(new_cap);
+        learning_total += r.learning_total;
+        review_total += r.review_total.min(review_cap);
+        relearning_total += r.relearning_total;
+    }
 
     Ok(StudyCounts {
-        new_count: row.new_total.min(new_remaining),
-        learning_count: row.learning_total,
-        review_count: row.review_total.min(review_remaining),
-        relearning_count: row.relearning_total,
+        new_count: new_total.min(selected_new_remaining),
+        learning_count: learning_total,
+        review_count: review_total.min(selected_review_remaining),
+        relearning_count: relearning_total,
     })
 }
 
@@ -263,17 +377,26 @@ async fn next_due_card(
     let day_start = start_of_day(db, student_id).await;
     let now = Utc::now();
 
-    // Effective daily limits, honouring any per-deck override (US-2.6).
-    let (new_per_day, review_per_day) =
+    // Selected deck's effective daily limits + its own remaining budget (US-2.6)
+    // and the per-subdeck remaining budgets (US-2.7).
+    let (selected_new, selected_review) =
         crate::deck_options::effective_daily_limits(db, deck_id, day_start.date_naive())
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let selected_new_remaining = (selected_new - new_seen).max(0);
+    let selected_review_remaining = (selected_review - review_seen).max(0);
 
-    let new_remaining = (new_per_day - new_seen).max(0);
-    let review_remaining = (review_per_day - review_seen).max(0);
+    // Per-subdeck budgets as a stable, id-ordered set of parallel arrays for the
+    // UNNEST join below.
+    let budgets = subdeck_remaining_budgets(db, student_id, deck_id, day_start.date_naive()).await?;
+    let mut subdeck_ids: Vec<i64> = budgets.keys().copied().collect();
+    subdeck_ids.sort_unstable();
+    let subdeck_new_rem: Vec<i64> = subdeck_ids.iter().map(|id| budgets[id].0).collect();
+    let subdeck_review_rem: Vec<i64> = subdeck_ids.iter().map(|id| budgets[id].1).collect();
 
     // Single query: rank due candidates by gathering order using the
-    // normalised step table. Each card uses its own deck's preset.
+    // normalised step table. Each card is gated by BOTH the selected deck's
+    // remaining total AND its own subdeck's remaining budget.
     let row = sqlx::query_as!(
         CardRow,
         r#"
@@ -291,6 +414,8 @@ async fn next_due_card(
             ON dos.options_id = COALESCE(cd.options_id, 0)
            AND dos.kind = (CASE scs.state WHEN 'relearning' THEN 'relearning' ELSE 'learning' END)::step_kind
            AND dos.step_index = scs.step_index
+        JOIN UNNEST($7::bigint[], $8::bigint[], $9::bigint[]) AS budget(deck_id, new_rem, review_rem)
+            ON budget.deck_id = c.deck_id
         WHERE c.deck_id IN (
             WITH RECURSIVE subtree(id) AS (
                 SELECT $2::bigint
@@ -303,8 +428,8 @@ async fn next_due_card(
           AND (scs.buried_at IS NULL OR scs.buried_at < $3)
           AND (
                 (scs.state IN ('learning', 'relearning') AND scs.due_at <= $4)
-             OR (scs.state = 'review' AND scs.due_at <= $4 AND $5::bigint > 0)
-             OR (scs.state = 'new' AND $6::bigint > 0)
+             OR (scs.state = 'review' AND scs.due_at <= $4 AND $5::bigint > 0 AND budget.review_rem > 0)
+             OR (scs.state = 'new' AND $6::bigint > 0 AND budget.new_rem > 0)
           )
         ORDER BY
             CASE
@@ -321,8 +446,11 @@ async fn next_due_card(
         deck_id,
         day_start,
         now,
-        review_remaining,
-        new_remaining
+        selected_review_remaining,
+        selected_new_remaining,
+        subdeck_ids.as_slice(),
+        subdeck_new_rem.as_slice(),
+        subdeck_review_rem.as_slice(),
     )
     .fetch_optional(db)
     .await
