@@ -166,6 +166,14 @@ Legend:
   deterministically from `student_id + day_start`. The queue is stable within a
   day and varies across days — a deliberate divergence from Anki's per-session
   seeding.
+- **New-card ordering composes as *gather order primary, sort order secondary*.**
+  Anki's model is two phases: gather (select the candidate set + a coarse order)
+  then sort (re-order the gathered set — the *final* display order). Our
+  single-card-per-request scheduler approximates this as gather-then-sort keys in
+  one `ORDER BY`, so the sort's final ordering isn't applied as a second, fully
+  separate phase. For the default (`deck` + `card_type_then_gathered`) and most
+  combinations the result matches; strictly matching Anki would require a
+  two-phase gather→sort pipeline (see below).
 
 ## Open questions / under-documented Anki behaviour
 

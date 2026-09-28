@@ -418,5 +418,12 @@ options belong to the single user). This stage makes the personalisation model
   `TagOnly` no-op from US-2.3. Task 7 (per-user deck options) makes scheduling
   personalisation layered (personal override → school preset) instead of
   Anki's strict single-user model.
+- **Not implemented: full Anki gather→sort parity.** True parity needs a
+  two-phase gather-then-sort pipeline with a *materialized, persistent queue*
+  (to sort the gathered set and serve it across requests), which contradicts our
+  stateless, sessionless study design. We instead approximate with gather-primary
+  sort-secondary ordering in a single query; the end-user behaviour is correct
+  for the common/preset combinations. See `DECK_OPTIONS_SUPPORT.md`
+  "New-card ordering composes as gather then sort".
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.
