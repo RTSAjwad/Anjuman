@@ -170,7 +170,7 @@ each in-app selection to what we implemented and flags where the two diverge.
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Easy Days (reduce workload on certain weekdays) | ❌ | server-side | Adjusts FSRS due dates — a genuine server scheduling gap, not client. |
+| Easy Days (reduce workload on certain weekdays) | ❌ | server-side | One slider **per weekday**, each a three-value enum `Minimum` \| `Reduced` \| `Normal`. Adjusts FSRS due dates (not retroactive). A genuine server scheduling gap, not client. |
 
 ## FSRS
 
@@ -188,17 +188,20 @@ each in-app selection to what we implemented and flags where the two diverge.
 
 ## Advanced
 
-| Anki feature | Status |
-|---|---|
-| Maximum interval | ❌ (FSRS intervals unbounded) |
-| Historical retention | ❌ |
-| Ignore cards reviewed before | ❌ |
-| Starting ease | ⚪ (SM-2 concept; FSRS uses difficulty) |
-| Easy bonus | ⚪ (SM-2) |
-| Interval modifier | ⚪ (SM-2) |
-| Hard interval | ⚪ (SM-2) |
-| New interval | ⚪ (SM-2) |
-| Custom scheduling (JS) | ❌ |
+> The in-app Advanced section (under FSRS) shows only the FSRS-relevant options
+> below; the SM-2-only options are hidden under FSRS (we mark them ⚪).
+
+| Anki feature | Status | Notes |
+|---|---|---|
+| Maximum interval | ❌ | **Number, default 36500 (≈100 years), min 0, max 36500.** Caps the review interval; at the cap Hard/Good/Easy give the same delay. A real FSRS feature (not SM-2), not yet implemented — we leave intervals unbounded. |
+| Historical retention | ❌ | **Percentage, default 90%, min 50%, max 100%.** FSRS-only: fills gaps in missing review history. Not implemented. |
+| Ignore cards reviewed before | ❌ | **Date field, default 01/01/1970 (epoch).** Cards reviewed before this date are ignored when optimizing FSRS parameters. Not implemented (depends on the optimizer). |
+| Custom scheduling (JS) | ⏳ | Text-area JS hook, **collection-wide**, "use at your own risk". Descoped (collection-wide) — see stage-7 note. |
+| Starting ease | ⚪ | SM-2 only (hidden under FSRS); FSRS uses difficulty. |
+| Easy bonus | ⚪ | SM-2 only. |
+| Interval modifier | ⚪ | SM-2 only. |
+| Hard interval | ⚪ | SM-2 only. |
+| New interval | ⚪ | SM-2 only. |
 
 ## Summary of the biggest gaps
 

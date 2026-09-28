@@ -72,6 +72,18 @@ matrix's "Summary of the biggest gaps" is the working list:
 - [ ] **Maximum answer seconds (server-side cap)** — in-app it is a number
       (min 1, max 7200); the recorded `response_time_ms` is capped at this value
       when written. Small server behaviour (not a selection-only option).
+- [ ] **Easy Days (server-side scheduling)** — one three-value slider
+      (`Minimum`/`Reduced`/`Normal`) per weekday, adjusting FSRS due dates
+      (non-retroactively). A genuine server scheduling gap; needs a weekday field
+      + due-date adjustment in the FSRS path.
+- [ ] **Maximum interval (server-side cap)** — number (default 36500, min 0,
+      max 36500); caps the FSRS interval so Hard/Good/Easy converge at the cap.
+      We currently leave intervals unbounded.
+- [ ] **Historical retention** — percentage (default 90%, 50–100%); feeds the
+      FSRS optimizer's gap-filling. Fold into the FSRS parameterization work.
+- [ ] **Custom scheduling (JS) — descoped (collection-wide)** — text-area JS
+      hook, collection-wide, "use at your own risk"; deferred with the other
+      collection-wide options (stage 7 note below).
 - [x] **Lapses** — leech threshold/action + empty relearning steps. Done
       (US-2.2–US-2.4). Minimum interval is SM-2 — out of scope.
 - [x] **US-2.2 — Leech threshold**
