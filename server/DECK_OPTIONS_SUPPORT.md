@@ -174,6 +174,14 @@ Legend:
   separate phase. For the default (`deck` + `card_type_then_gathered`) and most
   combinations the result matches; strictly matching Anki would require a
   two-phase gather→sort pipeline (see below).
+- **Display-order pairings the manual leaves unspecified are resolved to Anki's
+  gathering order.** The `new_review_order` and `interday_order` options each
+  reorder one pair (new-vs-review, interday-vs-review), but the manual never
+  fixes interday-vs-new. We resolve those gaps to the underlying gathering order
+  (intraday learning → interday learning → review → new), and treat both `mix`
+  modes as their gathered-first default (interday before review, review before
+  new) — a documented approximation, since a true interleave needs a materialized
+  queue (stateless limitation).
 
 ## Open questions / under-documented Anki behaviour
 
