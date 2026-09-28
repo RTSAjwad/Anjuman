@@ -63,7 +63,7 @@ Legend:
 | Anki feature | Status | Notes |
 |---|---|---|
 | Relearning steps (e.g. `10m`) | ✅ | `deck_option_steps` relearning; default `10m`. |
-| Empty relearning steps → skip relearning, FSRS recomputes interval | 🟡 | Under FSRS this is "change the interval without entering relearning". Not yet implemented (US-2.4). The manual's "1 day" wording is SM-2; FSRS uses the FSRS interval. |
+| Empty relearning steps → skip relearning, FSRS recomputes interval | ✅ | Under FSRS, empty relearning steps skip the relearning phase and recompute the interval directly (US-2.4). The manual's "1 day" wording is the SM-2 rule; FSRS uses the FSRS interval. Empty *learning* steps remain unsupported (learning steps must be non-empty). |
 | Minimum interval | ⚪ | **SM-2 only** (not shown under FSRS). Out of scope. |
 | Leech threshold | ✅ | `leech_threshold` (default 8); counted on review-card "Again" only. |
 | Leech action (Tag Only / Suspend Card) | 🟡 | `leech_action` enum. `SuspendCard` suspends at threshold; `TagOnly` is a documented no-op, and neither action tags the note (no tag system yet — see ROADMAP stage 6). `notes.leech_tagged_at` captures the leech marker. |
@@ -131,10 +131,9 @@ Legend:
 
 1. **Display order** — none of Anki's gather/sort/review-order options; a single hardcoded order. The single largest missing feature area.
 2. **FSRS parameter optimization** — `FSRS::default()` weights with no stored per-user/school parameters and no optimizer endpoint. (`desired_retention` *is* supported.)
-3. **Lapses** — no leech threshold/action, no "empty relearning steps skip relearning" (minimum interval is SM-2 and intentionally out of scope).
-4. **Subdeck limit aggregation** — per-deck limits only; no "selected deck total" semantics.
-5. **Daily-limit fine controls** — no "new cards ignore review limit", no "limits start from top", no "today only".
-6. **Comfort/UX options** — audio, timers, auto-advance, easy days all absent.
+3. **Subdeck limit aggregation** — per-deck limits only; no "selected deck total" semantics.
+4. **Daily-limit fine controls** — no "new cards ignore review limit", no "limits start from top", no "today only".
+5. **Comfort/UX options** — audio, timers, auto-advance, easy days all absent.
 
 ## Key architectural differences vs. Anki
 

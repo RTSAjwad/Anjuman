@@ -234,6 +234,9 @@ pub async fn seed_studiable_card(
 /// Seed a deck with its own preset whose leech threshold/action are set to the
 /// given values, plus a default relearning step so the lapse path is traversable.
 /// Returns the preset id.
+/// Seed a deck preset whose leech threshold/action are set to the given
+/// values, plus a default 10-minute relearning step so the lapse path is
+/// traversable. Returns the preset id.
 pub async fn seed_preset(
     app: &TestApp,
     school_id: i64,
@@ -261,6 +264,30 @@ pub async fn seed_preset(
     .execute(&app.db)
     .await
     .expect("insert relearning step");
+
+    id
+}
+
+/// Seed a preset with a learning step but **no** relearning steps, for testing
+/// empty-relearning-steps (US-2.4: FSRS skip-relearning). Returns the preset id.
+pub async fn seed_empty_relearning_preset(app: &TestApp, school_id: i64) -> i64 {
+    let id = sqlx::query!(
+        "INSERT INTO deck_options (school_id, name) VALUES ($1, $2) RETURNING id",
+        school_id,
+        uuid::Uuid::new_v4().to_string(),
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert preset")
+    .id;
+
+    sqlx::query!(
+        "INSERT INTO deck_option_steps (options_id, kind, step_index, seconds) VALUES ($1, 'learning', 0, 60)",
+        id
+    )
+    .execute(&app.db)
+    .await
+    .expect("insert learning step");
 
     id
 }

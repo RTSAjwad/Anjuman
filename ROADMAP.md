@@ -50,8 +50,8 @@ matrix's "Summary of the biggest gaps" is the working list:
 - [ ] **FSRS parameter optimization** — store per-school/user FSRS weights and
       add an optimizer endpoint (`compute_parameters`); today it's
       `FSRS::default()` weights only.
-- [ ] **Lapses** — leech threshold/action + empty relearning steps. See
-      US-2.2–US-2.4 below. (Minimum interval is SM-2 — out of scope.)
+- [x] **Lapses** — leech threshold/action + empty relearning steps. Done
+      (US-2.2–US-2.4). Minimum interval is SM-2 — out of scope.
 - [x] **US-2.2 — Leech threshold**
 
       **As** a student failing a review card repeatedly,
@@ -82,17 +82,17 @@ matrix's "Summary of the biggest gaps" is the working list:
       **Out of scope / documented divergence**
       - Tagging the note (both actions tag in Anki) — blocked on a tag system
         (ROADMAP stage 6). `TagOnly` is a no-op until tags land.
-- [ ] **US-2.4 — Empty relearning steps**
+- [x] **US-2.4 — Empty relearning steps**
 
       **As** a student who lets FSRS control short-term scheduling,
       **I want** an empty relearning-steps list to skip the relearning phase,
       **so that** FSRS recomputes the interval directly on a lapse.
 
       **Acceptance criteria**
-      - [ ] Empty relearning steps are accepted (no "at least one step" error).
-      - [ ] On `Again` from a review card, the card stays `review` and its
+      - [x] Empty relearning steps are accepted (no "at least one step" error).
+      - [x] On `Again` from a review card, the card stays `review` and its
             interval is recomputed via FSRS (no relearning phase).
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] Each criterion has a `server/tests/` test.
 
       **Out of scope**
       - Empty *learning* steps (the manual flags both as experimental; keep to

@@ -37,6 +37,10 @@ use crate::{auth::AuthUser, db_types::DbCardState, state::AppState};
 ///   - bare numbers default to minutes (Anki convention)
 ///   - decimals are allowed (e.g. `1.5d`)
 ///
+/// An empty/whitespace-only string returns `Ok(vec![])` — allowed for
+/// *relearning* steps (FSRS: skip relearning, recompute the interval). The
+/// caller must enforce that *learning* steps are non-empty separately.
+///
 /// Example: `"1m 1d"` → `[60, 86400]`.
 #[allow(dead_code)] // used once a config endpoint is added
 pub fn parse_steps(input: &str) -> Result<Vec<i64>, String> {
@@ -68,7 +72,10 @@ pub fn parse_steps(input: &str) -> Result<Vec<i64>, String> {
     }
 
     if steps.is_empty() {
-        return Err("At least one step is required".to_string());
+        // Empty steps are allowed for *relearning* (FSRS: skip relearning and
+        // recompute the interval). The caller enforces non-empty *learning*
+        // steps, which are mandatory (this only concerns relearning).
+        return Ok(Vec::new());
     }
 
     Ok(steps)
@@ -413,10 +420,18 @@ pub async fn apply_review(
         },
         DbCardState::Review => match rating {
             1 => {
-                // Again: lapse to relearning.
-                new_state = DbCardState::Relearning;
-                step_index = 0;
-                due_at = now + Duration::seconds(relearning_steps[0]);
+                // Again: lapse. With relearning steps, enter relearning;
+                // with empty relearning steps (FSRS), skip relearning and
+                // recompute the interval directly.
+                if relearning_steps.is_empty() {
+                    new_state = DbCardState::Review;
+                    step_index = 0;
+                    due_at = now + Duration::seconds(interval_fsrs_secs);
+                } else {
+                    new_state = DbCardState::Relearning;
+                    step_index = 0;
+                    due_at = now + Duration::seconds(relearning_steps[0]);
+                }
             }
             _ => {
                 // Hard/Good/Easy: stay review.

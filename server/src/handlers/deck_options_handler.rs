@@ -97,6 +97,15 @@ pub async fn create_deck_options(
     let relearning_steps =
         parse_steps(&body.relearning_steps).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
+    // Learning steps are mandatory (empty would make new cards unlearnable);
+    // empty relearning steps are allowed (FSRS: skip relearning, US-2.4).
+    if learning_steps.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Learning steps cannot be empty".to_string(),
+        ));
+    }
+
     let bury_new = body.bury_new;
     let bury_review = body.bury_review;
     let bury_interday = body.bury_interday;
@@ -204,6 +213,12 @@ pub async fn update_deck_options(
     let mut steps_changed = false;
     if let Some(steps) = &body.learning_steps {
         final_learning = parse_steps(steps).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+        if final_learning.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Learning steps cannot be empty".to_string(),
+            ));
+        }
         steps_changed = true;
     }
     if let Some(steps) = &body.relearning_steps {
