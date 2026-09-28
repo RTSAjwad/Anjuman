@@ -110,10 +110,35 @@ Replace the counter-demo core with the real domain, consuming
 
 ---
 
+## 5. Backfill — user stories + tests for existing features   `[ ]`
+
+After the feature work settles, harden the *existing* surface: characterise it
+and lock it down with the story→test discipline (see `PLANNING.md`). This runs
+last so feature stages can move fast without a large backfill up front, while
+still ending with full regression coverage. New features added in stages 2–4
+should still ship *their own* stories + tests inline, not wait for this stage.
+
+- [ ] Inventory every endpoint/feature (the 71 operations + the scheduling
+      core) and write a `US-5.<n>` story for each, with acceptance criteria —
+      derived from behaviour, not the support matrices.
+- [ ] Add a `server/tests/` test for each story's acceptance criteria (using
+      the `TestApp` harness from task 1), pinning current behaviour.
+- [ ] Add `CruxCore` `update` + `effects()` tests for the client core surface
+      so it has full coverage alongside the server.
+- [ ] Record any gaps/descope found while characterising (behaviour that is
+      undefined or surprising) as follow-up stories, not silently.
+
+**Definition of done:** every endpoint has a `US-5.<n>` story with a passing
+`server/tests/` test; no orphan behaviour.
+
+---
+
 ## Notes
 
 - **Ordering rationale:** task 1 is invisible-but-risky infrastructure (no API
   change) done *before* the feature work so that tasks 2 & 3 don't have to be
-  migrated twice. Tasks 2/3 change the API, which task 4 then consumes.
+  migrated twice. Tasks 2 & 3 change the API, which task 4 then consumes.
+  Task 5 (backfill) runs last so the existing surface gets full story+tests
+  coverage *after* the feature work settles, rather than front-loading it.
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.

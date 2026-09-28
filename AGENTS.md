@@ -30,9 +30,13 @@ three independent Cargo workspaces, linked by path dependencies:
 The ordered task list lives in [`ROADMAP.md`](./ROADMAP.md). Read it before
 starting any new piece of work — it is the single source of truth for what is
 in progress, what is next, and the concrete acceptance criteria for each task.
+User stories and the acceptance-criteria→test discipline are defined in
+[`PLANNING.md`](./PLANNING.md); read that before writing stories or tests.
 
 ## 3. Where the detailed docs live
 
+- `PLANNING.md` — the user-story format, the acceptance-criteria→test mapping,
+  and the ordering rules. The process doc for all feature work.
 - `client/AGENTS.md` — client-specific version pinning and gotchas (Crux 0.20,
   Leptos 0.8, BoltFFI 0.30.1, thaw 0.5-beta). Read before touching `client/`.
 - `client/ARCHITECTURE.md` — the client's design rationale (core-first, thin
@@ -100,5 +104,7 @@ When you finish a ROADMAP sub-task, you are done only when:
 2. For server changes: the OpenAPI spec still generates (the `server` build
    does this automatically) and route coverage is unchanged.
 3. No new warnings beyond those already documented.
-4. The corresponding ROADMAP checkbox is flipped to `[x]` (or the status
+4. Each acceptance criterion of the story has a `server/tests/` (or `client`
+   `CruxCore`) test named after it, per `PLANNING.md`.
+5. The corresponding ROADMAP checkbox is flipped to `[x]` (or the status
    marker updated) by *you*, with a one-line note of what changed.
