@@ -78,7 +78,7 @@ Legend:
 | New card gather order (deck / deck-then-random-notes / ascending / descending / random notes / random cards) | ✅ US-2.8 (`new_gather_order`); random uses a deterministic per-student-day seed. |
 | New card sort order (card type / gathered / card-type+random / random note+card type / random) | ✅ US-2.9 (`new_sort_order`); card-type ordering uses `note_type_templates.ord`, random uses the per-student-day seed. |
 | New/review order (mix / before / after) | ✅ US-2.10 (`new_review_order`). `before` moves new ahead of review; `mix`/`after` keep reviews first (true interleave of `mix` is a stateless limitation — see the divergence note). |
-| Interday learning/review order (mix / before / after) | 📝 US-2.11 |
+| Interday learning/review order (mix / before / after) | ✅ US-2.11 (`interday_order`). Interday learning is always gathered first (limit applied first); the option controls its display rank vs review. |
 | Review sort order (due/random, due/deck, deck/due, intervals, ease, ascending retrievability) | 📝 US-2.12 — FSRS uses **ascending retrievability**; SM-2 "relative overdueness" is ⚪. |
 
 > Currently `next_due_card` uses a single hardcoded gathering order; the five

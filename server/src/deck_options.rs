@@ -10,7 +10,8 @@
 use sqlx::PgPool;
 
 use crate::db_types::{
-    DbLeechAction, DbLimitMode, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder, DbStepKind,
+    DbInterdayOrder, DbLeechAction, DbLimitMode, DbNewGatherOrder, DbNewReviewOrder,
+    DbNewSortOrder, DbStepKind,
 };
 
 pub use anjuman_contracts::deck_options::DeckOptions;
@@ -80,7 +81,7 @@ pub async fn replace_steps(
 /// Fetch a preset by id, including its normalised steps.
 pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
     let row = sqlx::query!(
-        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action as \"leech_action!: DbLeechAction\", new_gather_order as \"new_gather_order!: DbNewGatherOrder\", new_sort_order as \"new_sort_order!: DbNewSortOrder\", new_review_order as \"new_review_order!: DbNewReviewOrder\" FROM deck_options WHERE id = $1",
+        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action as \"leech_action!: DbLeechAction\", new_gather_order as \"new_gather_order!: DbNewGatherOrder\", new_sort_order as \"new_sort_order!: DbNewSortOrder\", new_review_order as \"new_review_order!: DbNewReviewOrder\", interday_order as \"interday_order!: DbInterdayOrder\" FROM deck_options WHERE id = $1",
         id
     )
     .fetch_optional(db)
@@ -107,6 +108,7 @@ pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
         new_gather_order: row.new_gather_order.into(),
         new_sort_order: row.new_sort_order.into(),
         new_review_order: row.new_review_order.into(),
+        interday_order: row.interday_order.into(),
     })
 }
 

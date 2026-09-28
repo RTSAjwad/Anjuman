@@ -104,6 +104,15 @@ pub enum DbNewReviewOrder {
     After,
 }
 
+/// Mirrors the `interday_order` enum (`mix`, `before`, `after`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "interday_order", rename_all = "snake_case")]
+pub enum DbInterdayOrder {
+    Mix,
+    Before,
+    After,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions (server-local DB enums <-> contract enum / application strings)
 // ---------------------------------------------------------------------------
@@ -356,6 +365,38 @@ impl DbNewReviewOrder {
             DbNewReviewOrder::Mix => "mix",
             DbNewReviewOrder::Before => "before",
             DbNewReviewOrder::After => "after",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::InterdayOrder> for DbInterdayOrder {
+    fn from(o: anjuman_contracts::deck_options::InterdayOrder) -> Self {
+        match o {
+            anjuman_contracts::deck_options::InterdayOrder::Mix => DbInterdayOrder::Mix,
+            anjuman_contracts::deck_options::InterdayOrder::Before => DbInterdayOrder::Before,
+            anjuman_contracts::deck_options::InterdayOrder::After => DbInterdayOrder::After,
+        }
+    }
+}
+
+impl From<DbInterdayOrder> for anjuman_contracts::deck_options::InterdayOrder {
+    fn from(o: DbInterdayOrder) -> Self {
+        match o {
+            DbInterdayOrder::Mix => anjuman_contracts::deck_options::InterdayOrder::Mix,
+            DbInterdayOrder::Before => anjuman_contracts::deck_options::InterdayOrder::Before,
+            DbInterdayOrder::After => anjuman_contracts::deck_options::InterdayOrder::After,
+        }
+    }
+}
+
+impl DbInterdayOrder {
+    /// The order as a lowercase string, for binding enum columns via a
+    /// `::interday_order` SQL cast in `query!` macros.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbInterdayOrder::Mix => "mix",
+            DbInterdayOrder::Before => "before",
+            DbInterdayOrder::After => "after",
         }
     }
 }

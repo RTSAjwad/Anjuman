@@ -446,22 +446,37 @@ async fn next_due_card(
     };
     let sort_comma = if new_sort.is_empty() { "" } else { ", " };
 
-    // New/review order (US-2.10): the class priority for `new` vs `review` only
-    // (intraday/interday learning classes 0/1 are untouched). `mix` and `after`
-    // put reviews before new; `before` puts new ahead of review. (True
-    // interleaving of `mix` would need a materialized queue — a stateless
-    // limitation, like the gather/sort note.)
-    let (review_class, new_class) = match options.new_review_order {
-        anjuman_contracts::deck_options::NewReviewOrder::Before => ("3", "2"),
-        anjuman_contracts::deck_options::NewReviewOrder::Mix
-        | anjuman_contracts::deck_options::NewReviewOrder::After => ("2", "3"),
-    };
+    // Class ordering (US-2.10 + US-2.11): assign each state an explicit rank.
+    // Resolve the relative order of {interday learning, review, new} in Rust and
+    // emit a fixed CASE. Intraday learning is always first (rank 0).
+    //
+    // Pairwise constraints:
+    //  - new vs review (new_review_order): before → new < review; else review < new.
+    //  - interday vs review (interday_order): before → interday < review;
+    //    after → interday > review; mix → interday < review (gathered-first).
+    //  - interday vs new is unspecified → interday < new (gathering order).
+    let interday_after_review = options.interday_order == anjuman_contracts::deck_options::InterdayOrder::After;
+    let new_before_review = options.new_review_order == anjuman_contracts::deck_options::NewReviewOrder::Before;
+
+    // Start from the default order [interday, review, new] and apply the two
+    // flips pairwise; then assign ranks 1..3.
+    let rank_interday: i64;
+    let rank_review: i64;
+    let rank_new: i64;
+
+    // Review's rank vs new.
+    rank_review = if new_before_review { 3 } else { 2 };
+    rank_new = if new_before_review { 2 } else { 3 };
+    // Interday's rank: before review/new by default (rank 1); if after, place it
+    // after review (and new) at rank 4.
+    rank_interday = if interday_after_review { 4 } else { 1 };
+
     let class_case = format!(
         "CASE \
-            WHEN scs.state IN ('learning','relearning') AND COALESCE(dos.seconds,0) >= 86400 THEN 1 \
+            WHEN scs.state IN ('learning','relearning') AND COALESCE(dos.seconds,0) >= 86400 THEN {rank_interday} \
             WHEN scs.state IN ('learning','relearning') THEN 0 \
-            WHEN scs.state = 'review' THEN {review_class} \
-            ELSE {new_class} END"
+            WHEN scs.state = 'review' THEN {rank_review} \
+            ELSE {rank_new} END"
     );
 
     let sql = format!(

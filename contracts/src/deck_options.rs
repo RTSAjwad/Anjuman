@@ -66,6 +66,22 @@ impl Default for NewReviewOrder {
     }
 }
 
+/// When interday (re)learning cards are shown relative to review cards (US-2.11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum InterdayOrder {
+    Mix,
+    Before,
+    After,
+}
+
+impl Default for InterdayOrder {
+    fn default() -> Self {
+        InterdayOrder::Mix
+    }
+}
+
 /// The action taken when a card reaches the leech threshold.
 ///
 /// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
@@ -120,6 +136,8 @@ pub struct CreateDeckOptions {
     pub new_sort_order: NewSortOrder,
     #[serde(default)]
     pub new_review_order: NewReviewOrder,
+    #[serde(default)]
+    pub interday_order: InterdayOrder,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -140,6 +158,7 @@ pub struct UpdateDeckOptions {
     pub new_gather_order: Option<NewGatherOrder>,
     pub new_sort_order: Option<NewSortOrder>,
     pub new_review_order: Option<NewReviewOrder>,
+    pub interday_order: Option<InterdayOrder>,
 }
 
 /// A deck options preset as returned to clients.
@@ -165,6 +184,7 @@ pub struct DeckOptions {
     pub new_gather_order: NewGatherOrder,
     pub new_sort_order: NewSortOrder,
     pub new_review_order: NewReviewOrder,
+    pub interday_order: InterdayOrder,
 }
 
 fn default_learning_steps() -> String {

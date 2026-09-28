@@ -245,7 +245,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       - [x] `new_review_order` enum (mix / before / after), default mix.
       - [x] `before`/`after` reorder the gathering class priority.
       - [x] Each criterion has a `server/tests/` test.
-- [ ] **US-2.11 — Interday learning/review order**
+- [x] **US-2.11 — Interday learning/review order**
 
       **As** a student,
       **I want** to choose whether interday (re)learning cards mix with,
@@ -253,10 +253,10 @@ matrix's "Summary of the biggest gaps" is the working list:
       **so that** I can front-load or defer harder cards.
 
       **Acceptance criteria**
-      - [ ] `interday_order` enum (mix / before / after), default mix.
-      - [ ] Interday learning is always *gathered* first (limit applied first),
-            but its *display* order vs review follows the setting.
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] `interday_order` enum (mix / before / after), default mix.
+      - [x] Interday learning is always *gathered* first (limit applied first),
+            but its *display* rank vs review follows the setting.
+      - [x] Each criterion has a `server/tests/` test.
 - [ ] **US-2.12 — Review sort order**
 
       **As** a student,
