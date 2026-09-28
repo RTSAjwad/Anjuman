@@ -446,6 +446,24 @@ async fn next_due_card(
     };
     let sort_comma = if new_sort.is_empty() { "" } else { ", " };
 
+    // New/review order (US-2.10): the class priority for `new` vs `review` only
+    // (intraday/interday learning classes 0/1 are untouched). `mix` and `after`
+    // put reviews before new; `before` puts new ahead of review. (True
+    // interleaving of `mix` would need a materialized queue — a stateless
+    // limitation, like the gather/sort note.)
+    let (review_class, new_class) = match options.new_review_order {
+        anjuman_contracts::deck_options::NewReviewOrder::Before => ("3", "2"),
+        anjuman_contracts::deck_options::NewReviewOrder::Mix
+        | anjuman_contracts::deck_options::NewReviewOrder::After => ("2", "3"),
+    };
+    let class_case = format!(
+        "CASE \
+            WHEN scs.state IN ('learning','relearning') AND COALESCE(dos.seconds,0) >= 86400 THEN 1 \
+            WHEN scs.state IN ('learning','relearning') THEN 0 \
+            WHEN scs.state = 'review' THEN {review_class} \
+            ELSE {new_class} END"
+    );
+
     let sql = format!(
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
@@ -479,12 +497,7 @@ async fn next_due_card(
              OR (scs.state = 'new' AND $6::bigint > 0 AND budget.new_rem > 0)
           )
         ORDER BY
-            CASE
-                WHEN scs.state IN ('learning', 'relearning') AND COALESCE(dos.seconds, 0) >= 86400 THEN 1
-                WHEN scs.state IN ('learning', 'relearning') THEN 0
-                WHEN scs.state = 'review' THEN 2
-                ELSE 3
-            END,
+            {class_case},
             scs.due_at ASC NULLS LAST,
             CASE WHEN scs.state = 'new' THEN 0 ELSE 1 END,
             {new_order}{sort_comma}{new_sort},

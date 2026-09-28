@@ -234,7 +234,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       - [x] Card-type ordering uses `note_type_templates.ord`.
       - [x] Deterministic per-student-day seed for random variants.
       - [x] Each criterion has a `server/tests/` test.
-- [ ] **US-2.10 — New/review order**
+- [x] **US-2.10 — New/review order**
 
       **As** a student,
       **I want** to choose whether new cards mix with, precede, or follow
@@ -242,9 +242,9 @@ matrix's "Summary of the biggest gaps" is the working list:
       **so that** I control the study session shape.
 
       **Acceptance criteria**
-      - [ ] `new_review_order` enum (mix / before / after), default mix.
-      - [ ] `before`/`after` reorder the gathering class priority.
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] `new_review_order` enum (mix / before / after), default mix.
+      - [x] `before`/`after` reorder the gathering class priority.
+      - [x] Each criterion has a `server/tests/` test.
 - [ ] **US-2.11 — Interday learning/review order**
 
       **As** a student,

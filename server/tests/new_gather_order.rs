@@ -135,3 +135,44 @@ async fn new_sort_order_defaults_and_round_trips() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["new_sort_order"], "random_note_then_card_type");
 }
+
+#[tokio::test]
+async fn new_review_order_defaults_and_round_trips() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_student_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    let defaults = anjuman_server::deck_options::get_options(&app.db, 0)
+        .await
+        .expect("default preset");
+    assert_eq!(
+        defaults.new_review_order,
+        anjuman_contracts::deck_options::NewReviewOrder::Mix
+    );
+
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let body = serde_json::json!({ "name": uuid::Uuid::new_v4().to_string(), "new_review_order": "before" });
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/deck-options")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["new_review_order"], "before");
+}

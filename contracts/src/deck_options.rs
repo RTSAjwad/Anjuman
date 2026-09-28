@@ -50,6 +50,22 @@ impl Default for NewSortOrder {
     }
 }
 
+/// When new cards are shown relative to review cards (US-2.10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum NewReviewOrder {
+    Mix,
+    Before,
+    After,
+}
+
+impl Default for NewReviewOrder {
+    fn default() -> Self {
+        NewReviewOrder::Mix
+    }
+}
+
 /// The action taken when a card reaches the leech threshold.
 ///
 /// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
@@ -102,6 +118,8 @@ pub struct CreateDeckOptions {
     pub new_gather_order: NewGatherOrder,
     #[serde(default)]
     pub new_sort_order: NewSortOrder,
+    #[serde(default)]
+    pub new_review_order: NewReviewOrder,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -121,6 +139,7 @@ pub struct UpdateDeckOptions {
     pub leech_action: Option<LeechAction>,
     pub new_gather_order: Option<NewGatherOrder>,
     pub new_sort_order: Option<NewSortOrder>,
+    pub new_review_order: Option<NewReviewOrder>,
 }
 
 /// A deck options preset as returned to clients.
@@ -145,6 +164,7 @@ pub struct DeckOptions {
     pub leech_action: LeechAction,
     pub new_gather_order: NewGatherOrder,
     pub new_sort_order: NewSortOrder,
+    pub new_review_order: NewReviewOrder,
 }
 
 fn default_learning_steps() -> String {

@@ -15,7 +15,7 @@ use anjuman_contracts::UserRole;
 
 use crate::{
     auth::AuthUser,
-    db_types::{DbLeechAction, DbNewGatherOrder, DbNewSortOrder},
+    db_types::{DbLeechAction, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder},
     deck_options::{self, DeckOptions},
     handlers::{reviews::parse_steps},
     state::AppState,
@@ -119,7 +119,7 @@ pub async fn create_deck_options(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order) RETURNING id",
+        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order) RETURNING id",
         claims.school_id,
         body.name,
         body.desired_retention,
@@ -132,6 +132,7 @@ pub async fn create_deck_options(
         DbLeechAction::from(body.leech_action).as_str(),
         DbNewGatherOrder::from(body.new_gather_order).as_str(),
         DbNewSortOrder::from(body.new_sort_order).as_str(),
+        DbNewReviewOrder::from(body.new_review_order).as_str(),
     )
     .fetch_one(&mut *tx)
     .await
@@ -404,6 +405,22 @@ pub async fn update_deck_options(
         sqlx::query!(
             "UPDATE deck_options SET new_sort_order = $1::text::new_sort_order WHERE id = $2",
             DbNewSortOrder::from(order).as_str(),
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
+    }
+
+    if let Some(order) = body.new_review_order {
+        sqlx::query!(
+            "UPDATE deck_options SET new_review_order = $1::text::new_review_order WHERE id = $2",
+            DbNewReviewOrder::from(order).as_str(),
             id
         )
         .execute(&mut *tx)
