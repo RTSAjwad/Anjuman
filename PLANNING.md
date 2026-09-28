@@ -49,6 +49,11 @@ view. Use this template, id stamped `US-<stage>.<n>`:
 
 Conventions:
 
+- **Ground stories in the Anki manual.** Anjuman aims for maximum Anki
+  compatibility, so every story that touches scheduling, deck options,
+  preferences, or study behaviour must cite the relevant page of
+  <https://docs.ankiweb.net/> and mirror its terminology and defaults. When the
+  manual is silent or we deliberately diverge, say so explicitly.
 - **The id `US-<stage>.<n>`** is referenced in commits ("fixes US-3.2") and in
   test names, so a story, its tests, and its change are traceable.
 - **Acceptance criteria are the contract.** Each `[ ]` must be observable and

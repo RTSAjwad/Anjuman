@@ -105,7 +105,7 @@ Legend:
 | Desired retention per deck within a preset | ❌ | Retention is preset-level only. |
 | FSRS parameter optimization | 🟡 | No stored weight columns; scheduling uses `FSRS::default()` weights. No optimizer (`compute_parameters`) endpoint yet. Significant gap — no parameter tuning. |
 | Reschedule cards on change | ❌ | Changes only affect future reviews; no reschedule-on-change. |
-| Minimum recommended retention / Health check / Simulator | ❌ | Removed or experimental in Anki; not implemented. |
+| Minimum recommended retention / Health check / Simulator | ❌ | Not implemented. (`Compute minimum recommended retention` additionally was **removed upstream** in Anki 25.07.) |
 | Learning/relearning steps < 1d guidance | ✅ | Steps supported; no hard block on ≥1d steps (like Anki, guidance only). |
 
 ## Advanced

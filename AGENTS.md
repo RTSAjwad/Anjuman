@@ -37,6 +37,12 @@ User stories and the acceptance-criteria→test discipline are defined in
 
 - `PLANNING.md` — the user-story format, the acceptance-criteria→test mapping,
   and the ordering rules. The process doc for all feature work.
+- **Anki manual** — the authoritative reference for feature behaviour, since
+  Anjuman aims for maximum Anki compatibility: <https://docs.ankiweb.net/>.
+  Feature-specific pages: [deck options](https://docs.ankiweb.net/deck-options.html),
+  [preferences](https://docs.ankiweb.net/preferences.html). Read the relevant
+  page before implementing a feature; the support matrices below are derived
+  from (and link back to) it.
 - `client/AGENTS.md` — client-specific version pinning and gotchas (Crux 0.20,
   Leptos 0.8, BoltFFI 0.30.1, thaw 0.5-beta). Read before touching `client/`.
 - `client/ARCHITECTURE.md` — the client's design rationale (core-first, thin
