@@ -154,11 +154,22 @@ each in-app selection to what we implemented and flags where the two diverge.
 | Show on-screen timer | ❌ | selection-only / client | Boolean, default off. Pure client UI — counts time per card on the Study screen. Server only persists the toggle. |
 | Stop on-screen timer on answer | ❌ | selection-only / client | Boolean, default off; "doesn't affect statistics". Client behaviour only. Server only persists the toggle. |
 
-## Auto Advance / Easy Days
+## Auto Advance
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Auto advance (show question/answer seconds) | ❌ | selection-only / client | Stores seconds-to-show; the advancing action is a client behaviour (stage 4). **Decision:** treated as client-side (the server only persists the timing values; it performs no scheduling or advancing). |
+| Seconds to show question for | ❌ | selection-only / client | Decimal (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Client behaviour (stage 4). |
+| Seconds to show answer for | ❌ | selection-only / client | Decimal (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Client behaviour (stage 4). |
+| Wait for audio | ❌ | selection-only / client | Boolean, default on. Client behaviour (stage 4). |
+| Question action | ❌ | selection-only / client | Enum `Show Answer` \| `Show Card`, default `Show Answer`. Client behaviour (stage 4). |
+| Answer action | ❌ | selection-only / client | Enum `Bury Card` \| `Answer Again` \| `Answer Good` \| `Answer Hard` \| `Show Reminder`, default `Bury Card`. Client behaviour (stage 4). |
+
+**Decision** — the whole Auto Advance group is treated as selection-only / client: the server persists the values (seconds, wait-for-audio flag, and the two action enums) but performs no timing or advancing (stage 4).
+
+## Easy Days
+
+| Anki feature | Status | Kind | Notes |
+|---|---|---|---|
 | Easy Days (reduce workload on certain weekdays) | ❌ | server-side | Adjusts FSRS due dates — a genuine server scheduling gap, not client. |
 
 ## FSRS

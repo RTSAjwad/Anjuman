@@ -341,14 +341,19 @@ matrix's "Summary of the biggest gaps" is the working list:
       them (stage 4). Server work is **fixed fields + CRUD round-trip only** —
       no behaviour, and tests assert persistence, not effect.
 
-      Options (from `DECK_OPTIONS_SUPPORT.md` "Audio" / "Timers / Auto Advance"):
-      - [ ] On-screen timer (show timer; stop on answer).
+      Options (from `DECK_OPTIONS_SUPPORT.md` "Audio" / "Timers" / "Auto Advance"):
+      - [ ] On-screen timer — "Show on-screen timer" (boolean, default off).
+      - [ ] On-screen timer — "Stop on-screen timer on answer" (boolean, default off).
       - [ ] Audio — "Don't play audio automatically" (boolean).
       - [ ] Audio — "Skip question when replaying answer" (boolean).
-      - [ ] Auto advance (seconds to show question / answer).
+      - [ ] Auto advance — "Seconds to show question for" (f64 1dp, 0.0–9999.0, default 0.0).
+      - [ ] Auto advance — "Seconds to show answer for" (f64 1dp, 0.0–9999.0, default 0.0).
+      - [ ] Auto advance — "Wait for audio" (boolean, default on).
+      - [ ] Auto advance — "Question action" (enum `show_answer` | `show_card`, default `show_answer`).
+      - [ ] Auto advance — "Answer action" (enum `bury_card` | `answer_again` | `answer_good` | `answer_hard` | `show_reminder`, default `bury_card`).
 
-      **Decision** — treated as client-side: the server persists the timing
-      values only (no scheduling/advancing behaviour).
+      **Decision** — treated as client-side: the server persists the values only
+      (no timing/advancing behaviour).
 
       **Acceptance criteria** (per option)
       - [ ] Field added to the contract + `deck_options` table + CRUD
