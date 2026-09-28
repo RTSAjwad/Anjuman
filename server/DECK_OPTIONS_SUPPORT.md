@@ -154,12 +154,13 @@ each in-app selection to what we implemented and flags where the two diverge.
 | Anki feature | Status | Notes |
 |---|---|---|
 | FSRS algorithm itself | ✅ | `fsrs` 6.6 crate, `FSRS::default()`. |
-| FSRS enable/disable (global) | ⚪ | FSRS-only platform — always on, no SM-2 toggle. |
-| Desired retention | ✅ | `desired_retention` (default 0.9), preset-scoped. |
-| Desired retention per deck within a preset | ❌ | Retention is preset-level only. |
-| FSRS parameter optimization | 🟡 | No stored weight columns; scheduling uses `FSRS::default()` weights. No optimizer (`compute_parameters`) endpoint yet. Significant gap — no parameter tuning. |
-| Reschedule cards on change | ❌ | Changes only affect future reviews; no reschedule-on-change. |
-| Minimum recommended retention / Health check / Simulator | ❌ | Not implemented. (`Compute minimum recommended retention` additionally was **removed upstream** in Anki 25.07.) |
+| FSRS enable/disable (global) | ⚪ | A single collection-wide boolean toggle in Anki, shared by all presets. Anjuman is FSRS-only, so we omit it — always on, no SM-2 toggle. |
+| Desired retention | ✅ | `desired_retention` (default 0.9), a **70–99% slider** in-app. We store a `f64` validated `0.0..=1.0` (no 70–99 clamp — see divergence note). |
+| Desired retention per deck (deck scoping) | 🟡 | The in-app retention selector has a **Preset / This deck** scope toggle (same as the daily limits); our `desired_retention` is preset-scoped only — per-deck retention is not implemented. See stage-7 per-deck personalisation. |
+| FSRS parameters | 🟡 | Scheduling uses `FSRS::default()` weights; **no stored parameter columns and no optimizer endpoint yet** (significant gap). The in-app UI has **two boxes** — a parameters editor and a search box (`preset: "Default" ~is:suspended`) that selects which review history feeds optimization — plus "Optimise Current Preset" / "Optimise All Presets" buttons. None of this is wired. |
+| Reschedule cards on change | ⏳ | Collection-wide, **not saved** (a transient action), in-app. Descoped to after stage 7 alongside the other collection-wide toggles. |
+| Check health when optimizing | ⏳ | Collection-wide boolean (default off), in-app; only performed for "Optimise Current Preset". Descoped to after stage 7 (collection-wide). |
+| FSRS Simulator (Experimental) | ⏳ | The "FSRS Simulator (Experimental)" button and the "Help Me Decide (Experimental)" button open **two different simulators** (they display different graphs). Both are descoped to a **future post-client stage** (simulation is a UI-heavy feature; see ROADMAP Notes). (`Compute minimum recommended retention` was **removed upstream** in Anki 25.07.) |
 | Learning/relearning steps < 1d guidance | ✅ | Steps supported; no hard block on ≥1d steps (like Anki, guidance only). |
 
 ## Advanced
@@ -248,6 +249,13 @@ each in-app selection to what we implemented and flags where the two diverge.
   overdueness" and "descending retrievability" (and their ascending counterparts)
   produce the *same* ordering — overdueness is Anki's linear proxy for the exact
   FSRS forgetting-curve retrievability.
+- **Desired retention is a 70–99% range in-app, but we accept any `0.0..=1.0`.**
+  Anki's UI constrains desired retention to a [70%, 99%] slider (the manual says
+  "you can set your desired retention below 0.7 with the expert edits to the
+  config, but it is not recommended"); we store a `f64` and validate only the
+  `0.0..=1.0` envelope, without the 70–99 clamp. Recorded as a deliberate
+  relaxation — revisit if we ever mirror Anki's slider in the client, at which
+  point the client (or server validation) should re-impose the range.
 
 ## Open questions / under-documented Anki behaviour
 

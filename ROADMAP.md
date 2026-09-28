@@ -57,7 +57,18 @@ matrix's "Summary of the biggest gaps" is the working list:
       review-sort) all done. See below.
 - [ ] **FSRS parameter optimization** — store per-school/user FSRS weights and
       add an optimizer endpoint (`compute_parameters`); today it's
-      `FSRS::default()` weights only.
+      `FSRS::default()` weights only. The in-app UI has the parameters editor,
+      an optimization search filter (`preset: "Default" ~is:suspended`), and
+      "Optimise Current Preset"/"Optimise All Presets" actions.
+- [ ] **Collection-wide FSRS toggles (descoped to stage 7)** — "Reschedule cards
+      on change" (transient, not saved) and "Check health when optimizing" are
+      both collection-wide booleans in-app; deferred with the other
+      collection-wide options (see the daily-limits note below).
+- [ ] **FSRS simulator / Help Me Decide (descoped to a post-client stage)** —
+      the "FSRS Simulator (Experimental)" and "Help Me Decide (Experimental)"
+      buttons each open a distinct simulator (different graphs). Both are UI-
+      heavy (and may need server-side simulation endpoints), so descoped until
+      after the client lands (stage 4); no server work now.
 - [x] **Lapses** — leech threshold/action + empty relearning steps. Done
       (US-2.2–US-2.4). Minimum interval is SM-2 — out of scope.
 - [x] **US-2.2 — Leech threshold**
@@ -522,5 +533,11 @@ options belong to the single user). This stage makes the personalisation model
   new/review/interday counters. The due-now class counts used for the ratio are
   *physical* (pre limit-clamp), so `mix` is exact when limits are not binding
   and a close approximation when they are.
+- **FSRS simulators are descoped to a post-client stage.** Anki has two distinct
+  simulators behind the "Help Me Decide (Experimental)" and "FSRS Simulator
+  (Experimental)" buttons (they show different graphs). Both are UI-heavy and
+  may need server-side simulation endpoints, so we do no server work for them
+  now; revisit after stage 4 (client). The optimizer and "check health" are
+  separate concerns and are not blocked by this descope.
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.
