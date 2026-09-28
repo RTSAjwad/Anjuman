@@ -139,11 +139,17 @@ each in-app selection to what we implemented and flags where the two diverge.
 | Directional burying (earlier card types can't be buried by later) | ✅ | Implemented per gathering order. |
 | Defaults | 🟡 | Anki documents these ON; we default **OFF** (a deliberate divergence). |
 
-## Audio / Timers / Auto Advance / Easy Days
+## Audio
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Audio auto-play toggle / skip question on replay | ❌ | selection-only / client | Persisting the toggle is trivial plumbing; playback is client behaviour (stage 4). |
+| Don't play audio automatically | ❌ | selection-only / client | Boolean. When on, audio is not auto-played; playback is a client behaviour (stage 4). Server only persists the toggle. |
+| Skip question when replaying answer | ❌ | selection-only / client | Boolean. Controls whether question audio is included in the Replay action on the answer side — purely client behaviour (stage 4). |
+
+## Timers / Auto Advance / Easy Days
+
+| Anki feature | Status | Kind | Notes |
+|---|---|---|---|
 | Internal timer (max answer seconds) | 🟡 | server+client | We record `response_time_ms` but do not cap it at 60s; the cap is a server-side write, the on-screen timer is client. |
 | On-screen timer options | ❌ | selection-only / client | Pure client UI (show timer; stop on answer). Server only persists the toggle. |
 | Auto advance (show question/answer seconds) | ❌ | selection-only / client | Stores seconds-to-show; the advancing action is a client behaviour (stage 4). **Decision:** treated as client-side (the server only persists the timing values; it performs no scheduling or advancing). |

@@ -338,9 +338,10 @@ matrix's "Summary of the biggest gaps" is the working list:
       them (stage 4). Server work is **fixed fields + CRUD round-trip only** —
       no behaviour, and tests assert persistence, not effect.
 
-      Options (from `DECK_OPTIONS_SUPPORT.md` "Audio / Timers / Auto Advance"):
+      Options (from `DECK_OPTIONS_SUPPORT.md` "Audio" / "Timers / Auto Advance"):
       - [ ] On-screen timer (show timer; stop on answer).
-      - [ ] Audio (auto-play toggle; skip question on replay).
+      - [ ] Audio — "Don't play audio automatically" (boolean).
+      - [ ] Audio — "Skip question when replaying answer" (boolean).
       - [ ] Auto advance (seconds to show question / answer).
 
       **Decision** — treated as client-side: the server persists the timing
