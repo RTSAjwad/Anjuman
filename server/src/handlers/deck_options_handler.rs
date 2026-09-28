@@ -15,6 +15,7 @@ use anjuman_contracts::UserRole;
 
 use crate::{
     auth::AuthUser,
+    db_types::DbLeechAction,
     deck_options::{self, DeckOptions},
     handlers::{reviews::parse_steps},
     state::AppState,
@@ -109,7 +110,7 @@ pub async fn create_deck_options(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action) RETURNING id",
         claims.school_id,
         body.name,
         body.desired_retention,
@@ -118,6 +119,8 @@ pub async fn create_deck_options(
         bury_interday,
         body.new_per_day,
         body.review_per_day,
+        body.leech_threshold,
+        DbLeechAction::from(body.leech_action).as_str(),
     )
     .fetch_one(&mut *tx)
     .await
@@ -320,6 +323,38 @@ pub async fn update_deck_options(
         sqlx::query!(
             "UPDATE deck_options SET review_per_day = $1 WHERE id = $2",
             v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
+    }
+
+    if let Some(v) = body.leech_threshold {
+        sqlx::query!(
+            "UPDATE deck_options SET leech_threshold = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
+    }
+
+    if let Some(action) = body.leech_action {
+        sqlx::query!(
+            "UPDATE deck_options SET leech_action = $1::text::leech_action WHERE id = $2",
+            DbLeechAction::from(action).as_str(),
             id
         )
         .execute(&mut *tx)

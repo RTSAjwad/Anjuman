@@ -1,13 +1,17 @@
 # Anki Deck Options — Support Matrix
 
-This document compares the deck options described in the [Anki manual](https://docs.ankiweb.net/deck-options.html) against what Anki Classroom supports. It also captures places where we intentionally diverge from Anki.
+This document compares the deck options described in the [Anki manual](https://docs.ankiweb.net/deck-options.html) against what Anki Classroom supports. It also captures where we intentionally diverge from Anki.
+
+> **Policy: FSRS-only, no SM-2.** Anjuman supports the FSRS scheduler only. We
+> do **not** implement SM-2-specific features; such options are marked ⚪ and are
+> out of scope. Before implementing any option, first classify it SM-2 vs FSRS.
 
 Legend:
 
 - ✅ supported
 - 🟡 partial / differs
-- ❌ not supported
-- ⚪ not applicable (FSRS-only platform — no SM-2 legacy algorithm)
+- ❌ not supported yet
+- ⚪ SM-2-only / not applicable (no SM-2 legacy algorithm)
 
 ## Presets
 
@@ -59,9 +63,10 @@ Legend:
 | Anki feature | Status | Notes |
 |---|---|---|
 | Relearning steps (e.g. `10m`) | ✅ | `deck_option_steps` relearning; default `10m`. |
-| Blank steps → 1-day interval | 🟡 | We always default to `10m`; no support for "empty steps = 1 day". |
-| Minimum interval (days after relearning) | ❌ | Not implemented. |
-| Leeches | ❌ | Not implemented (no leech tracking/threshold/tagging). |
+| Empty relearning steps → skip relearning, FSRS recomputes interval | 🟡 | Under FSRS this is "change the interval without entering relearning". Not yet implemented (US-2.4). The manual's "1 day" wording is SM-2; FSRS uses the FSRS interval. |
+| Minimum interval | ⚪ | **SM-2 only** (not shown under FSRS). Out of scope. |
+| Leech threshold | ✅ | `leech_threshold` (default 8); counted on review-card "Again" only. |
+| Leech action (Tag Only / Suspend Card) | 🟡 | `leech_action` enum. `SuspendCard` suspends at threshold; `TagOnly` is a documented no-op, and neither action tags the note (no tag system yet — see ROADMAP stage 6). `notes.leech_tagged_at` captures the leech marker. |
 
 ## Display Order
 
@@ -126,14 +131,18 @@ Legend:
 
 1. **Display order** — none of Anki's gather/sort/review-order options; a single hardcoded order. The single largest missing feature area.
 2. **FSRS parameter optimization** — `FSRS::default()` weights with no stored per-user/school parameters and no optimizer endpoint. (`desired_retention` *is* supported.)
-3. **Lapses** — no minimum interval, no leech detection, no "empty steps = 1 day".
+3. **Lapses** — no leech threshold/action, no "empty relearning steps skip relearning" (minimum interval is SM-2 and intentionally out of scope).
 4. **Subdeck limit aggregation** — per-deck limits only; no "selected deck total" semantics.
 5. **Daily-limit fine controls** — no "new cards ignore review limit", no "limits start from top", no "today only".
 6. **Comfort/UX options** — audio, timers, auto-advance, easy days all absent.
 
 ## Key architectural differences vs. Anki
 
-- **FSRS-only**: no SM-2 legacy algorithm, so SM-2-only options (starting ease, easy bonus, interval modifier, hard interval, new interval) are conceptually absent rather than "unsupported".
+- **FSRS-only: no SM-2.** Anjuman supports the FSRS scheduler only and
+  deliberately does **not** implement SM-2-specific features. When the manual
+  describes an option, we first classify it SM-2 vs FSRS; SM-2-only options
+  (starting ease, easy bonus, interval modifier, hard interval, new interval,
+  and minimum interval) are marked ⚪ below and are out of scope, not "missing".
 - **Steps are normalized** into `deck_option_steps` (one row per step) rather than stored as a space-separated string — enabling the SQL-side intraday/interday computation.
 - **Day boundary is UTC-anchored** via a per-user `day_start_hour`, with no per-user timezone yet (Anki stores a full "next day starts at" timestamp per collection).
 - **Burying defaults are OFF**, diverging from Anki's documented ON default.

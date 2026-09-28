@@ -17,7 +17,7 @@ async fn hard_on_new_card_uses_average_of_first_two_steps() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (student_id, _token) = create_user(&app, UserRole::Student).await;
-    let card_id = seed_studiable_card(&app, student_id, "new", 0).await;
+    let card_id = seed_studiable_card(&app, student_id, "new", 0, 0, 0).await;
 
     let reviewed = apply_review(&app.db, student_id, card_id, 2, None)
         .await
@@ -37,7 +37,7 @@ async fn hard_on_later_learning_step_repeats_current_step() {
     let app = common::TestApp::new().await;
     let (student_id, _token) = create_user(&app, UserRole::Student).await;
     // Seed a learning card already on step 1 (the `10m` step).
-    let card_id = seed_studiable_card(&app, student_id, "learning", 1).await;
+    let card_id = seed_studiable_card(&app, student_id, "learning", 1, 1, 0).await;
 
     let reviewed = apply_review(&app.db, student_id, card_id, 2, None)
         .await

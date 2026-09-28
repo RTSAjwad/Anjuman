@@ -54,6 +54,11 @@ Conventions:
   preferences, or study behaviour must cite the relevant page of
   <https://docs.ankiweb.net/> and mirror its terminology and defaults. When the
   manual is silent or we deliberately diverge, say so explicitly.
+- **Classify SM-2 vs FSRS before implementing.** Anjuman supports FSRS only,
+  not SM-2. The manual interleaves the two without always saying so. Before
+  writing a story for an option, determine whether it is SM-2-specific (then
+  mark it ⚪/out-of-scope and skip it) or FSRS/algorithm-neutral (then implement
+  it). Record the classification in the story and support matrix.
 - **The id `US-<stage>.<n>`** is referenced in commits ("fixes US-3.2") and in
   test names, so a story, its tests, and its change are traceable.
 - **Acceptance criteria are the contract.** Each `[ ]` must be observable and

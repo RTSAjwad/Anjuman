@@ -85,6 +85,11 @@ test DB must exist (`createdb anjuman_test`). See `server/tests/common/mod.rs`.
 
 ## 5. Working conventions
 
+- **FSRS-only, no SM-2.** Anjuman supports the FSRS scheduler only; do not
+  implement SM-2-specific features. The Anki manual interleaves SM-2 and FSRS
+  behaviour without always labelling which is which, so before implementing any
+  scheduling/deck-options option, classify it SM-2 vs FSRS (see
+  `server/DECK_OPTIONS_SUPPORT.md`, which marks SM-2-only options ⚪).
 - **Centralize crate versions** in each workspace's `Cargo.toml`
   `[workspace.dependencies]` (the client already does; mirror it server-side).
 - **Never commit secrets** — `.env` files are gitignored (see root

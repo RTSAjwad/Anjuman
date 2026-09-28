@@ -2,6 +2,25 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The action taken when a card reaches the leech threshold.
+///
+/// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
+/// this repo has no tag system yet (see `ROADMAP.md` stage 6); until then the
+/// tag half is omitted and the note is marked via `notes.leech_tagged_at`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum LeechAction {
+    TagOnly,
+    SuspendCard,
+}
+
+impl Default for LeechAction {
+    fn default() -> Self {
+        LeechAction::SuspendCard
+    }
+}
+
 /// Expected JSON body for creating a deck options preset.
 ///
 /// Learning/relearning steps are submitted as Anki-style strings (e.g.
@@ -27,6 +46,10 @@ pub struct CreateDeckOptions {
     pub new_per_day: i64,
     #[serde(default = "default_review_per_day")]
     pub review_per_day: i64,
+    #[serde(default = "default_leech_threshold")]
+    pub leech_threshold: i64,
+    #[serde(default)]
+    pub leech_action: LeechAction,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -42,6 +65,8 @@ pub struct UpdateDeckOptions {
     pub bury_interday: Option<bool>,
     pub new_per_day: Option<i64>,
     pub review_per_day: Option<i64>,
+    pub leech_threshold: Option<i64>,
+    pub leech_action: Option<LeechAction>,
 }
 
 /// A deck options preset as returned to clients.
@@ -62,6 +87,8 @@ pub struct DeckOptions {
     pub bury_interday: bool,
     pub new_per_day: i64,
     pub review_per_day: i64,
+    pub leech_threshold: i64,
+    pub leech_action: LeechAction,
 }
 
 fn default_learning_steps() -> String {
@@ -82,4 +109,8 @@ fn default_new_per_day() -> i64 {
 
 fn default_review_per_day() -> i64 {
     200
+}
+
+fn default_leech_threshold() -> i64 {
+    8
 }

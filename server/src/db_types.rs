@@ -53,6 +53,14 @@ pub enum DbStepKind {
     Relearning,
 }
 
+/// Mirrors the `leech_action` enum (`tag_only`, `suspend_card`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "leech_action", rename_all = "snake_case")]
+pub enum DbLeechAction {
+    TagOnly,
+    SuspendCard,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions (server-local DB enums <-> contract enum / application strings)
 // ---------------------------------------------------------------------------
@@ -115,6 +123,37 @@ impl DbMembershipRole {
         match self {
             DbMembershipRole::Teacher => "teacher",
             DbMembershipRole::Student => "student",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::LeechAction> for DbLeechAction {
+    fn from(a: anjuman_contracts::deck_options::LeechAction) -> Self {
+        match a {
+            anjuman_contracts::deck_options::LeechAction::TagOnly => DbLeechAction::TagOnly,
+            anjuman_contracts::deck_options::LeechAction::SuspendCard => DbLeechAction::SuspendCard,
+        }
+    }
+}
+
+impl From<DbLeechAction> for anjuman_contracts::deck_options::LeechAction {
+    fn from(a: DbLeechAction) -> Self {
+        match a {
+            DbLeechAction::TagOnly => anjuman_contracts::deck_options::LeechAction::TagOnly,
+            DbLeechAction::SuspendCard => {
+                anjuman_contracts::deck_options::LeechAction::SuspendCard
+            }
+        }
+    }
+}
+
+impl DbLeechAction {
+    /// The action as a lowercase string (e.g. `"suspend_card"`), for binding
+    /// enum columns via a `::leech_action` SQL cast in `query!` macros.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbLeechAction::TagOnly => "tag_only",
+            DbLeechAction::SuspendCard => "suspend_card",
         }
     }
 }

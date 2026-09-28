@@ -458,12 +458,21 @@ pub async fn apply_review(
         },
     }
 
+    // A lapse, in Anki's leech sense, is a review (graduated) card answered
+    // "Again" — not a learning/relearning step reset. Leech counting uses this.
+    let is_review_lapse = current.state == DbCardState::Review && rating == 1;
+
     let new_reps = current.reps + 1;
-    let new_lapses = if rating == 1 {
+    let new_lapses = if is_review_lapse {
         current.lapses + 1
     } else {
         current.lapses
     };
+
+    // Leech detection: when a review card's lapse count reaches the preset's
+    // threshold, suspend it (and, for SuspendCard, mark the note as a leech).
+    // Tag-only is a no-op until the tags system lands (ROADMAP stage 6).
+    let reached_leech = is_review_lapse && new_lapses >= options.leech_threshold;
 
     // Wrap the review's writes (scheduling state, review record, and any
     // sibling buries) in a single IMMEDIATE transaction so the action is
@@ -508,6 +517,31 @@ pub async fn apply_review(
     .execute(&mut *tx)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    // Leech handling: suspend the card at the threshold, and mark the note.
+    if reached_leech {
+        if options.leech_action == anjuman_contracts::deck_options::LeechAction::SuspendCard {
+            sqlx::query!(
+                "UPDATE student_card_states SET suspended = TRUE WHERE student_id = $1 AND card_id = $2",
+                student_id,
+                card_id
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+        }
+
+        // Mark the note as a leech (minimal marker; a full tag system replaces
+        // this in ROADMAP stage 6).
+        sqlx::query!(
+            "UPDATE notes SET leech_tagged_at = $1 WHERE id = $2",
+            now,
+            current.note_id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    }
 
     // Bury siblings (same note) as appropriate, per the deck's sibling-bury
     // toggles and Anki's directional gathering-order rule.

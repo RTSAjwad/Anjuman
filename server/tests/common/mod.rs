@@ -158,13 +158,15 @@ pub async fn create_user(app: &TestApp, role: UserRole) -> (i64, String) {
 }
 
 /// Seed a minimal studiable card (deck + note type + template + note + card +
-/// student state) and return `(student_id, card_id)`. The card starts in
-/// `state` with the given `step_index`.
+/// student state) and return the card id. The card starts in `state` with the
+/// given `step_index`, `reps`, and `lapses`.
 pub async fn seed_studiable_card(
     app: &TestApp,
     student_id: i64,
     state: &str,
     step_index: i64,
+    reps: i64,
+    lapses: i64,
 ) -> i64 {
     let deck_id = sqlx::query!(
         "INSERT INTO decks (school_id, title, created_by) VALUES (1, 'Test Deck', $1) RETURNING id",
@@ -176,7 +178,8 @@ pub async fn seed_studiable_card(
     .id;
 
     let note_type_id = sqlx::query!(
-        "INSERT INTO note_types (school_id, name, field_names) VALUES (1, 'Basic', '[\"Front\",\"Back\"]') RETURNING id"
+        "INSERT INTO note_types (school_id, name, field_names) VALUES (1, $1, '[\"Front\",\"Back\"]') RETURNING id",
+        uuid::Uuid::new_v4().to_string()
     )
     .fetch_one(&app.db)
     .await
@@ -213,10 +216,12 @@ pub async fn seed_studiable_card(
     .id;
 
     sqlx::query!(
-        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses, step_index) VALUES ($1, $2, $3::text::card_state, 0.0, 0.0, 0, 0, $4)",
+        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses, step_index) VALUES ($1, $2, $3::text::card_state, 0.0, 0.0, $4, $5, $6)",
         student_id,
         card_id,
         state,
+        reps,
+        lapses,
         step_index
     )
     .execute(&app.db)
@@ -224,4 +229,38 @@ pub async fn seed_studiable_card(
     .expect("insert student card state");
 
     card_id
+}
+
+/// Seed a deck with its own preset whose leech threshold/action are set to the
+/// given values, plus a default relearning step so the lapse path is traversable.
+/// Returns the preset id.
+pub async fn seed_preset(
+    app: &TestApp,
+    school_id: i64,
+    threshold: i64,
+    action: &str,
+) -> i64 {
+    let id = sqlx::query!(
+        "INSERT INTO deck_options (school_id, name, leech_threshold, leech_action) VALUES ($1, $2, $3, $4::text::leech_action) RETURNING id",
+        school_id,
+        uuid::Uuid::new_v4().to_string(),
+        threshold,
+        action,
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert preset")
+    .id;
+
+    // A single 10-minute relearning step (the default) so the review→lapse→
+    // relearning path has a step to schedule against.
+    sqlx::query!(
+        "INSERT INTO deck_option_steps (options_id, kind, step_index, seconds) VALUES ($1, 'relearning', 0, 600)",
+        id
+    )
+    .execute(&app.db)
+    .await
+    .expect("insert relearning step");
+
+    id
 }

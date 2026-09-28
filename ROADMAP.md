@@ -50,8 +50,53 @@ matrix's "Summary of the biggest gaps" is the working list:
 - [ ] **FSRS parameter optimization** — store per-school/user FSRS weights and
       add an optimizer endpoint (`compute_parameters`); today it's
       `FSRS::default()` weights only.
-- [ ] **Lapses** — minimum interval after relearning; leech tracking
-      (threshold + tag); support "empty relearning steps = 1 day".
+- [ ] **Lapses** — leech threshold/action + empty relearning steps. See
+      US-2.2–US-2.4 below. (Minimum interval is SM-2 — out of scope.)
+- [x] **US-2.2 — Leech threshold**
+
+      **As** a student failing a review card repeatedly,
+      **I want** the card to be flagged a leech after N review-card lapses,
+      **so that** I can spot time-sink cards.
+
+      **Acceptance criteria**
+      - [x] `lapses` counts review-card "Again" (state Review) only, not
+            learning/relearning "Again".
+      - [x] Default leech threshold is 8.
+      - [x] Threshold configurable via deck options (`leech_threshold`).
+      - [x] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - Half-threshold re-warnings (no notification system).
+- [x] **US-2.3 — Leech action (enum)**
+
+      **As** a student,
+      **I want** a leech card to be suspended (configurably),
+      **so that** it stops consuming study time until I unsuspend it.
+
+      **Acceptance criteria**
+      - [x] `leech_action` is an enum: `TagOnly` | `SuspendCard`.
+      - [x] `SuspendCard` suspends the card at threshold (default action).
+      - [x] `TagOnly` is accepted on the wire but not yet effective.
+      - [x] Each criterion has a `server/tests/` test.
+
+      **Out of scope / documented divergence**
+      - Tagging the note (both actions tag in Anki) — blocked on a tag system
+        (ROADMAP stage 6). `TagOnly` is a no-op until tags land.
+- [ ] **US-2.4 — Empty relearning steps**
+
+      **As** a student who lets FSRS control short-term scheduling,
+      **I want** an empty relearning-steps list to skip the relearning phase,
+      **so that** FSRS recomputes the interval directly on a lapse.
+
+      **Acceptance criteria**
+      - [ ] Empty relearning steps are accepted (no "at least one step" error).
+      - [ ] On `Again` from a review card, the card stays `review` and its
+            interval is recomputed via FSRS (no relearning phase).
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - Empty *learning* steps (the manual flags both as experimental; keep to
+        relearning for now).
 - [ ] **Subdeck limit aggregation** — "selected deck governs the total" across
       a subtree.
 - [ ] **Daily-limit fine controls** — "new cards ignore review limit", "limits
@@ -147,6 +192,22 @@ should still ship *their own* stories + tests inline, not wait for this stage.
 
 ---
 
+## 6. Tags — note/collection tagging   `[ ]`
+
+A general tag system (note-level tags: add, remove, filter, browse/search by
+tag). This is a cross-cutting feature in its own right, deferred until after the
+core feature stages settle.
+
+- [ ] `note_tags` table (or equivalent) + schema migration.
+- [ ] CRUD + list/browse/search-by-tag endpoints on `anjuman_contracts`.
+- [ ] Client (stage 4) consumes tags in the browser/search UI.
+- [ ] **Revisit leeches** — wire the leech `TagOnly` action (currently a
+      documented no-op, see US-2.3) to actually emit the `leech` tag, and back
+      the `SuspendCard` action's "also tag the note" behaviour. Today leech
+      le marks the note via `notes.leech_tagged_at` only.
+
+---
+
 ## Notes
 
 - **Ordering rationale:** task 1 is invisible-but-risky infrastructure (no API
@@ -154,5 +215,7 @@ should still ship *their own* stories + tests inline, not wait for this stage.
   migrated twice. Tasks 2 & 3 change the API, which task 4 then consumes.
   Task 5 (backfill) runs last so the existing surface gets full story+tests
   coverage *after* the feature work settles, rather than front-loading it.
+  Task 6 (tags) is a deferred cross-cutting feature that revisits the leech
+  `TagOnly` no-op from US-2.3.
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.

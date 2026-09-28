@@ -9,7 +9,7 @@
 
 use sqlx::PgPool;
 
-use crate::db_types::DbStepKind;
+use crate::db_types::{DbLeechAction, DbStepKind};
 
 pub use anjuman_contracts::deck_options::DeckOptions;
 
@@ -78,7 +78,7 @@ pub async fn replace_steps(
 /// Fetch a preset by id, including its normalised steps.
 pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
     let row = sqlx::query!(
-        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day FROM deck_options WHERE id = $1",
+        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action as \"leech_action!: DbLeechAction\" FROM deck_options WHERE id = $1",
         id
     )
     .fetch_optional(db)
@@ -100,6 +100,8 @@ pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
         bury_interday: row.bury_interday,
         new_per_day: row.new_per_day,
         review_per_day: row.review_per_day,
+        leech_threshold: row.leech_threshold,
+        leech_action: row.leech_action.into(),
     })
 }
 
