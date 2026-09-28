@@ -147,7 +147,7 @@ async fn new_review_order_defaults_and_round_trips() {
         .expect("default preset");
     assert_eq!(
         defaults.new_review_order,
-        anjuman_contracts::deck_options::NewReviewOrder::Mix
+        anjuman_contracts::deck_options::NewReviewOrder::After
     );
 
     use axum::body::Body;
@@ -188,7 +188,7 @@ async fn interday_order_defaults_and_round_trips() {
         .expect("default preset");
     assert_eq!(
         defaults.interday_order,
-        anjuman_contracts::deck_options::InterdayOrder::Mix
+        anjuman_contracts::deck_options::InterdayOrder::After
     );
 
     use axum::body::Body;

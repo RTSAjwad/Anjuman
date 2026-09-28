@@ -51,34 +51,42 @@ impl Default for NewSortOrder {
 }
 
 /// When new cards are shown relative to review cards (US-2.10).
+///
+/// Anki's three options are mix / before / after. Anki defaults to `Mix` (new
+/// and review cards interleaved by due date), but that true interleave needs a
+/// materialized study queue we do not have yet, so `Mix` is **deferred** (see
+/// ROADMAP "Future stage: materialized study queue"). Until then only the two
+/// deterministic orderings are offered, defaulting to `After` (reviews first).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum NewReviewOrder {
-    Mix,
     Before,
     After,
 }
 
 impl Default for NewReviewOrder {
     fn default() -> Self {
-        NewReviewOrder::Mix
+        NewReviewOrder::After
     }
 }
 
 /// When interday (re)learning cards are shown relative to review cards (US-2.11).
+///
+/// As with `NewReviewOrder`, Anki's true `Mix` (interleave by due date) is
+/// deferred pending a materialized study queue; only `before`/`after` are
+/// offered, defaulting to `After`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum InterdayOrder {
-    Mix,
     Before,
     After,
 }
 
 impl Default for InterdayOrder {
     fn default() -> Self {
-        InterdayOrder::Mix
+        InterdayOrder::After
     }
 }
 

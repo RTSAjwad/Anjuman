@@ -237,26 +237,34 @@ matrix's "Summary of the biggest gaps" is the working list:
 - [x] **US-2.10 — New/review order**
 
       **As** a student,
-      **I want** to choose whether new cards mix with, precede, or follow
-      review cards,
+      **I want** to choose whether new cards precede or follow review cards,
       **so that** I control the study session shape.
 
       **Acceptance criteria**
-      - [x] `new_review_order` enum (mix / before / after), default mix.
+      - [x] `new_review_order` enum (before / after), default after.
       - [x] `before`/`after` reorder the gathering class priority.
       - [x] Each criterion has a `server/tests/` test.
+
+      **Descoped** — Anki's third option `mix` (interleave by due date) is
+      **not implemented**: it needs a materialized study queue (new cards have
+      no `due_at` to merge on). The true Anki default is `mix`; we ship `after`
+      as a placeholder default until `mix` lands (see Notes).
 - [x] **US-2.11 — Interday learning/review order**
 
       **As** a student,
-      **I want** to choose whether interday (re)learning cards mix with,
-      precede, or follow review cards,
+      **I want** to choose whether interday (re)learning cards precede or
+      follow review cards,
       **so that** I can front-load or defer harder cards.
 
       **Acceptance criteria**
-      - [x] `interday_order` enum (mix / before / after), default mix.
+      - [x] `interday_order` enum (before / after), default after.
       - [x] Interday learning is always *gathered* first (limit applied first),
             but its *display* rank vs review follows the setting.
       - [x] Each criterion has a `server/tests/` test.
+
+      **Descoped** — Anki's `mix` option is **not implemented** (same
+      materialized-queue reason as US-2.10). Default is `after` until `mix`
+      lands.
 - [x] **US-2.12 — Review sort order**
 
       **As** a student,
@@ -436,5 +444,14 @@ options belong to the single user). This stage makes the personalisation model
   sort-secondary ordering in a single query; the end-user behaviour is correct
   for the common/preset combinations. See `DECK_OPTIONS_SUPPORT.md`
   "New-card ordering composes as gather then sort".
+- **Future stage: materialized study queue.** A per-student-day persisted queue
+  (`study_queue`) is the enabling work for true gather→sort parity *and* for the
+  "Mix with reviews" options (`new_review_order`, `interday_order`), which are
+  currently **descoped** — `mix` is not offered, and both defaults are `after`
+  (reviews-first) as a placeholder. New cards have no `due_at`, so a faithful
+  date-merged interleave can only be produced by building the queue up-front
+  (gather → sort → merge → drain), not by a per-row `ORDER BY`. Reintroducing
+  `mix` (and restoring it as the default, matching Anki) is part of this stage.
+  Not scheduled yet — candidate for a stage after 7.
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.

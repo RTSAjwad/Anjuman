@@ -523,10 +523,10 @@ async fn next_due_card(
     // Resolve the relative order of {interday learning, review, new} in Rust and
     // emit a fixed CASE. Intraday learning is always first (rank 0).
     //
-    // Pairwise constraints:
+    // Pairwise constraints (only `before`/`after` exist; `mix` is deferred):
     //  - new vs review (new_review_order): before → new < review; else review < new.
     //  - interday vs review (interday_order): before → interday < review;
-    //    after → interday > review; mix → interday < review (gathered-first).
+    //    after → interday > review.
     //  - interday vs new is unspecified → interday < new (gathering order).
     let interday_after_review = options.interday_order == anjuman_contracts::deck_options::InterdayOrder::After;
     let new_before_review = options.new_review_order == anjuman_contracts::deck_options::NewReviewOrder::Before;
