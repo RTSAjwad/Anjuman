@@ -237,35 +237,29 @@ matrix's "Summary of the biggest gaps" is the working list:
 - [x] **US-2.10 — New/review order**
 
       **As** a student,
-      **I want** to choose whether new cards precede or follow review cards,
+      **I want** to choose whether new cards mix with, precede, or follow
+      review cards,
       **so that** I control the study session shape.
 
       **Acceptance criteria**
-      - [x] `new_review_order` enum (before / after), default after.
-      - [x] `before`/`after` reorder the gathering class priority.
+      - [x] `new_review_order` enum (mix / before / after), default mix.
+      - [x] `before`/`after` are fixed block orderings.
+      - [x] `mix` is Anki's stateless `Intersperser` (ratio-based even
+            distribution), implemented directly from the day counters.
       - [x] Each criterion has a `server/tests/` test.
-
-      **Temporarily descoped** — Anki's third option `mix` is **not currently
-      implemented**, but not because of any queue requirement: Anki's `mix` is a
-      stateless `Intersperser` (ratio-based even distribution) that our model can
-      support directly (see Notes). The true Anki default is `mix`; we ship
-      `after` as a placeholder default until `mix` is reintroduced.
 - [x] **US-2.11 — Interday learning/review order**
 
       **As** a student,
-      **I want** to choose whether interday (re)learning cards precede or
-      follow review cards,
+      **I want** to choose whether interday (re)learning cards mix with,
+      precede, or follow review cards,
       **so that** I can front-load or defer harder cards.
 
       **Acceptance criteria**
-      - [x] `interday_order` enum (before / after), default after.
+      - [x] `interday_order` enum (mix / before / after), default mix.
       - [x] Interday learning is always *gathered* first (limit applied first),
             but its *display* rank vs review follows the setting.
+      - [x] `mix` uses the same stateless `Intersperser` as US-2.10.
       - [x] Each criterion has a `server/tests/` test.
-
-      **Temporarily descoped** — Anki's `mix` option is **not currently
-      implemented** (same stateless-`Intersperser` rationale as US-2.10). Default
-      is `after` until `mix` is reintroduced.
 - [x] **US-2.12 — Review sort order**
 
       **As** a student,
@@ -444,7 +438,7 @@ options belong to the single user). This stage makes the personalisation model
   ordering in a single query. See `DECK_OPTIONS_SUPPORT.md` "New-card ordering
   composes as gather then sort". (This limitation is narrower than it once
   seemed: see the "Mix" finding below — the mix itself is not a queue concern.)
-- **"Mix with reviews" — de-scoped, but *not* because of the stateless model.**
+- **"Mix with reviews" is Anki's stateless `Intersperser`, now implemented.**
   Anki's `mix` (both `new_review_order` and `interday_order`) is implemented in
   `rslib/src/scheduler/queue/builder/intersperser.rs` (`Intersperser`), which is a
   pure ratio-based even-distribution of two already-sorted iterators — **not** a
@@ -457,26 +451,19 @@ options belong to the single user). This stage makes the personalisation model
   // take b next iff (b_idx + 1) * ratio < (a_idx + 1)
   ```
 
-  each of which maps to a value `next_due_card` already computes (`seen_today`
-  gives `new_seen`/`review_seen`; counts give the lens). We therefore **descoped
-  `mix` for the wrong reason** initially, and will reintroduce it as a small,
-  stateless addition rather than a queue stage. The one loose end to resolve
-  before re-implementing is the *three-bucket count* question — see the next
-  bullet.
-- **Three-bucket counts vs two-bucket limit (the only real `mix` caveat).** Anki
-  gathers interday-learning and review cards against the **same** `LimitKind::Review`
-  counter (interday gathered first) — matching our own `relearning`-folds-into-
-  `review_seen` — but it still tracks them as **separate counts**
-  (`learning = intraday + interday`, `review`, `new`) and interleaves them with
-  **two nested `Intersperser`s**: first interday-vs-review, then
-  new-vs-(review+interday). Our model has no separate interday counter, so the
-  first intersperser would need an additive `interday_seen` (and an interday due
-  count) to be fully faithful; without it, a two-way
-  `new`-vs-`review` approximation is exact whenever no interday learning is due,
-  and only slightly off otherwise. This is a small, additive change — not a
-  queue redesign.
-- Reintroduce `mix` (with `MixWithReviews` as the default again, matching
-  Anki) when ready, per the finding above; it is no longer gated on a
-  "materialized study queue" stage.
+  Implemented as `intersperse_draw_b` in `study.rs`, driven by `seen_today`
+  (new/review/interday seen) + the due-now class counts. `mix` is restored as
+  the default, matching Anki.
+- **Three-bucket counts, persisted via `reviews.interday`.** Anki gathers
+  interday-learning and review cards against the **same** `LimitKind::Review`
+  counter (interday gathered first) — matching our shared review budget — but
+  still tracks them as **separate counts** (`learning = intraday + interday`,
+  `review`, `new`) and interleaves them with **two nested `Intersperser`s**:
+  first interday-vs-review, then new-vs-(review+interday). To be fully faithful
+  (and immune to later step edits), we persist an `interday` flag on `reviews`
+  at review time (migration 0012) and split `seen_today` into
+  new/review/interday counters. The due-now class counts used for the ratio are
+  *physical* (pre limit-clamp), so `mix` is exact when limits are not binding
+  and a close approximation when they are.
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.

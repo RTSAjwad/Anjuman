@@ -519,15 +519,24 @@ pub async fn apply_review(
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    // Record the review (with the pre-review state for daily-limit accounting).
+    // Record the review (with the pre-review state and interday classification
+    // for three-bucket daily accounting; the `interday` flag captures whether
+    // the answered card was on a >= 1 day step at the moment of the review, so
+    // count queries don't have to reconstruct it later).
+    let interday = match current.state {
+        DbCardState::Learning => is_interday_step(current.step_index, learning_steps),
+        DbCardState::Relearning => is_interday_step(current.step_index, relearning_steps),
+        _ => false,
+    };
     sqlx::query!(
-        "INSERT INTO reviews (student_id, card_id, rating, reviewed_at, response_time_ms, state_before) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO reviews (student_id, card_id, rating, reviewed_at, response_time_ms, state_before, interday) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         student_id,
         card_id,
         rating as i64,
         now,
         response_time_ms,
-        current.state.as_str()
+        current.state.as_str(),
+        interday
     )
     .execute(&mut *tx)
     .await

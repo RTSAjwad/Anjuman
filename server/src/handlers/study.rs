@@ -162,16 +162,41 @@ async fn options_for(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// How many new / review cards the student has already seen today, derived
-/// from the `reviews` table (and its `state_before` column). Returns
-/// (new_seen_today, review_seen_today).
-async fn seen_today(db: &sqlx::PgPool, student_id: i64) -> Result<(i64, i64), StatusCode> {
+/// Anki's `Intersperser` draw decision, reduced to a predicate.
+///
+/// Mirrors `rslib/src/scheduler/queue/builder/intersperser.rs`: given two queues
+/// `a` (reviews) and `b` (the interleaved class — interday learning, or new),
+/// with current lengths and how many of each have already been drawn, decide
+/// whether the next card should come from `b`.
+///
+/// ```text
+/// ratio = (a_len + 1) / (b_len + 1)
+/// draw from b iff (b_seen + 1) * ratio < (a_seen + 1)
+/// ```
+fn intersperse_draw_b(a_len: i64, b_len: i64, a_seen: i64, b_seen: i64) -> bool {
+    let ratio = (a_len + 1) as f32 / (b_len + 1) as f32;
+    (b_seen + 1) as f32 * ratio < (a_seen + 1) as f32
+}
+
+/// How many new / review / interday-learning cards the student has already seen
+/// today, derived from the `reviews` table (and its `state_before` + `interday`
+/// columns). Interday learning shares the review *limit* (Anki's `LimitKind::Review`),
+/// so `review_seen` counts only `state_before = 'review'`; callers add
+/// `interday_seen` when checking the review budget.
+struct SeenToday {
+    new_seen: i64,
+    review_seen: i64,
+    interday_seen: i64,
+}
+
+async fn seen_today(db: &sqlx::PgPool, student_id: i64) -> Result<SeenToday, StatusCode> {
     let day_start = start_of_day(db, student_id).await;
     let row = sqlx::query!(
         r#"
         SELECT
             COALESCE(SUM(CASE WHEN state_before = 'new' THEN 1 ELSE 0 END), 0) as "new_seen!: i64",
-            COALESCE(SUM(CASE WHEN state_before IN ('review', 'relearning') THEN 1 ELSE 0 END), 0) as "review_seen!: i64"
+            COALESCE(SUM(CASE WHEN state_before = 'review' THEN 1 ELSE 0 END), 0) as "review_seen!: i64",
+            COALESCE(SUM(CASE WHEN state_before IN ('learning', 'relearning') AND interday THEN 1 ELSE 0 END), 0) as "interday_seen!: i64"
         FROM reviews
         WHERE student_id = $1 AND reviewed_at >= $2
         "#,
@@ -182,18 +207,23 @@ async fn seen_today(db: &sqlx::PgPool, student_id: i64) -> Result<(i64, i64), St
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok((row.new_seen, row.review_seen))
+    Ok(SeenToday {
+        new_seen: row.new_seen,
+        review_seen: row.review_seen,
+        interday_seen: row.interday_seen,
+    })
 }
 
 /// Today's already-reviewed counts, bucketed by the card's own deck within a
 /// deck subtree. Used for per-subdeck daily-limit caps (US-2.7).
 ///
 /// Returns one row per deck in `deck_id`'s subtree that has seen activity,
-/// as `(deck_id, new_seen, review_seen)`.
+/// as `(deck_id, new_seen, review_seen, interday_seen)`.
 struct SubdeckSeen {
     deck_id: i64,
     new_seen: i64,
     review_seen: i64,
+    interday_seen: i64,
 }
 
 async fn subdeck_seen_today(
@@ -211,7 +241,8 @@ async fn subdeck_seen_today(
         )
         SELECT c.deck_id,
                COALESCE(SUM(CASE WHEN r.state_before = 'new' THEN 1 ELSE 0 END), 0) as "new_seen!: i64",
-               COALESCE(SUM(CASE WHEN r.state_before IN ('review', 'relearning') THEN 1 ELSE 0 END), 0) as "review_seen!: i64"
+               COALESCE(SUM(CASE WHEN r.state_before = 'review' THEN 1 ELSE 0 END), 0) as "review_seen!: i64",
+               COALESCE(SUM(CASE WHEN r.state_before IN ('learning', 'relearning') AND r.interday THEN 1 ELSE 0 END), 0) as "interday_seen!: i64"
         FROM reviews r
         JOIN cards c ON c.id = r.card_id
         WHERE r.student_id = $2 AND r.reviewed_at >= $3
@@ -232,6 +263,7 @@ async fn subdeck_seen_today(
             deck_id: r.deck_id,
             new_seen: r.new_seen,
             review_seen: r.review_seen,
+            interday_seen: r.interday_seen,
         })
         .collect())
 }
@@ -274,7 +306,10 @@ async fn subdeck_remaining_budgets(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         let s = seen.iter().find(|s| s.deck_id == id);
         let new_seen = s.map(|s| s.new_seen).unwrap_or(0);
-        let review_seen = s.map(|s| s.review_seen).unwrap_or(0);
+        // Interday learning shares the review limit (Anki's `LimitKind::Review`).
+        let review_seen = s
+            .map(|s| s.review_seen + s.interday_seen)
+            .unwrap_or(0);
         budgets.insert(id, ((new_limit - new_seen).max(0), (review_limit - review_seen).max(0)));
     }
 
@@ -292,7 +327,7 @@ pub async fn deck_counts_for_student(
     student_id: i64,
     deck_id: i64,
 ) -> Result<StudyCounts, StatusCode> {
-    let (new_seen, review_seen) = seen_today(db, student_id).await?;
+    let seen = seen_today(db, student_id).await?;
     let learn_ahead = learn_ahead_seconds(db, student_id).await;
     let day_start = start_of_day(db, student_id).await;
     let now = Utc::now();
@@ -303,8 +338,10 @@ pub async fn deck_counts_for_student(
         crate::deck_options::effective_daily_limits(db, deck_id, day_start.date_naive())
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let selected_new_remaining = (selected_new - new_seen).max(0);
-    let selected_review_remaining = (selected_review - review_seen).max(0);
+    let selected_new_remaining = (selected_new - seen.new_seen).max(0);
+    // Interday learning shares the review limit.
+    let selected_review_remaining =
+        (selected_review - (seen.review_seen + seen.interday_seen)).max(0);
 
     let budgets = subdeck_remaining_budgets(db, student_id, deck_id, day_start.date_naive())
         .await?;
@@ -360,6 +397,68 @@ pub async fn deck_counts_for_student(
     })
 }
 
+/// The physical due-now bucket lengths for a deck subtree, classified the same
+/// way `next_due_card`'s ordering does: intraday learning (step < 1 day),
+/// interday learning (step >= 1 day), review, and new. Used to drive the
+/// `Intersperser` interleave ratio. These are *physical* counts (pre limit-clamp);
+/// the actual `LIMIT 1` query still enforces budgets, so this is a faithful
+/// approximation when limits are not binding and close otherwise.
+struct ClassCounts {
+    interday: i64,
+    review: i64,
+    new: i64,
+}
+
+async fn due_now_class_counts(
+    db: &sqlx::PgPool,
+    student_id: i64,
+    deck_id: i64,
+    now: DateTime<Utc>,
+    day_start: DateTime<Utc>,
+) -> Result<ClassCounts, StatusCode> {
+    let row = sqlx::query!(
+        r#"
+        WITH RECURSIVE subtree(id) AS (
+            SELECT $1::bigint
+            UNION ALL
+            SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
+        )
+        SELECT
+            COALESCE(SUM(CASE WHEN scs.state IN ('learning','relearning') AND COALESCE(dos.seconds,0) >= 86400 THEN 1 ELSE 0 END), 0) as "interday!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'review' THEN 1 ELSE 0 END), 0) as "review!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'new' THEN 1 ELSE 0 END), 0) as "new!: i64"
+        FROM cards c
+        JOIN decks cd ON cd.id = c.deck_id
+        JOIN student_card_states scs ON scs.card_id = c.id AND scs.student_id = $2
+        LEFT JOIN deck_option_steps dos
+            ON dos.options_id = COALESCE(cd.options_id, 0)
+           AND dos.kind = (CASE scs.state WHEN 'relearning' THEN 'relearning' ELSE 'learning' END)::step_kind
+           AND dos.step_index = scs.step_index
+        WHERE c.deck_id IN (SELECT id FROM subtree)
+          AND scs.suspended = FALSE
+          AND (scs.buried_at IS NULL OR scs.buried_at < $3)
+          AND (
+                (scs.state IN ('learning', 'relearning') AND scs.due_at <= $4)
+             OR (scs.state = 'review' AND scs.due_at <= $4)
+             OR (scs.state = 'new')
+          )
+        "#,
+        deck_id,
+        student_id,
+        day_start,
+        now
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(ClassCounts {
+        interday: row.interday,
+        review: row.review,
+        new: row.new,
+    })
+}
+
 /// Select the single highest-priority due card for a student's deck, respecting
 /// daily limits and the learner's learn-ahead limit. Returns None when
 /// nothing is currently due (or budgeted out, or outside the learn-ahead
@@ -373,7 +472,7 @@ async fn next_due_card(
     student_id: i64,
     deck_id: i64,
 ) -> Result<Option<CardRow>, StatusCode> {
-    let (new_seen, review_seen) = seen_today(db, student_id).await?;
+    let seen = seen_today(db, student_id).await?;
     let learn_ahead = learn_ahead_seconds(db, student_id).await;
     let day_start = start_of_day(db, student_id).await;
     let now = Utc::now();
@@ -384,8 +483,10 @@ async fn next_due_card(
         crate::deck_options::effective_daily_limits(db, deck_id, day_start.date_naive())
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let selected_new_remaining = (selected_new - new_seen).max(0);
-    let selected_review_remaining = (selected_review - review_seen).max(0);
+    let selected_new_remaining = (selected_new - seen.new_seen).max(0);
+    // Interday learning shares the review limit (Anki's `LimitKind::Review`).
+    let selected_review_remaining =
+        (selected_review - (seen.review_seen + seen.interday_seen)).max(0);
 
     // Per-subdeck budgets as a stable, id-ordered set of parallel arrays for the
     // UNNEST join below.
@@ -519,30 +620,94 @@ async fn next_due_card(
         }
     };
 
-    // Class ordering (US-2.10 + US-2.11): assign each state an explicit rank.
-    // Resolve the relative order of {interday learning, review, new} in Rust and
-    // emit a fixed CASE. Intraday learning is always first (rank 0).
-    //
-    // Pairwise constraints (only `before`/`after` exist; `mix` is deferred):
-    //  - new vs review (new_review_order): before → new < review; else review < new.
-    //  - interday vs review (interday_order): before → interday < review;
-    //    after → interday > review.
-    //  - interday vs new is unspecified → interday < new (gathering order).
-    let interday_after_review = options.interday_order == anjuman_contracts::deck_options::InterdayOrder::After;
-    let new_before_review = options.new_review_order == anjuman_contracts::deck_options::NewReviewOrder::Before;
+    // Class ordering (US-2.10 + US-2.11). Intraday learning is always first
+    // (rank 0). The relative order of {interday learning, review, new} follows
+    // the two `before`/`after`/`mix` options — resolved here in Rust into a
+    // fixed `CASE` ranking. `mix` uses Anki's `Intersperser` (see
+    // `intersperse_draw_b`) to pick which class to serve next.
+    let counts = due_now_class_counts(db, student_id, deck_id, now, day_start).await?;
 
-    // Start from the default order [interday, review, new] and apply the two
-    // flips pairwise; then assign ranks 1..3.
-    let rank_interday: i64;
-    let rank_review: i64;
-    let rank_new: i64;
+    // The number of main-queue cards already served today, split for the ratio:
+    // interday-learning and review are separate Anki counts (even though they
+    // share the review *limit*).
+    let main_seen = seen.review_seen + seen.interday_seen;
 
-    // Review's rank vs new.
-    rank_review = if new_before_review { 3 } else { 2 };
-    rank_new = if new_before_review { 2 } else { 3 };
-    // Interday's rank: before review/new by default (rank 1); if after, place it
-    // after review (and new) at rank 4.
-    rank_interday = if interday_after_review { 4 } else { 1 };
+    let new_review_order_opt = options.new_review_order;
+    let interday_order_opt = options.interday_order;
+
+    // Decide which main-queue class (interday, review, or new) is served next.
+    // `mix` uses Anki's `Intersperser` ratio; `before`/`after` are fixed blocks.
+    // Intraday learning is handled separately (always rank 0, served first).
+    #[derive(Clone, Copy, PartialEq)]
+    enum NextClass {
+        Interday,
+        Review,
+        New,
+    }
+
+    let next: NextClass = match new_review_order_opt {
+        anjuman_contracts::deck_options::NewReviewOrder::Before => NextClass::New,
+        anjuman_contracts::deck_options::NewReviewOrder::After => {
+            match interday_order_opt {
+                anjuman_contracts::deck_options::InterdayOrder::Before => NextClass::Interday,
+                anjuman_contracts::deck_options::InterdayOrder::After => NextClass::Review,
+                anjuman_contracts::deck_options::InterdayOrder::Mix => {
+                    if intersperse_draw_b(
+                        counts.review,
+                        counts.interday,
+                        seen.review_seen,
+                        seen.interday_seen,
+                    ) {
+                        NextClass::Interday
+                    } else {
+                        NextClass::Review
+                    }
+                }
+            }
+        }
+        anjuman_contracts::deck_options::NewReviewOrder::Mix => {
+            // new vs the merged main queue (review + interday).
+            if intersperse_draw_b(
+                counts.review + counts.interday,
+                counts.new,
+                main_seen,
+                seen.new_seen,
+            ) {
+                NextClass::New
+            } else {
+                match interday_order_opt {
+                    anjuman_contracts::deck_options::InterdayOrder::Before => {
+                        NextClass::Interday
+                    }
+                    anjuman_contracts::deck_options::InterdayOrder::After => NextClass::Review,
+                    anjuman_contracts::deck_options::InterdayOrder::Mix => {
+                        if intersperse_draw_b(
+                            counts.review,
+                            counts.interday,
+                            seen.review_seen,
+                            seen.interday_seen,
+                        ) {
+                            NextClass::Interday
+                        } else {
+                            NextClass::Review
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // Map the chosen class to a rank (1 = first among the main queue). Intraday
+    // learning is rank 0 and always served before the main queue.
+    let rank_interday = if next == NextClass::Interday { 1 } else { 2 };
+    let rank_review = if next == NextClass::Review {
+        1
+    } else if next == NextClass::Interday {
+        2
+    } else {
+        3
+    };
+    let rank_new = if next == NextClass::New { 1 } else { 3 };
 
     let class_case = format!(
         "CASE \
@@ -655,6 +820,80 @@ async fn next_due_card(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(ahead)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::intersperse_draw_b;
+
+    /// Reconstruct Anki's `Intersperser` stream as a `Vec<bool>`
+    /// (`true` = draw from queue `b`) and compare against Anki's documented
+    /// test vectors (`rslib/src/scheduler/queue/builder/intersperser.rs`).
+    fn intersperse_b_draws(a_len: i64, b_len: i64) -> Vec<bool> {
+        let mut a_seen = 0i64;
+        let mut b_seen = 0i64;
+        let mut draws = Vec::new();
+        while a_seen < a_len || b_seen < b_len {
+            let draw_b = if b_seen >= b_len {
+                false
+            } else if a_seen >= a_len {
+                true
+            } else {
+                intersperse_draw_b(a_len, b_len, a_seen, b_seen)
+            };
+            if draw_b {
+                b_seen += 1;
+            } else {
+                a_seen += 1;
+            }
+            draws.push(draw_b);
+        }
+        draws
+    }
+
+    #[test]
+    fn intersperser_matches_anki_equal_lengths() {
+        // a=[1,2,3], b=[11,22,33] => 1,11,2,22,3,33  (a,b,a,b,a,b)
+        assert_eq!(
+            intersperse_b_draws(3, 3),
+            vec![false, true, false, true, false, true]
+        );
+    }
+
+    #[test]
+    fn intersperser_matches_anki_fewer_b() {
+        // a=[1,2,3], b=[11,22] => 1,11,2,22,3  (a,b,a,b,a)
+        assert_eq!(
+            intersperse_b_draws(3, 2),
+            vec![false, true, false, true, false]
+        );
+    }
+
+    #[test]
+    fn intersperser_matches_anki_longer_b() {
+        // a=[1,2,3], b=[11..66] => 11,1,22,33,2,44,55,3,66
+        // draws: b,a,b,b,a,b,b,a,b
+        assert_eq!(
+            intersperse_b_draws(3, 6),
+            vec![true, false, true, true, false, true, true, false, true]
+        );
+    }
+
+    #[test]
+    fn intersperser_matches_anki_very_long_b() {
+        // a=[1,2,3], b=[11..88] => 11,22,1,33,44,2,55,66,3,77,88
+        // draws: b,b,a,b,b,a,b,b,a,b,b
+        assert_eq!(
+            intersperse_b_draws(3, 8),
+            vec![true, true, false, true, true, false, true, true, false, true, true]
+        );
+    }
+
+    #[test]
+    fn intersperser_empty_b() {
+        // a=[1,2,3], b=[] => 1,2,3
+        assert_eq!(intersperse_b_draws(3, 0), vec![false, false, false]);
+    }
 }
 
 /// Render a single card row into a full `StudyCard`, including predicted

@@ -95,18 +95,20 @@ pub enum DbNewSortOrder {
     Random,
 }
 
-/// Mirrors the `new_review_order` enum (`before`, `after`).
+/// Mirrors the `new_review_order` enum (`mix`, `before`, `after`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[sqlx(type_name = "new_review_order", rename_all = "snake_case")]
 pub enum DbNewReviewOrder {
+    Mix,
     Before,
     After,
 }
 
-/// Mirrors the `interday_order` enum (`before`, `after`).
+/// Mirrors the `interday_order` enum (`mix`, `before`, `after`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[sqlx(type_name = "interday_order", rename_all = "snake_case")]
 pub enum DbInterdayOrder {
+    Mix,
     Before,
     After,
 }
@@ -357,6 +359,7 @@ impl DbNewSortOrder {
 impl From<anjuman_contracts::deck_options::NewReviewOrder> for DbNewReviewOrder {
     fn from(o: anjuman_contracts::deck_options::NewReviewOrder) -> Self {
         match o {
+            anjuman_contracts::deck_options::NewReviewOrder::Mix => DbNewReviewOrder::Mix,
             anjuman_contracts::deck_options::NewReviewOrder::Before => DbNewReviewOrder::Before,
             anjuman_contracts::deck_options::NewReviewOrder::After => DbNewReviewOrder::After,
         }
@@ -366,6 +369,7 @@ impl From<anjuman_contracts::deck_options::NewReviewOrder> for DbNewReviewOrder 
 impl From<DbNewReviewOrder> for anjuman_contracts::deck_options::NewReviewOrder {
     fn from(o: DbNewReviewOrder) -> Self {
         match o {
+            DbNewReviewOrder::Mix => anjuman_contracts::deck_options::NewReviewOrder::Mix,
             DbNewReviewOrder::Before => anjuman_contracts::deck_options::NewReviewOrder::Before,
             DbNewReviewOrder::After => anjuman_contracts::deck_options::NewReviewOrder::After,
         }
@@ -377,6 +381,7 @@ impl DbNewReviewOrder {
     /// `::new_review_order` SQL cast in `query!` macros.
     pub fn as_str(self) -> &'static str {
         match self {
+            DbNewReviewOrder::Mix => "mix",
             DbNewReviewOrder::Before => "before",
             DbNewReviewOrder::After => "after",
         }
@@ -386,6 +391,7 @@ impl DbNewReviewOrder {
 impl From<anjuman_contracts::deck_options::InterdayOrder> for DbInterdayOrder {
     fn from(o: anjuman_contracts::deck_options::InterdayOrder) -> Self {
         match o {
+            anjuman_contracts::deck_options::InterdayOrder::Mix => DbInterdayOrder::Mix,
             anjuman_contracts::deck_options::InterdayOrder::Before => DbInterdayOrder::Before,
             anjuman_contracts::deck_options::InterdayOrder::After => DbInterdayOrder::After,
         }
@@ -395,6 +401,7 @@ impl From<anjuman_contracts::deck_options::InterdayOrder> for DbInterdayOrder {
 impl From<DbInterdayOrder> for anjuman_contracts::deck_options::InterdayOrder {
     fn from(o: DbInterdayOrder) -> Self {
         match o {
+            DbInterdayOrder::Mix => anjuman_contracts::deck_options::InterdayOrder::Mix,
             DbInterdayOrder::Before => anjuman_contracts::deck_options::InterdayOrder::Before,
             DbInterdayOrder::After => anjuman_contracts::deck_options::InterdayOrder::After,
         }
@@ -406,6 +413,7 @@ impl DbInterdayOrder {
     /// `::interday_order` SQL cast in `query!` macros.
     pub fn as_str(self) -> &'static str {
         match self {
+            DbInterdayOrder::Mix => "mix",
             DbInterdayOrder::Before => "before",
             DbInterdayOrder::After => "after",
         }

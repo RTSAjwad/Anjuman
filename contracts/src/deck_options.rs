@@ -52,43 +52,40 @@ impl Default for NewSortOrder {
 
 /// When new cards are shown relative to review cards (US-2.10).
 ///
-/// Anki's three options are mix / before / after, defaulting to `Mix`. Anki's
-/// `mix` is a stateless ratio-based even-distribution of the two queues
-/// (`Intersperser`), **not** a due-date merge — the interleave decision depends
-/// only on the two queue lengths and how many of each have been served. It is
-/// therefore implementable in our stateless model and is **temporarily deferred**
-/// (see ROADMAP Notes). Until it is reintroduced, only the deterministic
-/// orderings are offered, defaulting to `After` (reviews first).
+/// Mirrors Anki's three options. `Mix` is Anki's `Intersperser`: a stateless
+/// ratio-based even distribution of the two queues (not a due-date merge),
+/// expressible in our single-card model from the day counters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum NewReviewOrder {
+    Mix,
     Before,
     After,
 }
 
 impl Default for NewReviewOrder {
     fn default() -> Self {
-        NewReviewOrder::After
+        NewReviewOrder::Mix
     }
 }
 
 /// When interday (re)learning cards are shown relative to review cards (US-2.11).
 ///
-/// As with `NewReviewOrder`, Anki's `Mix` is a stateless `Intersperser`
-/// (implementable in our model) and is **temporarily deferred** (see ROADMAP
-/// Notes); only `before`/`after` are offered, defaulting to `After`.
+/// Mirrors Anki's three options; `Mix` uses the same stateless `Intersperser`
+/// as `NewReviewOrder::Mix`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum InterdayOrder {
+    Mix,
     Before,
     After,
 }
 
 impl Default for InterdayOrder {
     fn default() -> Self {
-        InterdayOrder::After
+        InterdayOrder::Mix
     }
 }
 
