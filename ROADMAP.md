@@ -40,6 +40,16 @@ work, migrations run cleanly from empty, SQLite footprint removed.
 
 ## 2. Deck options — feature-complete with Anki   `[~]`
 
+> **Scope: server vs. client behaviour.** Some deck options have no server-side
+> effect — the server only stores and returns the selection, and the behaviour is
+> a client concern (stage 4). Examples: on-screen timer, audio, auto-advance.
+> When implementing one of these now, we add the field to the contract + CRUD
+> plumbing + preserve it in OpenAPI, and test only its **round-trip through
+> create/update/read** — we do *not* implement (or test) the behaviour, and we
+> document it as "behaviour client-side" with a stage-4 reference. Full details
+> and per-row classification live in `DECK_OPTIONS_SUPPORT.md` ("Scope: server
+> vs. client behaviour").
+
 Close the gaps in `server/DECK_OPTIONS_SUPPORT.md` as far as practical. The
 matrix's "Summary of the biggest gaps" is the working list:
 
@@ -310,6 +320,30 @@ matrix's "Summary of the biggest gaps" is the working list:
       re-sort needs per-deck (or per-preset) positioning semantics, which is a
       small structural change to `cards.position` (see `0005_cards_position.sql`
       note). Resolve this before implementing.
+- [ ] **US-2.14 — Selection-only deck options (client-side behaviour)**
+
+      Persist the deck options whose behaviour is purely client-side, so they
+      are available on the wire now and consumable when the client implements
+      them (stage 4). Server work is **fixed fields + CRUD round-trip only** —
+      no behaviour, and tests assert persistence, not effect.
+
+      Options (from `DECK_OPTIONS_SUPPORT.md` "Audio / Timers / Auto Advance"):
+      - [ ] On-screen timer (show timer; stop on answer).
+      - [ ] Audio (auto-play toggle; skip question on replay).
+      - [ ] Auto advance (seconds to show question / answer).
+
+      **Decision** — treated as client-side: the server persists the timing
+      values only (no scheduling/advancing behaviour).
+
+      **Acceptance criteria** (per option)
+      - [ ] Field added to the contract + `deck_options` table + CRUD
+            create/update/read plumbing.
+      - [ ] Field appears in the generated OpenAPI spec.
+      - [ ] Round-trip test: value survives create → read and update → read.
+      - [ ] Documented "behaviour client-side" with a stage-4 reference.
+
+      **Out of scope** (until stage 4): any actual timer/audio/advance
+      behaviour in a client.
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 

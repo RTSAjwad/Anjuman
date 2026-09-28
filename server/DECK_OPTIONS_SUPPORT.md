@@ -15,6 +15,26 @@ Legend:
 - ⏳ deferred — scoping/decision outstanding (see referenced roadmap stage)
 - 📝 planned — story written, not yet implemented
 
+### Scope: server vs. client behaviour
+
+Deck options fall into two kinds, and the distinction matters for how (and when)
+we implement them:
+
+- **Server-side behaviour** — the option changes how the server *schedules or
+  orders* cards (steps, limits, leeches, burying, gather/sort/mix/review-sort,
+  FSRS, easy days, new-card insertion). These are implemented end-to-end in the
+  server, with `server/tests/` covering the behaviour.
+- **Selection-only (client-side behaviour)** — the server's only job is to
+  *store and return* the selection in the preset (e.g. on-screen timer, audio,
+  auto-advance). There is **no server behaviour** to implement; the effect is a
+  client concern (stage 4). When we add one of these now, we persist the option
+  and test only its **round-trip through CRUD** (that the selection survives
+  create/update/read) — the client behaviour is explicitly out of scope until
+  the client stage, and is flagged in the matrix with “behaviour client-side”.
+
+Each row below states which kind it is where it is not already obvious from a
+✅/❌.
+
 ## Presets
 
 | Anki feature | Status | Notes |
@@ -121,13 +141,13 @@ each in-app selection to what we implemented and flags where the two diverge.
 
 ## Audio / Timers / Auto Advance / Easy Days
 
-| Anki feature | Status |
-|---|---|
-| Audio auto-play toggle / skip question on replay | ❌ (no audio support yet) |
-| Internal timer (max answer seconds) | 🟡 We record `response_time_ms`; no configurable 60s cap. |
-| On-screen timer options | ❌ |
-| Auto advance (show question/answer seconds) | ❌ |
-| Easy Days (reduce workload on certain weekdays) | ❌ |
+| Anki feature | Status | Kind | Notes |
+|---|---|---|---|
+| Audio auto-play toggle / skip question on replay | ❌ | selection-only / client | Persisting the toggle is trivial plumbing; playback is client behaviour (stage 4). |
+| Internal timer (max answer seconds) | 🟡 | server+client | We record `response_time_ms` but do not cap it at 60s; the cap is a server-side write, the on-screen timer is client. |
+| On-screen timer options | ❌ | selection-only / client | Pure client UI (show timer; stop on answer). Server only persists the toggle. |
+| Auto advance (show question/answer seconds) | ❌ | selection-only / client | Stores seconds-to-show; the advancing action is a client behaviour (stage 4). **Decision:** treated as client-side (the server only persists the timing values; it performs no scheduling or advancing). |
+| Easy Days (reduce workload on certain weekdays) | ❌ | server-side | Adjusts FSRS due dates — a genuine server scheduling gap, not client. |
 
 ## FSRS
 
