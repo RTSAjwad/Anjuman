@@ -222,7 +222,7 @@ matrix's "Summary of the biggest gaps" is the working list:
 
       **Out of scope**
       - Manual card/note reordering UI (a separate future story).
-- [ ] **US-2.9 — New card sort order**
+- [x] **US-2.9 — New card sort order**
 
       **As** a student,
       **I want** to choose how gathered new cards are sorted (card type /
@@ -230,10 +230,10 @@ matrix's "Summary of the biggest gaps" is the working list:
       **so that** sibling cards are spaced the way I prefer.
 
       **Acceptance criteria**
-      - [ ] `new_sort_order` enum on `deck_options` (default card-type order).
-      - [ ] Card-type ordering uses `note_type_templates.ord`.
-      - [ ] Deterministic per-student-day seed for random variants.
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] `new_sort_order` enum on `deck_options` (default card-type order).
+      - [x] Card-type ordering uses `note_type_templates.ord`.
+      - [x] Deterministic per-student-day seed for random variants.
+      - [x] Each criterion has a `server/tests/` test.
 - [ ] **US-2.10 — New/review order**
 
       **As** a student,

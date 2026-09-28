@@ -83,6 +83,18 @@ pub enum DbNewGatherOrder {
     RandomCards,
 }
 
+/// Mirrors the `new_sort_order` enum (`card_type_then_gathered`, `gathered`,
+/// `card_type_then_random`, `random_note_then_card_type`, `random`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "new_sort_order", rename_all = "snake_case")]
+pub enum DbNewSortOrder {
+    CardTypeThenGathered,
+    Gathered,
+    CardTypeThenRandom,
+    RandomNoteThenCardType,
+    Random,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions (server-local DB enums <-> contract enum / application strings)
 // ---------------------------------------------------------------------------
@@ -253,6 +265,56 @@ impl DbNewGatherOrder {
             DbNewGatherOrder::Descending => "descending",
             DbNewGatherOrder::RandomNotes => "random_notes",
             DbNewGatherOrder::RandomCards => "random_cards",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::NewSortOrder> for DbNewSortOrder {
+    fn from(o: anjuman_contracts::deck_options::NewSortOrder) -> Self {
+        match o {
+            anjuman_contracts::deck_options::NewSortOrder::CardTypeThenGathered => {
+                DbNewSortOrder::CardTypeThenGathered
+            }
+            anjuman_contracts::deck_options::NewSortOrder::Gathered => DbNewSortOrder::Gathered,
+            anjuman_contracts::deck_options::NewSortOrder::CardTypeThenRandom => {
+                DbNewSortOrder::CardTypeThenRandom
+            }
+            anjuman_contracts::deck_options::NewSortOrder::RandomNoteThenCardType => {
+                DbNewSortOrder::RandomNoteThenCardType
+            }
+            anjuman_contracts::deck_options::NewSortOrder::Random => DbNewSortOrder::Random,
+        }
+    }
+}
+
+impl From<DbNewSortOrder> for anjuman_contracts::deck_options::NewSortOrder {
+    fn from(o: DbNewSortOrder) -> Self {
+        match o {
+            DbNewSortOrder::CardTypeThenGathered => {
+                anjuman_contracts::deck_options::NewSortOrder::CardTypeThenGathered
+            }
+            DbNewSortOrder::Gathered => anjuman_contracts::deck_options::NewSortOrder::Gathered,
+            DbNewSortOrder::CardTypeThenRandom => {
+                anjuman_contracts::deck_options::NewSortOrder::CardTypeThenRandom
+            }
+            DbNewSortOrder::RandomNoteThenCardType => {
+                anjuman_contracts::deck_options::NewSortOrder::RandomNoteThenCardType
+            }
+            DbNewSortOrder::Random => anjuman_contracts::deck_options::NewSortOrder::Random,
+        }
+    }
+}
+
+impl DbNewSortOrder {
+    /// The order as a lowercase string, for binding enum columns via a
+    /// `::new_sort_order` SQL cast in `query!` macros.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbNewSortOrder::CardTypeThenGathered => "card_type_then_gathered",
+            DbNewSortOrder::Gathered => "gathered",
+            DbNewSortOrder::CardTypeThenRandom => "card_type_then_random",
+            DbNewSortOrder::RandomNoteThenCardType => "random_note_then_card_type",
+            DbNewSortOrder::Random => "random",
         }
     }
 }

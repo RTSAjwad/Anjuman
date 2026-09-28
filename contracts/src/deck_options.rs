@@ -27,6 +27,29 @@ impl Default for NewGatherOrder {
     }
 }
 
+/// How gathered new cards are sorted (US-2.9).
+///
+/// Mirrors Anki's "New card sort order". Sorting happens *after* gathering, so
+/// it reorders the already-gathered new-card set. Variants use `template.ord`
+/// for card-type ordering and a deterministic per-student-day seed for the
+/// random variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum NewSortOrder {
+    CardTypeThenGathered,
+    Gathered,
+    CardTypeThenRandom,
+    RandomNoteThenCardType,
+    Random,
+}
+
+impl Default for NewSortOrder {
+    fn default() -> Self {
+        NewSortOrder::CardTypeThenGathered
+    }
+}
+
 /// The action taken when a card reaches the leech threshold.
 ///
 /// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
@@ -77,6 +100,8 @@ pub struct CreateDeckOptions {
     pub leech_action: LeechAction,
     #[serde(default)]
     pub new_gather_order: NewGatherOrder,
+    #[serde(default)]
+    pub new_sort_order: NewSortOrder,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -95,6 +120,7 @@ pub struct UpdateDeckOptions {
     pub leech_threshold: Option<i64>,
     pub leech_action: Option<LeechAction>,
     pub new_gather_order: Option<NewGatherOrder>,
+    pub new_sort_order: Option<NewSortOrder>,
 }
 
 /// A deck options preset as returned to clients.
@@ -118,6 +144,7 @@ pub struct DeckOptions {
     pub leech_threshold: i64,
     pub leech_action: LeechAction,
     pub new_gather_order: NewGatherOrder,
+    pub new_sort_order: NewSortOrder,
 }
 
 fn default_learning_steps() -> String {

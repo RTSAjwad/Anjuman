@@ -426,6 +426,26 @@ async fn next_due_card(
         }
     };
 
+    // The new-card *sort* order (US-2.9), applied after gathering. This is the
+    // final display order of the gathered new cards.
+    let sort = options.new_sort_order;
+    let new_sort = match sort {
+        anjuman_contracts::deck_options::NewSortOrder::Gathered => String::new(),
+        anjuman_contracts::deck_options::NewSortOrder::CardTypeThenGathered => {
+            "tpl.ord ASC, c.position ASC".to_string()
+        }
+        anjuman_contracts::deck_options::NewSortOrder::CardTypeThenRandom => {
+            format!("tpl.ord ASC, md5('{seed}:' || c.id::text) ASC")
+        }
+        anjuman_contracts::deck_options::NewSortOrder::RandomNoteThenCardType => {
+            format!("md5('{seed}:' || c.note_id::text) ASC, tpl.ord ASC")
+        }
+        anjuman_contracts::deck_options::NewSortOrder::Random => {
+            format!("md5('{seed}:' || c.id::text) ASC")
+        }
+    };
+    let sort_comma = if new_sort.is_empty() { "" } else { ", " };
+
     let sql = format!(
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
@@ -440,6 +460,7 @@ async fn next_due_card(
             ON dos.options_id = COALESCE(cd.options_id, 0)
            AND dos.kind = (CASE scs.state WHEN 'relearning' THEN 'relearning' ELSE 'learning' END)::step_kind
            AND dos.step_index = scs.step_index
+        JOIN note_type_templates tpl ON tpl.id = c.template_id
         JOIN UNNEST($7::bigint[], $8::bigint[], $9::bigint[]) AS budget(deck_id, new_rem, review_rem)
             ON budget.deck_id = c.deck_id
         WHERE c.deck_id IN (
@@ -466,7 +487,7 @@ async fn next_due_card(
             END,
             scs.due_at ASC NULLS LAST,
             CASE WHEN scs.state = 'new' THEN 0 ELSE 1 END,
-            {new_order},
+            {new_order}{sort_comma}{new_sort},
             c.id ASC
         LIMIT 1
         "#
