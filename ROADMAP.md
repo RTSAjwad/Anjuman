@@ -186,7 +186,7 @@ matrix's "Summary of the biggest gaps" is the working list:
 
       **Out of scope**
       - Review (graduated) cards: Hard already uses the FSRS interval.
-- [ ] **US-2.8a — Add `cards.position` (prereq for display order)**
+- [x] **US-2.8a — Add `cards.position` (prereq for display order)**
 
       **As** the scheduler,
       **I want** a per-card position column,
@@ -194,10 +194,10 @@ matrix's "Summary of the biggest gaps" is the working list:
       meaningful.
 
       **Acceptance criteria**
-      - [ ] `cards.position BIGINT NOT NULL` exists, defaulting to creation
+      - [x] `cards.position BIGINT NOT NULL` exists, defaulting to creation
             order (backfill = `id`-monotonic) so existing data is ordered.
-      - [ ] New cards get a monotonic position on insert.
-      - [ ] Each criterion has a `server/tests/` test (or a migration-verified
+      - [x] New cards get a monotonic position on insert.
+      - [x] Each criterion has a `server/tests/` test (or a migration-verified
             backfill).
 
       **Out of scope**
