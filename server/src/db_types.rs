@@ -70,6 +70,18 @@ pub enum DbLimitMode {
     TodayOnly,
 }
 
+/// Mirrors the `new_gather_order` enum (`deck`, `ascending`, `descending`,
+/// `random_notes`, `random_cards`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "new_gather_order", rename_all = "snake_case")]
+pub enum DbNewGatherOrder {
+    Deck,
+    Ascending,
+    Descending,
+    RandomNotes,
+    RandomCards,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions (server-local DB enums <-> contract enum / application strings)
 // ---------------------------------------------------------------------------
@@ -195,6 +207,44 @@ impl DbLimitMode {
             DbLimitMode::Preset => "preset",
             DbLimitMode::ThisDeck => "this_deck",
             DbLimitMode::TodayOnly => "today_only",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::NewGatherOrder> for DbNewGatherOrder {
+    fn from(o: anjuman_contracts::deck_options::NewGatherOrder) -> Self {
+        match o {
+            anjuman_contracts::deck_options::NewGatherOrder::Deck => DbNewGatherOrder::Deck,
+            anjuman_contracts::deck_options::NewGatherOrder::Ascending => DbNewGatherOrder::Ascending,
+            anjuman_contracts::deck_options::NewGatherOrder::Descending => DbNewGatherOrder::Descending,
+            anjuman_contracts::deck_options::NewGatherOrder::RandomNotes => DbNewGatherOrder::RandomNotes,
+            anjuman_contracts::deck_options::NewGatherOrder::RandomCards => DbNewGatherOrder::RandomCards,
+        }
+    }
+}
+
+impl From<DbNewGatherOrder> for anjuman_contracts::deck_options::NewGatherOrder {
+    fn from(o: DbNewGatherOrder) -> Self {
+        match o {
+            DbNewGatherOrder::Deck => anjuman_contracts::deck_options::NewGatherOrder::Deck,
+            DbNewGatherOrder::Ascending => anjuman_contracts::deck_options::NewGatherOrder::Ascending,
+            DbNewGatherOrder::Descending => anjuman_contracts::deck_options::NewGatherOrder::Descending,
+            DbNewGatherOrder::RandomNotes => anjuman_contracts::deck_options::NewGatherOrder::RandomNotes,
+            DbNewGatherOrder::RandomCards => anjuman_contracts::deck_options::NewGatherOrder::RandomCards,
+        }
+    }
+}
+
+impl DbNewGatherOrder {
+    /// The order as a lowercase string, for binding enum columns via a
+    /// `::new_gather_order` SQL cast in `query!` macros.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbNewGatherOrder::Deck => "deck",
+            DbNewGatherOrder::Ascending => "ascending",
+            DbNewGatherOrder::Descending => "descending",
+            DbNewGatherOrder::RandomNotes => "random_notes",
+            DbNewGatherOrder::RandomCards => "random_cards",
         }
     }
 }

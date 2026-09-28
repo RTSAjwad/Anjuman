@@ -47,6 +47,7 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 /// A card row for study, carrying the fields needed to render and schedule.
+#[derive(sqlx::FromRow)]
 struct CardRow {
     id: i64,
     note_id: i64,
@@ -394,17 +395,39 @@ async fn next_due_card(
     let subdeck_new_rem: Vec<i64> = subdeck_ids.iter().map(|id| budgets[id].0).collect();
     let subdeck_review_rem: Vec<i64> = subdeck_ids.iter().map(|id| budgets[id].1).collect();
 
-    // Single query: rank due candidates by gathering order using the
-    // normalised step table. Each card is gated by BOTH the selected deck's
-    // remaining total AND its own subdeck's remaining budget.
-    let row = sqlx::query_as!(
-        CardRow,
+    // The selected deck's new-card gather order (from its effective preset;
+    // display order is always taken from the selected deck, not subdecks).
+    let options = options_for(db, deck_id).await?;
+    let gather = options.new_gather_order;
+    // Deterministic per-student-day seed for the random orders (divergence from
+    // Anki's per-session seed; see DECK_OPTIONS_SUPPORT.md).
+    let seed = format!("{student_id}:{}", day_start.date_naive());
+
+    // The ORDER BY ordering key for *new* cards. Review/learning cards are
+    // unaffected here (their class sorts first, and due_at breaks ties).
+    let new_order = match gather {
+        anjuman_contracts::deck_options::NewGatherOrder::Deck => {
+            "cd.title ASC, c.position ASC".to_string()
+        }
+        anjuman_contracts::deck_options::NewGatherOrder::Ascending => {
+            "c.position ASC".to_string()
+        }
+        anjuman_contracts::deck_options::NewGatherOrder::Descending => {
+            "c.position DESC".to_string()
+        }
+        anjuman_contracts::deck_options::NewGatherOrder::RandomNotes => {
+            format!("md5('{seed}:' || c.note_id::text) ASC")
+        }
+        anjuman_contracts::deck_options::NewGatherOrder::RandomCards => {
+            format!("md5('{seed}:' || c.id::text) ASC")
+        }
+    };
+
+    let sql = format!(
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
-               scs.state as "state!: DbCardState", scs.due_at, scs.stability as "stability: f64",
-               scs.difficulty as "difficulty: f64", scs.reps, scs.lapses,
-               scs.flag as "flag: i64", scs.suspended as "suspended: bool",
-               scs.buried_at, scs.bury_reason, scs.step_index as "step_index: i64"
+               scs.state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses,
+               scs.flag, scs.suspended, scs.buried_at, scs.bury_reason, scs.step_index
         FROM cards c
         JOIN notes n ON n.id = c.note_id
         JOIN decks cd ON cd.id = c.deck_id
@@ -439,22 +462,26 @@ async fn next_due_card(
                 ELSE 3
             END,
             scs.due_at ASC NULLS LAST,
+            CASE WHEN scs.state = 'new' THEN 0 ELSE 1 END,
+            {new_order},
             c.id ASC
         LIMIT 1
-        "#,
-        student_id,
-        deck_id,
-        day_start,
-        now,
-        selected_review_remaining,
-        selected_new_remaining,
-        subdeck_ids.as_slice(),
-        subdeck_new_rem.as_slice(),
-        subdeck_review_rem.as_slice(),
-    )
-    .fetch_optional(db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        "#
+    );
+
+    let row = sqlx::query_as::<_, CardRow>(&sql)
+        .bind(student_id)
+        .bind(deck_id)
+        .bind(day_start)
+        .bind(now)
+        .bind(selected_review_remaining)
+        .bind(selected_new_remaining)
+        .bind(&subdeck_ids)
+        .bind(&subdeck_new_rem)
+        .bind(&subdeck_review_rem)
+        .fetch_optional(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if row.is_some() {
         return Ok(row);

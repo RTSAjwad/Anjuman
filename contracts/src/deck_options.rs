@@ -2,6 +2,28 @@
 
 use serde::{Deserialize, Serialize};
 
+/// How new cards are gathered from a deck (US-2.8).
+///
+/// Mirrors Anki's "New card gather order". `Deck` gathers subdecks in order
+/// (each in ascending position); `Ascending`/`Descending` order by `cards.position`;
+/// `RandomNotes`/`RandomCards` use a deterministic per-student-day seed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum NewGatherOrder {
+    Deck,
+    Ascending,
+    Descending,
+    RandomNotes,
+    RandomCards,
+}
+
+impl Default for NewGatherOrder {
+    fn default() -> Self {
+        NewGatherOrder::Deck
+    }
+}
+
 /// The action taken when a card reaches the leech threshold.
 ///
 /// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
@@ -50,6 +72,8 @@ pub struct CreateDeckOptions {
     pub leech_threshold: i64,
     #[serde(default)]
     pub leech_action: LeechAction,
+    #[serde(default)]
+    pub new_gather_order: NewGatherOrder,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -67,6 +91,7 @@ pub struct UpdateDeckOptions {
     pub review_per_day: Option<i64>,
     pub leech_threshold: Option<i64>,
     pub leech_action: Option<LeechAction>,
+    pub new_gather_order: Option<NewGatherOrder>,
 }
 
 /// A deck options preset as returned to clients.
@@ -89,6 +114,7 @@ pub struct DeckOptions {
     pub review_per_day: i64,
     pub leech_threshold: i64,
     pub leech_action: LeechAction,
+    pub new_gather_order: NewGatherOrder,
 }
 
 fn default_learning_steps() -> String {

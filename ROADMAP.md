@@ -202,7 +202,7 @@ matrix's "Summary of the biggest gaps" is the working list:
 
       **Out of scope**
       - Manual reordering UI (separate future story).
-- [ ] **US-2.8 — New card gather order**
+- [x] **US-2.8 — New card gather order**
 
       **As** a student,
       **I want** to choose how new cards are gathered (deck / ascending /
@@ -210,15 +210,15 @@ matrix's "Summary of the biggest gaps" is the working list:
       **so that** I control which new cards are prioritised.
 
       **Acceptance criteria**
-      - [ ] `new_gather_order` enum on `deck_options` (default `deck`).
-      - [ ] `deck` gathers subdecks in order, each in ascending position.
-      - [ ] `ascending`/`descending` order by `cards.position`.
-      - [ ] `random_notes`/`random_cards` use a deterministic per-student-day
+      - [x] `new_gather_order` enum on `deck_options` (default `deck`).
+      - [x] `deck` gathers subdecks in order, each in ascending position.
+      - [x] `ascending`/`descending` order by `cards.position`.
+      - [x] `random_notes`/`random_cards` use a deterministic per-student-day
             seed (see divergence note).
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] Each criterion has a `server/tests/` test.
 
       **Out of scope**
-      - "Deck, then random notes" (in-app variant) — treated as `deck` subset.
+      - "Deck, then random notes" (in-app variant) — treated as `deck`.
 - [ ] **US-2.9 — New card sort order**
 
       **As** a student,
