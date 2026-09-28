@@ -58,7 +58,7 @@ Legend:
 |---|---|---|
 | Graduating interval | ⚪ | FSRS computes graduation interval from memory state, not a fixed day count. |
 | Easy interval (fixed) | ⚪ | FSRS-driven; Easy graduates using the FSRS interval. |
-| Insertion order (sequential vs random) | ❌ | Not implemented. New cards use due/position ordering only. |
+| Insertion order (sequential vs random) | 🟡 | **Sequential** is de facto supported — `cards.position` is a global monotonic sequence (`card_position_seq`), so ascending position ≈ oldest-first. **Random** is not: Anki assigns shuffled positions on creation *and* retroactively re-sorts existing new cards when the setting changes; neither is implemented (US-2.13). Manual repositioning is a separate deferred story. |
 
 ## Lapses
 

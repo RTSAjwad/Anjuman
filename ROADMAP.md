@@ -287,6 +287,29 @@ matrix's "Summary of the biggest gaps" is the working list:
         interval).
       - "Ascending/descending ease" (SM-2) is surfaced as easy/difficult-first
         under FSRS via `difficulty`.
+- [ ] **US-2.13 — New card insertion order (Random + retroactive re-sort)**
+
+      **As** a teacher configuring a preset,
+      **I want** to choose whether newly-added cards get sequential or random
+      positions (due #) and have that choice re-sort existing new cards,
+      **so that** new-card introduction order matches my preference without
+      reordering by hand.
+
+      **Acceptance criteria**
+      - [ ] `insertion_order` enum (`sequential` / `random`) on `deck_options`,
+            default `sequential`.
+      - [ ] Sequential keeps `card_position_seq` monotonic assignment.
+      - [ ] Random assigns shuffled `position`s to cards created while active.
+      - [ ] Changing the option atomically re-sorts the *existing* new-card
+            `position`s of the preset's decks (retroactive, matching Anki's
+            "automatically update the existing position of new cards").
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Open question / scope** — Anki positions new cards *per deck*; our
+      `cards.position` is a global sequence. Faithful `random` + retroactive
+      re-sort needs per-deck (or per-preset) positioning semantics, which is a
+      small structural change to `cards.position` (see `0005_cards_position.sql`
+      note). Resolve this before implementing.
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 
