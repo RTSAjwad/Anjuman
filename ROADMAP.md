@@ -95,8 +95,29 @@ matrix's "Summary of the biggest gaps" is the working list:
       - [x] Each criterion has a `server/tests/` test.
 
       **Out of scope**
-      - Empty *learning* steps (the manual flags both as experimental; keep to
-        relearning for now).
+      - Empty *learning* steps (see US-2.5).
+- [ ] **US-2.5 — Empty learning steps → FSRS short-term scheduling**
+
+      **As** a student who lets FSRS control short-term scheduling,
+      **I want** an empty learning-steps list to let FSRS schedule the
+      learning phase too,
+      **so that** I can drop the fixed step ladder entirely.
+
+      **Acceptance criteria**
+      - TBD — needs an `fsrs`-crate investigation first: how does `fsrs 6.6`
+        expose FSRS-5 short-term (learning-phase) intervals, and what does
+        "Again" mean without a step ladder (can be ≥1 day).
+      - [ ] New/learning cards schedule via FSRS rather than `learning_steps`.
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Matches Anki's "experimental" flag** — the manual marks
+      "leaving the (re)learning steps field empty" as experimental; we mirror
+      that status and defer this behind the non-experimental deck-options gaps.
+
+      **Notes**
+      - Requires revisiting whether short-term scheduling is a small branch or
+        a real scheduler change (depends on the `fsrs` crate's learning-phase
+        API). Place after Display order / parameter optimization / daily limits.
 - [ ] **Subdeck limit aggregation** — "selected deck governs the total" across
       a subtree.
 - [ ] **Daily-limit fine controls** — "new cards ignore review limit", "limits
