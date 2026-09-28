@@ -12,6 +12,7 @@ Legend:
 - 🟡 partial / differs
 - ❌ not supported yet
 - ⚪ SM-2-only / not applicable (no SM-2 legacy algorithm)
+- ⏳ deferred — scoping/decision outstanding (see referenced roadmap stage)
 
 ## Presets
 
@@ -38,8 +39,8 @@ Legend:
 | New cards/day | ✅ | `new_per_day` (default 20); counted via `state_before = 'new'` reviews per day. |
 | Max reviews/day | ✅ | `review_per_day` (default 200). |
 | Per-deck daily limits (preset / this deck / today only) | 🟡 | Per-deck limits via presets are supported; no "today only" override, no per-deck override independent of the preset. |
-| New cards ignore review limit | ❌ | Not implemented. New cards are independently capped by `new_per_day` only. |
-| Limits start from top (parent limits apply to subdecks) | ❌ | Not implemented. |
+| New cards ignore review limit | ⏳ | Deferred to after stage 7 — "collection-wide" in Anki; our school/user split makes its scope a stage-7 decision. |
+| Limits start from top (parent limits apply to subdecks) | ⏳ | Deferred to after stage 7 (same rationale as above). |
 
 ## New Cards — Learning Steps & Day Boundaries
 
@@ -138,6 +139,12 @@ Legend:
 
 ## Key architectural differences vs. Anki
 
+- **Deck options are school-scoped, not per-user.** Anki deck options belong to
+  the single user; Anjuman presets are school-scoped and teacher/admin-authored
+  (shared so a class studies consistently). A student consuming a shared deck is
+  currently locked to the school preset. See ROADMAP stage 7 (per-user deck
+  options / personal scheduling), which plans a layered personal-override model
+  rather than this current all-or-nothing rigidity.
 - **FSRS-only: no SM-2.** Anjuman supports the FSRS scheduler only and
   deliberately does **not** implement SM-2-specific features. When the manual
   describes an option, we first classify it SM-2 vs FSRS; SM-2-only options

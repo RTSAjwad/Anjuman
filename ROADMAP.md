@@ -120,8 +120,12 @@ matrix's "Summary of the biggest gaps" is the working list:
         API). Place after Display order / parameter optimization / daily limits.
 - [ ] **Subdeck limit aggregation** — "selected deck governs the total" across
       a subtree.
-- [ ] **Daily-limit fine controls** — "new cards ignore review limit", "limits
-      start from top", per-deck "today only" overrides.
+- [ ] **Daily-limit fine controls** — per-deck "today only" (and "this deck")
+      overrides on `new_per_day`/`review_per_day`.
+- [ ] **`new_cards_ignore_review_limit` + `limits_start_from_top`** — descoped
+      until after stage 7. These are "collection-wide" in Anki; our multi-tenant
+      school/user split makes their scope a stage-7 decision (see stage 7 design
+      question #6).
 - [x] **US-2.1 — Hard-button step behaviour** — implement Anki's exact
       learning/relearning Hard rules. See `PLANNING.md` §2.
 
@@ -229,6 +233,49 @@ core feature stages settle.
 
 ---
 
+## 7. Per-user deck options / personal scheduling   `[ ]`
+
+Allow a student to personalise scheduling for decks they study without mutating
+shared, school-scoped presets. Today deck options are school-scoped and
+**only teacher/admin-authored** — a deliberate divergence from Anki (where deck
+options belong to the single user). This stage makes the personalisation model
+**layered overrides** rather than replacing shared presets.
+
+### Why
+
+- Anki deck options are per-user; Anjuman's are per-school. The school preset
+  solves *consistency* (a teacher sets `1m 10m` for the whole class), but it
+  locks every student of a shared deck to identical scheduling.
+- A student adopting a shared deck should be able to set **their own** limits,
+  steps, or retention for their study without mutating the teacher's preset.
+
+### Design questions to settle (before implementing)
+
+- [ ] **Override target** — do personal overrides attach to a *deck* or to a
+      *preset*? (Per-deck personal options vs. per-user preset clones.)
+- [ ] **Storage** — a `user_deck_options(user_id, deck_id, …)` table, per-user
+      preset clones, or a delta-compare model?
+- [ ] **Permission model** — a `decks.allow_personal_options BOOLEAN` so a
+      teacher can choose per-deck whether students may override. Turns today's
+      hard "school-only" rule into a per-deck choice.
+- [ ] **Fork vs. inherit** — does a personal override fork a snapshot of the
+      preset (deviating independently), or diff against the live preset?
+- [ ] **Analytics/comparison** — how do diverging student options affect class
+      analytics and cross-student comparison?
+- [ ] **Interaction with daily limits** — personal "new-per-day" limits overlap
+      with the per-user daily-limit prefs; resolve before finalising both to
+      avoid two competing mechanisms.
+
+### Definition of done
+
+- Effective options resolve as *personal override if present, else school
+  preset*, with an explicit per-deck permission to admit overrides.
+- A student can study a shared deck with their own limits/steps without
+  touching the teacher's preset.
+- Documented in `DECK_OPTIONS_SUPPORT.md` "Key architectural differences".
+
+---
+
 ## Notes
 
 - **Ordering rationale:** task 1 is invisible-but-risky infrastructure (no API
@@ -237,6 +284,8 @@ core feature stages settle.
   Task 5 (backfill) runs last so the existing surface gets full story+tests
   coverage *after* the feature work settles, rather than front-loading it.
   Task 6 (tags) is a deferred cross-cutting feature that revisits the leech
-  `TagOnly` no-op from US-2.3.
+  `TagOnly` no-op from US-2.3. Task 7 (per-user deck options) makes scheduling
+  personalisation layered (personal override → school preset) instead of
+  Anki's strict single-user model.
 - Update this file's checkboxes (`[ ]`→`[x]`) and status markers at the start
   and end of every sub-task, with a one-line note of what changed.
