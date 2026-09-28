@@ -70,12 +70,13 @@ pub enum DbLimitMode {
     TodayOnly,
 }
 
-/// Mirrors the `new_gather_order` enum (`deck`, `ascending`, `descending`,
-/// `random_notes`, `random_cards`).
+/// Mirrors the `new_gather_order` enum (`deck`, `deck_then_random_notes`,
+/// `ascending`, `descending`, `random_notes`, `random_cards`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[sqlx(type_name = "new_gather_order", rename_all = "snake_case")]
 pub enum DbNewGatherOrder {
     Deck,
+    DeckThenRandomNotes,
     Ascending,
     Descending,
     RandomNotes,
@@ -215,6 +216,9 @@ impl From<anjuman_contracts::deck_options::NewGatherOrder> for DbNewGatherOrder 
     fn from(o: anjuman_contracts::deck_options::NewGatherOrder) -> Self {
         match o {
             anjuman_contracts::deck_options::NewGatherOrder::Deck => DbNewGatherOrder::Deck,
+            anjuman_contracts::deck_options::NewGatherOrder::DeckThenRandomNotes => {
+                DbNewGatherOrder::DeckThenRandomNotes
+            }
             anjuman_contracts::deck_options::NewGatherOrder::Ascending => DbNewGatherOrder::Ascending,
             anjuman_contracts::deck_options::NewGatherOrder::Descending => DbNewGatherOrder::Descending,
             anjuman_contracts::deck_options::NewGatherOrder::RandomNotes => DbNewGatherOrder::RandomNotes,
@@ -227,6 +231,9 @@ impl From<DbNewGatherOrder> for anjuman_contracts::deck_options::NewGatherOrder 
     fn from(o: DbNewGatherOrder) -> Self {
         match o {
             DbNewGatherOrder::Deck => anjuman_contracts::deck_options::NewGatherOrder::Deck,
+            DbNewGatherOrder::DeckThenRandomNotes => {
+                anjuman_contracts::deck_options::NewGatherOrder::DeckThenRandomNotes
+            }
             DbNewGatherOrder::Ascending => anjuman_contracts::deck_options::NewGatherOrder::Ascending,
             DbNewGatherOrder::Descending => anjuman_contracts::deck_options::NewGatherOrder::Descending,
             DbNewGatherOrder::RandomNotes => anjuman_contracts::deck_options::NewGatherOrder::RandomNotes,
@@ -241,6 +248,7 @@ impl DbNewGatherOrder {
     pub fn as_str(self) -> &'static str {
         match self {
             DbNewGatherOrder::Deck => "deck",
+            DbNewGatherOrder::DeckThenRandomNotes => "deck_then_random_notes",
             DbNewGatherOrder::Ascending => "ascending",
             DbNewGatherOrder::Descending => "descending",
             DbNewGatherOrder::RandomNotes => "random_notes",

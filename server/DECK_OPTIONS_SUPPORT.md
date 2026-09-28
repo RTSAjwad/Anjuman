@@ -75,7 +75,7 @@ Legend:
 
 | Anki feature | Status |
 |---|---|
-| New card gather order (deck / ascending / descending / random notes / random cards) | ✅ US-2.8 (`new_gather_order`); random uses a deterministic per-student-day seed. |
+| New card gather order (deck / deck-then-random-notes / ascending / descending / random notes / random cards) | ✅ US-2.8 (`new_gather_order`); random uses a deterministic per-student-day seed. |
 | New card sort order (card type / gathered / card-type+random / random note+card type / random) | 📝 US-2.9 |
 | New/review order (mix / before / after) | 📝 US-2.10 |
 | Interday learning/review order (mix / before / after) | 📝 US-2.11 |

@@ -210,15 +210,18 @@ matrix's "Summary of the biggest gaps" is the working list:
       **so that** I control which new cards are prioritised.
 
       **Acceptance criteria**
-      - [x] `new_gather_order` enum on `deck_options` (default `deck`).
+      - [x] `new_gather_order` enum on `deck_options` (default `deck`), incl.
+            `deck_then_random_notes`.
       - [x] `deck` gathers subdecks in order, each in ascending position.
+      - [x] `deck_then_random_notes` keeps subdeck order but randomises notes
+            within each subdeck.
       - [x] `ascending`/`descending` order by `cards.position`.
       - [x] `random_notes`/`random_cards` use a deterministic per-student-day
             seed (see divergence note).
       - [x] Each criterion has a `server/tests/` test.
 
       **Out of scope**
-      - "Deck, then random notes" (in-app variant) — treated as `deck`.
+      - Manual card/note reordering UI (a separate future story).
 - [ ] **US-2.9 — New card sort order**
 
       **As** a student,

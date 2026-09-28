@@ -409,6 +409,9 @@ async fn next_due_card(
         anjuman_contracts::deck_options::NewGatherOrder::Deck => {
             "cd.title ASC, c.position ASC".to_string()
         }
+        anjuman_contracts::deck_options::NewGatherOrder::DeckThenRandomNotes => {
+            format!("cd.title ASC, md5('{seed}:' || c.note_id::text) ASC")
+        }
         anjuman_contracts::deck_options::NewGatherOrder::Ascending => {
             "c.position ASC".to_string()
         }

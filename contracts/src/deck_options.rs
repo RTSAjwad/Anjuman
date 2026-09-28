@@ -5,13 +5,16 @@ use serde::{Deserialize, Serialize};
 /// How new cards are gathered from a deck (US-2.8).
 ///
 /// Mirrors Anki's "New card gather order". `Deck` gathers subdecks in order
-/// (each in ascending position); `Ascending`/`Descending` order by `cards.position`;
-/// `RandomNotes`/`RandomCards` use a deterministic per-student-day seed.
+/// (each in ascending position); `DeckThenRandomNotes` keeps subdeck order but
+/// gathers randomly selected notes within each subdeck; `Ascending`/`Descending`
+/// order by `cards.position`; `RandomNotes`/`RandomCards` use a deterministic
+/// per-student-day seed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum NewGatherOrder {
     Deck,
+    DeckThenRandomNotes,
     Ascending,
     Descending,
     RandomNotes,
