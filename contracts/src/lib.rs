@@ -22,6 +22,7 @@ pub mod decks;
 pub mod health;
 pub mod note_types;
 pub mod notes;
+pub mod preferences;
 pub mod reviews;
 pub mod shared;
 pub mod study;

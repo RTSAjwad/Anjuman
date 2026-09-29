@@ -32,6 +32,7 @@ pub mod handlers {
     pub mod me;
     pub mod note_types_handler;
     pub mod notes;
+    pub mod preferences;
     pub mod reviews;
     pub mod search_users;
     pub mod study;

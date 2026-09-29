@@ -76,33 +76,8 @@ async fn search_users_returns_matching_users() {
 }
 
 // ---------------------------------------------------------------------------
-// Stage 3 — preferences (placeholder)
+// Stage 3 — preferences
 // ---------------------------------------------------------------------------
 //
-// When `GET/PATCH /preferences` is added (ROADMAP task 3), replace the direct
-// SQL below with HTTP assertions against those routes, e.g.:
-//
-//   GET /preferences  → 200, defaults `{"learn_ahead_seconds":1200,"day_start_hour":4}`
-//   PATCH /preferences → 200, then GET reflects the upserted values.
-//
-// The harness already provides a real, migrated DB and a signed token, so those
-// tests are straightforward additions.
-
-#[tokio::test]
-async fn preferences_default_to_anki_values_before_any_update() {
-    let _guard = common::db_guard().await;
-    let app = common::TestApp::new().await;
-    let (user_id, _token) = create_user(&app, UserRole::Student).await;
-
-    // Direct DB assertion for now — the endpoint does not exist yet.
-    let row = sqlx::query!(
-        "SELECT learn_ahead_seconds, day_start_hour FROM user_preferences WHERE user_id = $1",
-        user_id
-    )
-    .fetch_optional(&app.db)
-    .await
-    .unwrap();
-
-    // No row yet: defaults are applied in application code, not persisted.
-    assert!(row.is_none());
-}
+// The `GET/PATCH /preferences` HTTP round-trip tests now live in
+// `server/tests/preferences.rs`.

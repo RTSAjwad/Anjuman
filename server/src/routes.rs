@@ -10,8 +10,8 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::{
     handlers::{
         admin_users, analytics, card_browser, card_mod, classes, dashboard, deck_options_handler,
-        decks, health, login, logout, me, note_types_handler, notes, reviews, search_users, study,
-        users,
+        decks, health, login, logout, me, note_types_handler, notes, preferences, reviews, search_users,
+        study, users,
     },
     openapi::ApiDoc,
     state::AppState,
@@ -37,6 +37,9 @@ pub fn router(state: AppState) -> Router {
         .route("/users/{id}", patch(admin_users::update_user))
         .route("/users/{id}", delete(admin_users::delete_user))
         .route("/me", get(me::me))
+        // Preferences
+        .route("/preferences", get(preferences::get_preferences))
+        .route("/preferences", patch(preferences::update_preferences))
         // Classes
         .route("/classes", get(classes::list_classes))
         .route("/classes", post(classes::create_class))

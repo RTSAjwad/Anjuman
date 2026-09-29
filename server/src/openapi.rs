@@ -38,6 +38,7 @@ use anjuman_contracts::note_types::{
     CreateTemplate, NoteTypeResponse, ReorderTemplates, Template, UpdateNoteType, UpdateTemplate,
 };
 use anjuman_contracts::notes::{CardSummary, CreateNote, NoteResponse, UpdateNote};
+use anjuman_contracts::preferences::{UpdatePreferences, UserPreferences};
 use anjuman_contracts::reviews::{
     FlagResponse, ReviewResponse, ReviewedCardState, SetFlag, SubmitReview,
 };
@@ -147,7 +148,9 @@ impl Modify for SecurityAddon {
         my_daily,
         class_analytics,
         student_detail,
-        dashboard
+        dashboard,
+        get_preferences,
+        update_preferences
     ),
     tags(
         (name = "health", description = "Service liveness"),
@@ -162,7 +165,8 @@ impl Modify for SecurityAddon {
         (name = "cards", description = "Card browser and modifications"),
         (name = "deck-options", description = "Deck options presets"),
         (name = "analytics", description = "Analytics and progress"),
-        (name = "dashboard", description = "Teacher dashboard")
+        (name = "dashboard", description = "Teacher dashboard"),
+        (name = "preferences", description = "User preferences")
     ),
     components(
         schemas(
@@ -175,7 +179,9 @@ impl Modify for SecurityAddon {
             StudyCard,
             StudyCounts,
             DeckCounts,
-            CardBrowserResponse
+            CardBrowserResponse,
+            UserPreferences,
+            UpdatePreferences
         )
     )
 )]
@@ -1243,6 +1249,38 @@ fn student_detail() {}
     )
 )]
 fn dashboard() {}
+
+// ---------------------------------------------------------------------------
+// Preferences
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    get,
+    path = "/preferences",
+    tag = "preferences",
+    operation_id = "getPreferences",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Current user's preferences", body = UserPreferences),
+        (status = 401, description = "Missing or invalid JWT", body = MessageResponse)
+    )
+)]
+fn get_preferences() {}
+
+#[utoipa::path(
+    patch,
+    path = "/preferences",
+    tag = "preferences",
+    operation_id = "updatePreferences",
+    security(("bearerAuth" = [])),
+    request_body = UpdatePreferences,
+    responses(
+        (status = 200, description = "Updated preferences", body = UserPreferences),
+        (status = 400, description = "Value out of range", body = MessageResponse),
+        (status = 401, description = "Missing or invalid JWT", body = MessageResponse)
+    )
+)]
+fn update_preferences() {}
 
 #[cfg(test)]
 mod tests {

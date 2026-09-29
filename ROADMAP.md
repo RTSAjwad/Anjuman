@@ -557,10 +557,13 @@ Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
 > *shared scheduling behaviour* — today just `day_start_hour`, `learn_ahead_seconds`,
 > and (future) `timebox_time_limit` — plus the CRUD endpoint that edits them.
 
-- [ ] **Add preferences CRUD** — `GET/PATCH /preferences` (per-user), backed by
+- [x] **Add preferences CRUD** — `GET/PATCH /preferences` (per-user), backed by
       the existing `user_preferences` table. Reads return the (possibly default)
       values; writes upsert. Covers the two persisted prefs now; add
-      `timebox_time_limit` with the timeboxing story below.
+      `timebox_time_limit` with the timeboxing story below. Added
+      `preferences` handler + contract DTOs (`UserPreferences`/`UpdatePreferences`,
+      minutes on the wire), routes/openapi wiring, and HTTP round-trip tests
+      in `server/tests/preferences.rs`.
 - [ ] **Timebox time limit** — add the `timebox_time_limit` preference (minutes,
       0–9999, default 0) *alongside* a timeboxing feature that consumes it (the
       preference alone has no effect until timeboxing exists). Decide whether
