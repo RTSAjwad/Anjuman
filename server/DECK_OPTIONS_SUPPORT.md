@@ -84,12 +84,12 @@ Each row below states which kind it is where it is not already obvious from a
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| Relearning steps (e.g. `10m`) | ✅ | `deck_option_steps` relearning; default `10m`. |
+| Relearning steps (e.g. `10m`) | ✅ | `deck_option_steps` relearning; default `10m`. Same unit logic as learning steps (`s`/`m`/`h`/`d` via `parse_steps`). |
 | Empty relearning steps → skip relearning, FSRS recomputes interval | ✅ | Under FSRS, empty relearning steps skip the relearning phase and recompute the interval directly (US-2.4). The manual's "1 day" wording is the SM-2 rule; FSRS uses the FSRS interval. |
 | Empty learning steps → FSRS controls short-term scheduling | ❌ | Not implemented (US-2.5). Matches Anki's "experimental" flag; deferred behind the non-experimental gaps. |
-| Minimum interval | ⚪ | **SM-2 only** (not shown under FSRS). Out of scope. |
-| Leech threshold | ✅ | `leech_threshold` (default 8); counted on review-card "Again" only. |
-| Leech action (Tag Only / Suspend Card) | 🟡 | `leech_action` enum. `SuspendCard` suspends at threshold; `TagOnly` is a documented no-op, and neither action tags the note (no tag system yet — see ROADMAP stage 6). `notes.leech_tagged_at` captures the leech marker. |
+| Minimum interval | ⚪ | **SM-2 only** — the in-app FSRS Lapses section shows only relearning/leech options (no Minimum interval), confirming it is hidden under FSRS. Out of scope. |
+| Leech threshold | ✅ | `leech_threshold` (default 8); counted on review-card "Again" only. In-app it is a **number, min 1, max 9999**; we store an unwrapped `i64`. |
+| Leech action (Tag Only / Suspend Card) | 🟡 | `leech_action` enum. `SuspendCard` suspends at threshold; `TagOnly` is a documented no-op, and neither action tags the note (no tag system yet — see ROADMAP stage 6). `notes.leech_tagged_at` captures the leech marker. The in-app text confirms both actions *tag* the note; only the tag half is deferred. |
 
 ## Display Order
 
