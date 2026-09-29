@@ -175,6 +175,26 @@ impl Default for AutoAdvanceAnswerAction {
     }
 }
 
+/// Per-weekday workload level for Easy Days (US-2.16).
+///
+/// Persist-only: the server stores the selection but performs no scheduling
+/// effect (Anki's Easy Days is wired into its interval load balancer, which we
+/// do not implement — see ROADMAP US-2.16). Monday-first in the wire array.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum EasyDayStrength {
+    Minimum,
+    Reduced,
+    Normal,
+}
+
+impl Default for EasyDayStrength {
+    fn default() -> Self {
+        EasyDayStrength::Normal
+    }
+}
+
 /// Expected JSON body for creating a deck options preset.
 ///
 /// Learning/relearning steps are submitted as Anki-style strings (e.g.
@@ -239,6 +259,9 @@ pub struct CreateDeckOptions {
     /// Maximum review interval, in days (default 36500; validated 1..=36500).
     #[serde(default = "default_maximum_interval")]
     pub maximum_interval: i64,
+    /// Per-weekday workload (Monday-first, length 7); default all normal.
+    #[serde(default = "default_easy_days")]
+    pub easy_days: Vec<EasyDayStrength>,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -273,6 +296,7 @@ pub struct UpdateDeckOptions {
     pub auto_advance_answer_action: Option<AutoAdvanceAnswerAction>,
     pub maximum_answer_seconds: Option<i64>,
     pub maximum_interval: Option<i64>,
+    pub easy_days: Option<Vec<EasyDayStrength>>,
 }
 
 /// A deck options preset as returned to clients.
@@ -312,6 +336,7 @@ pub struct DeckOptions {
     pub auto_advance_answer_action: AutoAdvanceAnswerAction,
     pub maximum_answer_seconds: i64,
     pub maximum_interval: i64,
+    pub easy_days: Vec<EasyDayStrength>,
 }
 
 fn default_learning_steps() -> String {
@@ -348,4 +373,8 @@ fn default_maximum_answer_seconds() -> i64 {
 
 fn default_maximum_interval() -> i64 {
     36500
+}
+
+fn default_easy_days() -> Vec<EasyDayStrength> {
+    vec![EasyDayStrength::Normal; 7]
 }

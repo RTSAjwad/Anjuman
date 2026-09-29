@@ -176,7 +176,7 @@ optional polish, not a correctness requirement.
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Easy Days (reduce workload on certain weekdays) | ❌ | server-side | One slider **per weekday**, each a three-value enum `Minimum` \| `Reduced` \| `Normal`. Adjusts FSRS due dates (not retroactive). A genuine server scheduling gap, not client. |
+| Easy Days (reduce workload on certain weekdays) | 🟡 | selection-only / client | One slider **per weekday** (`Minimum` \| `Reduced` \| `Normal`) stored as `easy_days` (7-elem array, Monday-first). **Persist-only**: Anki's Easy Days is wired into its *interval load balancer* (per-preset day projections over the ≤90-day fuzz window), which we do not implement, so the scheduling effect is a documented divergence deferred to a future "interval load balancer" story. |
 
 ## FSRS
 

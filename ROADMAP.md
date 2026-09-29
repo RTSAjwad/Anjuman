@@ -66,7 +66,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       heavy (and may need server-side simulation endpoints), so descoped until
       after the client lands (stage 4); no server work now.
 - [x] **Maximum answer seconds (server-side cap)** → US-2.15 (done).
-- [ ] **Easy Days (server-side scheduling)** → US-2.16.
+- [x] **Easy Days (server-side scheduling)** → US-2.16 (done, persist-only; scheduling effect descoped).
 - [x] **Maximum interval (server-side cap)** → US-2.17 (done).
 - [ ] **Historical retention** → folded into US-2.18.
 - [ ] **Custom scheduling (JS) — descoped (collection-wide)** — text-area JS
@@ -395,30 +395,34 @@ matrix's "Summary of the biggest gaps" is the working list:
       - The on-screen timer UI (client, stage 4 — already persisted in US-2.14).
       - Collection-wide cap: this is preset-scoped (in-app it lives under Timers
         in deck options), not a preferences value.
-- [ ] **US-2.16 — Easy Days (per-weekday workload)**
+- [x] **US-2.16 — Easy Days (per-weekday workload, persist-only)**
 
-      **As** a student,
-      **I want** to reduce my FSRS workload on chosen weekdays,
-      **so that** I can lighten or spread reviews around my weekly schedule.
+      **As** a teacher configuring a preset,
+      **I want** to record per-weekday workload levels on the preset,
+      **so that** they are available on the wire for the client (and a future
+      scheduler) to act on.
 
       Anki manual: <https://docs.ankiweb.net/deck-options.html#easy-days>.
       In-app it is **one three-value slider per weekday** (`minimum` / `reduced` /
-      `normal`), non-retroactive (only affects future intervals).
+      `normal`), non-retroactive.
+
+      **Scope** — **persist-only (selection-only).** No scheduling behaviour.
+      Anki's Easy Days is not a simple post-hoc shift; it is woven into Anki's
+      *interval fuzzer / load balancer* (per-preset day projections over the
+      fuzz window ≤ 90 days, with `Reduced` evaluated dynamically via weighted
+      random sampling) — a subsystem we do not implement at all. The scheduling
+      effect is therefore descoped to a future "interval load balancer" story.
 
       **Acceptance criteria**
-      - [ ] `easy_days` field on `deck_options` — one `EasyDayStrength` enum per
-            weekday (7 values), default all `normal`.
-      - [ ] `apply_review` / FSRS interval computation adjusts the post-scheduling
-            `due_at` for `minimum`/`reduced` weekdays (skip the day / shift short)
-            without mutating the FSRS memory state.
-      - [ ] Adjustment is non-retroactive (only cards scheduled from now).
-      - [ ] `GET /deck-options` reflects the field (OpenAPI regenerated).
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] `easy_days` field on `deck_options` — one `EasyDayStrength` enum
+            (`minimum` / `reduced` / `normal`) per weekday (Mon–Sun, 7 values),
+            default all `normal`.
+      - [x] `GET /deck-options` reflects the field (OpenAPI regenerated).
+      - [x] Round-trip test: value survives create → read and update → read.
 
-      **Out of scope / decision needed**
-      - Exact "minimum vs reduced" day-shift semantics must be pinned down
-        against Anki's scheduler (the manual describes the effect loosely);
-        record the resolution in `DECK_OPTIONS_SUPPORT.md` before coding.
+      **Out of scope (documented divergence)**
+      - Any scheduling effect (the load-balancing in Anki's interval fuzzer);
+        deferred to a future "interval load balancer" story.
       - Collection-wide (Anki scopes Easy Days per collection); we scope it
         per-preset, de facto a stage-7 collection-wide decision.
 - [x] **US-2.17 — Maximum interval (server-side cap)**
