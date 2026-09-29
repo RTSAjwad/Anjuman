@@ -32,6 +32,25 @@ The upshot: **the server owns only three preferences today** — `day_start_hour
 `timebox_time_limit` (a future timeboxing feature) — plus the CRUD endpoint that
 edits them.
 
+### Timezone (US-3.1)
+
+"Next day starts at" is honoured as a whole-hours-offset from **UTC** today,
+which is wrong for any student not in UTC — a Sydney student's 4 AM boundary
+lands at 15:00 local. Fixing this is the timezone-correctness story (US-3.1),
+with three decisions already recorded:
+
+- **Storage format**: per-user IANA timezone name (`TEXT`), *not* a fixed
+  `UTC+hh` offset (an offset silently breaks across DST; the IANA name follows
+  the zone's own offset transitions).
+- **Default**: `"UTC"`, preserving current behaviour exactly until a
+  client/onboarding sets a real zone. Revisit later (school-based,
+  location-based, etc.).
+- **Scope**: per-user, not per-school/per-preset — same call as the rest of
+  `user_preferences`. A future stage may add a school-wide default.
+
+Analytics bucketing (`DATE_TRUNC('day', …)` roll-ups) is deliberately **out of
+scope** for US-3.1 — separate story.
+
 ## Appearance
 
 | Anki feature | Status | Notes |
@@ -54,7 +73,7 @@ edits them.
 
 | Anki feature | Status | Default | Notes |
 |---|---|---|---|
-| Next day starts at | ✅ | 4 | `user_preferences.day_start_hour` (whole hours 0–23). Drives day boundary for limits, burial expiry, and study bucketing. |
+| Next day starts at | 🟡 | 4 | `user_preferences.day_start_hour` (whole hours 0–23). Drives day boundary for limits, burial expiry, and study bucketing. **Boundary is UTC-anchored today**; per-user timezone is tracked in US-3.1 (see note below). |
 | Learn ahead limit | ✅ | 20 (min) | `user_preferences.learn_ahead_seconds` (default 1200 s). In-app it's **minutes, 0–100, default 20**. |
 | Timebox time limit | ❌ | 0 | Int minutes, 0–9999, default 0 (`0` = disabled). Genuine server-side gap — depends on implementing timeboxing itself (no timebox feature yet). |
 

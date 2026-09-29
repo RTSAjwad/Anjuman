@@ -569,8 +569,68 @@ Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
       preference alone has no effect until timeboxing exists). Decide whether
       timeboxing is in-scope for stage 3 or a separate story.
 - [ ] **Timezone correctness** — the day boundary is UTC-anchored via
-      `day_start_hour`; consider a per-user timezone column so "next day starts
-      at" matches the user's local midnight.
+      `day_start_hour`; add a per-user timezone so "next day starts at" means
+      the user's local wall-clock time (see US-3.1 below).
+
+### US-3.1 — Timezone correctness
+
+**As** a student who does not live in UTC,
+**I want** "Next day starts at" to mean local wall-clock time in *my* timezone,
+**so that** my study day rolls over at the hour I set (e.g. 4 AM my time, not
+4 AM UTC) and my daily limits, burial expiry, and "reviews today" counts match
+my actual day.
+
+**Background / problem being fixed**
+
+`day_start_utc` in `server/src/handlers/study.rs` computes the study-day start by
+applying `num_seconds_from_midnight()` to a `DateTime<Utc>`. That is,
+`day_start_hour = 4` means **04:00 UTC for everyone**, regardless of where the
+student lives. For a Sydney student (UTC+11) the boundary lands at 15:00 local —
+daily limits reset mid-afternoon and "tomorrow's" cards become due ~9 hours
+early. The preference value is *persisted*, but semantically wrong for anyone off
+UTC.
+
+**This is a per-user concern** (Anki is single-user, so it is a global setting
+there; Anjuman is multi-user, so it must be per-user — same call made for the
+rest of `user_preferences`).
+
+**Acceptance criteria**
+
+- [ ] Add a per-user timezone to `user_preferences` and expose it on the wire:
+      `UserPreferences`/`UpdatePreferences` gain a `timezone` field (IANA name,
+      e.g. `"Europe/London"`; default `"UTC"`), round-tripped through
+      `GET`/`PATCH /preferences` and reflected in the OpenAPI spec.
+- [ ] A helper resolves "start of study day" for a user by interpreting
+      `day_start_hour` in the *user's* timezone and converting the result to a
+      `DateTime<Utc>` (replaces the raw `day_start_utc`).
+- [ ] The study/scheduling path uses the timezone-aware boundary everywhere it
+      currently calls `start_of_day` — day boundary for daily limits, burial
+      auto-expiry, and study bucketing/`seen_today` remain consistent.
+- [ ] Daily-limit "today" (`effective_daily_limits`'s `NaiveDate`) is derived
+      from the user's local day, so a limit reset happens at the user's local
+      rollover, not UTC.
+- [ ] An invalid/unparseable timezone falls back to `UTC` (and a `0..=23`
+      `day_start_hour` is still enforced).
+- [ ] Each criterion has a `server/tests/` test.
+
+**Out of scope / decisions to document**
+
+- **Scope decision**: timezone is *per-user*, not per-school and not per-preset
+  (same decision as the rest of `user_preferences`; recorded in
+  `PREFERENCES_SUPPORT.md`). A future stage may revisit a school-wide default.
+- **Storage format**: IANA name (`TEXT`), not a fixed `UTC+hh` offset — a fixed
+  offset silently breaks across daylight-saving changes, whereas the IANA name
+  follows the zone's own offset transitions.
+- **Default**: `"UTC"` for now, preserving current behaviour exactly until a
+  client/onboarding sets a real zone. Revisit later (school-based, location-
+  based, etc.). **Decision recorded in `PREFERENCES_SUPPORT.md`.**
+- **Analytics bucketing** (`analytics.rs`'s `start_of_today`/`start_of_week`,
+  `DATE_TRUNC('day', …)`) is **not** in scope here — those are report roll-ups,
+  not scheduling correctness; reconciling them to per-user local days is a
+  separate story.
+- **Anki parity note**: Anki is single-user and reads the OS timezone; there is
+  no "per-user timezone" concept to mirror. This is an Anjuman-specific
+  extension. The option is algorithm-neutral (neither SM-2 nor FSRS specific).
 - [ ] Cross-check the remaining ⚪/❌ rows and record descope decisions in the
       matrix (most are already ⚪ — client/form-factor/anki-specific).
 
