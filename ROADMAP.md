@@ -549,25 +549,27 @@ Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
 
 ---
 
-## 3. Preferences — feature-complete with Anki   `[ ]`
+## 3. Preferences — server-side only   `[ ]`
 
-Close the gaps in `server/PREFERENCES_SUPPORT.md`. The backend currently
-persists only two prefs (`day_start_hour`, `learn_ahead_seconds`) and has
-**no endpoint** to read/update them. The matrix's "Summary of the biggest
-gaps" is the working list:
+> **Scope:** most Anki preferences are client-side, form-factor-specific, or
+> Anki-specific and do **not** belong in the server (see `server/PREFERENCES_SUPPORT.md`
+> "Scope philosophy"). Stage 3 implements only the preferences that change
+> *shared scheduling behaviour* — today just `day_start_hour`, `learn_ahead_seconds`,
+> and (future) `timebox_time_limit` — plus the CRUD endpoint that edits them.
 
-- [ ] **Add preferences CRUD** — `GET/PATCH /preferences` (per-user), using the
-      existing `user_preferences` table (or a generalized key/value row).
-- [ ] **Timebox time limit** — implement the missing timebox preference.
-- [ ] **Audio-related preferences** — depends on adding audio support (media
-      storage/serving); likely a larger cross-cutting item — decide scope.
-- [ ] **Editing conveniences** — "default deck" persistence (last-used
-      deck/note type); accent-insensitive search (or fold into a search-token
-      improvement).
-- [ ] Timezone correctness — the current day-boundary is UTC-anchored via
-      `day_start_hour`; consider a per-user timezone column.
+- [ ] **Add preferences CRUD** — `GET/PATCH /preferences` (per-user), backed by
+      the existing `user_preferences` table. Reads return the (possibly default)
+      values; writes upsert. Covers the two persisted prefs now; add
+      `timebox_time_limit` with the timeboxing story below.
+- [ ] **Timebox time limit** — add the `timebox_time_limit` preference (minutes,
+      0–9999, default 0) *alongside* a timeboxing feature that consumes it (the
+      preference alone has no effect until timeboxing exists). Decide whether
+      timeboxing is in-scope for stage 3 or a separate story.
+- [ ] **Timezone correctness** — the day boundary is UTC-anchored via
+      `day_start_hour`; consider a per-user timezone column so "next day starts
+      at" matches the user's local midnight.
 - [ ] Cross-check the remaining ⚪/❌ rows and record descope decisions in the
-      matrix.
+      matrix (most are already ⚪ — client/form-factor/anki-specific).
 
 ---
 

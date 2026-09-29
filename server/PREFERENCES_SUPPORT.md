@@ -1,106 +1,114 @@
 # Anki Preferences — Support Matrix
 
-This document compares the preferences described in the [Anki manual](https://docs.ankiweb.net/preferences.html) against what Anki Classroom supports, and captures where we differ.
+This document compares the preferences described in the [Anki manual](https://docs.ankiweb.net/preferences.html) — reconciled against the **in-app descriptions** — and decides which ones Anjuman's **server** owns vs. which are client-side, form-factor-specific, or Anki-specific.
 
 Legend:
 
-- ✅ supported
+- ✅ supported (server persists/consumes it)
 - 🟡 partial / differs
-- ❌ not supported
-- ⚪ not applicable (client-side / backend has no role)
+- ❌ not supported (but a server-side concern — a real gap)
+- ⚪ not the server's concern — client-side or N/A
 
-> Note: many Anki preferences are **client-side** (theme, window sizes, keyboard shortcuts, playback behaviour) and therefore live in the Flutter frontend rather than the backend. This document marks them ⚪ and focuses the "supported" analysis on behaviour the backend actually controls.
+## Scope philosophy
+
+Most of Anki's preferences do **not** belong in the server:
+
+- **Client-side** — theme, playback toggles, on-screen count/next-review-time
+  display, distraction modes. The client owns these (stage 4) and may store them
+  where it likes (local storage); the server has no role.
+- **Form-factor-specific** — keyboard shortcuts/answer keys, "spacebar also
+  answers", `Style` (Anki vs Native). These are resolved by each platform shell
+  (desktop vs. mobile — we may consult AnkiDroid for mobile conventions later);
+  they are **not** cross-user server state.
+- **Anki-specific / "do nothing"** — video driver, `Style`, reset-window-sizes,
+  update/addon checking, third-party services, experiments. We deliberately do
+  not reproduce them.
+- **Server-side** — the small set that actually changes *shared scheduling
+  behaviour* and therefore must live in the DB, keyed per user. These are the
+  only preferences we implement (see ROADMAP stage 3).
+
+The upshot: **the server owns only three preferences today** — `day_start_hour`
+("next day starts at"), `learn_ahead_seconds` ("learn ahead limit"), and
+`timebox_time_limit` (a future timeboxing feature) — plus the CRUD endpoint that
+edits them.
 
 ## Appearance
 
-### General
-
 | Anki feature | Status | Notes |
 |---|---|---|
-| Language | ⚪ | Frontend concern. No backend involvement. |
-
-### User Interface
-
-| Anki feature | Status | Notes |
-|---|---|---|
-| Theme (dark/light/auto) | ⚪ | Frontend concern; night-mode card styling may require template work (same caveat as Anki). |
-| User interface size | ⚪ | Frontend concern. |
-| Reset window sizes | ⚪ | Frontend concern. |
-| Video driver | ⚪ | Desktop client concern (Anki-specific; not relevant to Flutter). |
-
-### Distractions
-
-| Anki feature | Status | Notes |
-|---|---|---|
-| Hide bars during review | ⚪ | Frontend concern. |
-| Minimalist mode | ⚪ | Frontend concern. |
-| Reduce motion | ⚪ | Frontend concern. |
-| Native vs Anki theme | ⚪ | Frontend concern. |
+| Language | ⚪ | Client concern (i18n). |
+| Video driver (OpenGL/Vulkan/Software) | ⚪ | Rendering is the client's job; no server role. **Decision: drop.** |
+| Check for program updates | ⚪ | We use each platform's native update mechanism. **Decision: drop.** |
+| Check for addon updates | ⚪ | No addons; a possible future stage. **Decision: drop.** |
+| Theme (Dark/Light/Follow System) | ⚪ | Client concern. |
+| Style (Anki vs Native) | ⚪ | Anki-client-specific. **Decision: drop.** |
+| User interface size | ⚪ | Fall back to the OS / accessibility defaults; users manage this via the OS. **Decision: drop.** |
+| Reset window sizes | ⚪ | Anki-client-specific button. **Decision: drop.** |
+| Hide top/bottom bar during review | ⚪ | Client concern (form-factor/distraction). |
+| Reduce motion | ⚪ | Client concern. |
+| Minimalist mode | ⚪ | Client concern. |
 
 ## Review
 
-### Scheduler
+### Scheduler (server-side)
+
+| Anki feature | Status | Default | Notes |
+|---|---|---|---|
+| Next day starts at | ✅ | 4 | `user_preferences.day_start_hour` (whole hours 0–23). Drives day boundary for limits, burial expiry, and study bucketing. |
+| Learn ahead limit | ✅ | 20 (min) | `user_preferences.learn_ahead_seconds` (default 1200 s). In-app it's **minutes, 0–100, default 20**. |
+| Timebox time limit | ❌ | 0 | Int minutes, 0–9999, default 0 (`0` = disabled). Genuine server-side gap — depends on implementing timeboxing itself (no timebox feature yet). |
+
+### Review (client-side / form-factor)
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| Next day starts at (default 4 AM) | ✅ | `user_preferences.day_start_hour` (default 4). Used for daily limits, burial auto-expiry, and study bucketing. See caveats below. |
-| Learn ahead limit (default 20 min) | ✅ | `user_preferences.learn_ahead_seconds` (default 1200). Used as a fallback when no actually-due cards remain. |
-| Timebox time limit | ❌ | Not implemented (no timeboxing). |
+| Show play buttons on cards with audio | ⚪ | Client + audio support (stage 4). |
+| Interrupt current audio when answering | ⚪ | Client + audio support (stage 4). |
+| Show remaining card count | ⚪ | Counts are already returned; the *display* toggle is client. |
+| Show next review time above answer buttons | ⚪ | Intervals are already returned; *display* is client. |
+| Spacebar/Enter also answers card | ⚪ | Form-factor-specific (desktop). |
+| Generate LaTeX images (security) | ⚪ | Client + renderer concern. |
 
-### Review
+### Answer keys (form-factor)
 
-| Anki feature | Status | Notes |
-|---|---|---|
-| Show play buttons on cards with audio | ❌ | No audio support yet. |
-| Interrupt current audio when answering | ❌ | No audio support yet. |
-| Show remaining card count | 🟡 | Card counts exist (`counts`) but any "hide count" toggle is frontend-only. |
-| Show next review time above answer buttons | 🟡 | Intervals are returned (`predicted_intervals`, `applied_interval_secs`); whether/how to display is frontend. |
-| Spacebar / Enter also answers card | ⚪ | Frontend concern. |
+| Anki feature | Status | Default | Notes |
+|---|---|---|---|
+| Again / Hard / Good / Easy | ⚪ | 1 / 2 / 3 / 4 | Keyboard mapping — form-factor-specific; client owns it. |
 
 ## Editing
 
-### Editing
+| Anki feature | Status | Notes |
+|---|---|---|
+| Editing conveniences | ⚪ | Client concern. |
+| Browsing / default search / accent-insensitivity | ⚪ | Search behaviour — see stage 6 (search) rather than preferences. |
+
+## Syncing / Backups / Third-party services / Experiments
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| Paste clipboard images as PNG | ⚪ | Frontend/desktop concern. |
-| Paste without Shift strips formatting | ⚪ | Frontend concern. |
-| Default deck (current deck vs. by note type) | ❌ | No "last used deck/note type" persistence; deck selection is explicit when adding. |
-
-### Browsing
-
-| Anki feature | Status | Notes |
-|---|---|---|
-| Default search text | ⚪ | Frontend concern (could seed from a user pref later). |
-| Ignore accents in search (slower) | ❌ | Search is exact; no accent-folding. |
-
-## Syncing
-
-| Anki feature | Status | Notes |
-|---|---|---|
-| Synchronize audio and images too | 🟡 | Server is authoritative (no device sync layer yet); media sync not implemented. |
-| Automatically sync on open/close | ⚪ | N/A — client-server model, not device sync. |
-| Periodically sync media | ❌ | No media sync. |
-| Force changes in one direction | ❌ | No sync conflict flow (offline sync is a future feature). |
-| AnkiWeb account / log out | 🟡 | We use JWT + server-side token revocation (`revoked_tokens`) and a `POST /logout` endpoint. Not AnkiWeb. |
-| Self-hosted sync server | ⚪ | Not applicable to the platform architecture. |
-
-## Backups
-
-| Anki feature | Status | Notes |
-|---|---|---|
-| Automatic backups | ❌ | No automatic backup job. A manual `platform.db.backup` may exist from development, but there is no scheduled/automatic backup mechanism. |
+| Sync / AnkiWeb account | ⚪ | The server is always the source of truth; there is no device-sync layer. **Decision: drop** (offline sync, if ever, is a separate feature). |
+| Backups | ⚪ | Handled at the DB level, not exposed to users. **Decision: drop.** |
+| Third-party services (AnkiHub, …) | ⚪ | Anki-specific. **Decision: drop.** |
+| Experiments (Svelte editor, …) | ⚪ | Anki-specific. **Decision: drop.** |
 
 ## Summary of the biggest gaps
 
-1. **Timeboxing** — no timebox time-limit preference.
-2. **Audio preferences** — no audio support, hence no playback/interrupt options.
-3. **Editing conveniences** — no "default deck" behaviour, no accent-insensitive search.
-4. **Sync/backup** — no device sync, media sync, conflict handling, or automatic backups (offline sync is a planned future feature).
+1. **Preferences CRUD** — no `GET/PATCH /preferences` endpoint yet (the two
+   persisted columns are read directly, but users can't edit them).
+2. **Timebox time limit** — the missing server-side preference, gated on
+   implementing timeboxing.
 
 ## Key architectural differences vs. Anki
 
-- **Only two persisted user preferences**: `learn_ahead_seconds` and `day_start_hour`. Both live in the `user_preferences` table (per-user, not per-deck). Everything else in Anki's preferences dialog is either a client-side concern or unimplemented.
-- **Day boundary is UTC-anchored** — Anki's "next day starts at" is relative to the user's timezone; we store only an hour (`day_start_hour`) with no per-user timezone yet, so the boundary is computed against UTC.
-- **No device sync layer** — Anki's sync preferences (media sync, one-directional sync, auto-sync) are tied to its profile/sync architecture, which the platform does not reproduce. Our model is a central server backed by JWT sessions; offline sync is a stated future feature.
-- **Preferences are not yet user-editable in code** — the `user_preferences` columns have defaults and are read by `study.rs`, but there is currently no endpoint to read/update them (unlike deck options, which have full CRUD).
+- **Only two persisted server-side preferences** (`day_start_hour`,
+  `learn_ahead_seconds`); a third (`timebox_time_limit`) is planned. Everything
+  else in Anki's preferences dialog is client-side, form-factor-specific, or
+  deliberately dropped as Anki-specific.
+- **Day boundary is UTC-anchored** — "next day starts at" stores only an hour
+  (`day_start_hour`) with no per-user timezone, so the boundary is computed
+  against UTC (per-user timezone is a possible future refinement).
+- **Preferences are not yet user-editable** — the `user_preferences` columns
+  have defaults and are read by `study.rs`, but there is no endpoint to
+  read/update them (unlike deck options, which have full CRUD).
+- **Form-factor preferences are intentionally deferred** to the client shells;
+  we may consult AnkiDroid for mobile conventions rather than invent our own.
