@@ -138,6 +138,43 @@ impl Default for LeechAction {
     }
 }
 
+/// The action to apply after the question is shown and the auto-advance timer
+/// elapses (US-2.14). Selection-only: the client performs the action; the
+/// server only persists the choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum AutoAdvanceQuestionAction {
+    ShowAnswer,
+    ShowCard,
+}
+
+impl Default for AutoAdvanceQuestionAction {
+    fn default() -> Self {
+        AutoAdvanceQuestionAction::ShowAnswer
+    }
+}
+
+/// The action to apply after the answer is shown and the auto-advance timer
+/// elapses (US-2.14). Selection-only: the client performs the action; the
+/// server only persists the choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum AutoAdvanceAnswerAction {
+    BuryCard,
+    AnswerAgain,
+    AnswerGood,
+    AnswerHard,
+    ShowReminder,
+}
+
+impl Default for AutoAdvanceAnswerAction {
+    fn default() -> Self {
+        AutoAdvanceAnswerAction::BuryCard
+    }
+}
+
 /// Expected JSON body for creating a deck options preset.
 ///
 /// Learning/relearning steps are submitted as Anki-style strings (e.g.
@@ -177,6 +214,25 @@ pub struct CreateDeckOptions {
     pub interday_order: InterdayOrder,
     #[serde(default)]
     pub review_sort_order: ReviewSortOrder,
+    // --- Selection-only (client-side behaviour) options (US-2.14) ---
+    #[serde(default)]
+    pub show_on_screen_timer: bool,
+    #[serde(default)]
+    pub stop_timer_on_answer: bool,
+    #[serde(default)]
+    pub dont_play_audio_automatically: bool,
+    #[serde(default)]
+    pub skip_question_when_replaying_answer: bool,
+    #[serde(default)]
+    pub auto_advance_seconds_show_question: f64,
+    #[serde(default)]
+    pub auto_advance_seconds_show_answer: f64,
+    #[serde(default = "default_wait_for_audio")]
+    pub auto_advance_wait_for_audio: bool,
+    #[serde(default)]
+    pub auto_advance_question_action: AutoAdvanceQuestionAction,
+    #[serde(default)]
+    pub auto_advance_answer_action: AutoAdvanceAnswerAction,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -199,6 +255,16 @@ pub struct UpdateDeckOptions {
     pub new_review_order: Option<NewReviewOrder>,
     pub interday_order: Option<InterdayOrder>,
     pub review_sort_order: Option<ReviewSortOrder>,
+    // --- Selection-only (client-side behaviour) options (US-2.14) ---
+    pub show_on_screen_timer: Option<bool>,
+    pub stop_timer_on_answer: Option<bool>,
+    pub dont_play_audio_automatically: Option<bool>,
+    pub skip_question_when_replaying_answer: Option<bool>,
+    pub auto_advance_seconds_show_question: Option<f64>,
+    pub auto_advance_seconds_show_answer: Option<f64>,
+    pub auto_advance_wait_for_audio: Option<bool>,
+    pub auto_advance_question_action: Option<AutoAdvanceQuestionAction>,
+    pub auto_advance_answer_action: Option<AutoAdvanceAnswerAction>,
 }
 
 /// A deck options preset as returned to clients.
@@ -226,6 +292,16 @@ pub struct DeckOptions {
     pub new_review_order: NewReviewOrder,
     pub interday_order: InterdayOrder,
     pub review_sort_order: ReviewSortOrder,
+    // --- Selection-only (client-side behaviour) options (US-2.14) ---
+    pub show_on_screen_timer: bool,
+    pub stop_timer_on_answer: bool,
+    pub dont_play_audio_automatically: bool,
+    pub skip_question_when_replaying_answer: bool,
+    pub auto_advance_seconds_show_question: f64,
+    pub auto_advance_seconds_show_answer: f64,
+    pub auto_advance_wait_for_audio: bool,
+    pub auto_advance_question_action: AutoAdvanceQuestionAction,
+    pub auto_advance_answer_action: AutoAdvanceAnswerAction,
 }
 
 fn default_learning_steps() -> String {
@@ -250,4 +326,8 @@ fn default_review_per_day() -> i64 {
 
 fn default_leech_threshold() -> i64 {
     8
+}
+
+fn default_wait_for_audio() -> bool {
+    true
 }

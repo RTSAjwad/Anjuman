@@ -132,6 +132,25 @@ pub enum DbReviewSortOrder {
     LatestAddedFirst,
 }
 
+/// Mirrors the `auto_advance_question_action` enum (`show_answer`, `show_card`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "auto_advance_question_action", rename_all = "snake_case")]
+pub enum DbAutoAdvanceQuestionAction {
+    ShowAnswer,
+    ShowCard,
+}
+
+/// Mirrors the `auto_advance_answer_action` enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "auto_advance_answer_action", rename_all = "snake_case")]
+pub enum DbAutoAdvanceAnswerAction {
+    BuryCard,
+    AnswerAgain,
+    AnswerGood,
+    AnswerHard,
+    ShowReminder,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions (server-local DB enums <-> contract enum / application strings)
 // ---------------------------------------------------------------------------
@@ -482,6 +501,105 @@ impl DbReviewSortOrder {
             DbReviewSortOrder::Random => "random",
             DbReviewSortOrder::OrderAdded => "order_added",
             DbReviewSortOrder::LatestAddedFirst => "latest_added_first",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::AutoAdvanceQuestionAction>
+    for DbAutoAdvanceQuestionAction
+{
+    fn from(a: anjuman_contracts::deck_options::AutoAdvanceQuestionAction) -> Self {
+        match a {
+            anjuman_contracts::deck_options::AutoAdvanceQuestionAction::ShowAnswer => {
+                DbAutoAdvanceQuestionAction::ShowAnswer
+            }
+            anjuman_contracts::deck_options::AutoAdvanceQuestionAction::ShowCard => {
+                DbAutoAdvanceQuestionAction::ShowCard
+            }
+        }
+    }
+}
+
+impl From<DbAutoAdvanceQuestionAction>
+    for anjuman_contracts::deck_options::AutoAdvanceQuestionAction
+{
+    fn from(a: DbAutoAdvanceQuestionAction) -> Self {
+        match a {
+            DbAutoAdvanceQuestionAction::ShowAnswer => {
+                anjuman_contracts::deck_options::AutoAdvanceQuestionAction::ShowAnswer
+            }
+            DbAutoAdvanceQuestionAction::ShowCard => {
+                anjuman_contracts::deck_options::AutoAdvanceQuestionAction::ShowCard
+            }
+        }
+    }
+}
+
+impl DbAutoAdvanceQuestionAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbAutoAdvanceQuestionAction::ShowAnswer => "show_answer",
+            DbAutoAdvanceQuestionAction::ShowCard => "show_card",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::AutoAdvanceAnswerAction>
+    for DbAutoAdvanceAnswerAction
+{
+    fn from(a: anjuman_contracts::deck_options::AutoAdvanceAnswerAction) -> Self {
+        match a {
+            anjuman_contracts::deck_options::AutoAdvanceAnswerAction::BuryCard => {
+                DbAutoAdvanceAnswerAction::BuryCard
+            }
+            anjuman_contracts::deck_options::AutoAdvanceAnswerAction::AnswerAgain => {
+                DbAutoAdvanceAnswerAction::AnswerAgain
+            }
+            anjuman_contracts::deck_options::AutoAdvanceAnswerAction::AnswerGood => {
+                DbAutoAdvanceAnswerAction::AnswerGood
+            }
+            anjuman_contracts::deck_options::AutoAdvanceAnswerAction::AnswerHard => {
+                DbAutoAdvanceAnswerAction::AnswerHard
+            }
+            anjuman_contracts::deck_options::AutoAdvanceAnswerAction::ShowReminder => {
+                DbAutoAdvanceAnswerAction::ShowReminder
+            }
+        }
+    }
+}
+
+impl From<DbAutoAdvanceAnswerAction>
+    for anjuman_contracts::deck_options::AutoAdvanceAnswerAction
+{
+    fn from(a: DbAutoAdvanceAnswerAction) -> Self {
+        match a {
+            DbAutoAdvanceAnswerAction::BuryCard => {
+                anjuman_contracts::deck_options::AutoAdvanceAnswerAction::BuryCard
+            }
+            DbAutoAdvanceAnswerAction::AnswerAgain => {
+                anjuman_contracts::deck_options::AutoAdvanceAnswerAction::AnswerAgain
+            }
+            DbAutoAdvanceAnswerAction::AnswerGood => {
+                anjuman_contracts::deck_options::AutoAdvanceAnswerAction::AnswerGood
+            }
+            DbAutoAdvanceAnswerAction::AnswerHard => {
+                anjuman_contracts::deck_options::AutoAdvanceAnswerAction::AnswerHard
+            }
+            DbAutoAdvanceAnswerAction::ShowReminder => {
+                anjuman_contracts::deck_options::AutoAdvanceAnswerAction::ShowReminder
+            }
+        }
+    }
+}
+
+impl DbAutoAdvanceAnswerAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbAutoAdvanceAnswerAction::BuryCard => "bury_card",
+            DbAutoAdvanceAnswerAction::AnswerAgain => "answer_again",
+            DbAutoAdvanceAnswerAction::AnswerGood => "answer_good",
+            DbAutoAdvanceAnswerAction::AnswerHard => "answer_hard",
+            DbAutoAdvanceAnswerAction::ShowReminder => "show_reminder",
         }
     }
 }

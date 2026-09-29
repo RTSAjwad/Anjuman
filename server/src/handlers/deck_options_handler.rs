@@ -15,8 +15,8 @@ use anjuman_contracts::UserRole;
 
 use crate::{
     auth::AuthUser,
-    db_types::{DbInterdayOrder, DbLeechAction, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder,
-        DbReviewSortOrder},
+    db_types::{DbAutoAdvanceAnswerAction, DbAutoAdvanceQuestionAction, DbInterdayOrder,
+        DbLeechAction, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder, DbReviewSortOrder},
     deck_options::{self, DeckOptions},
     handlers::{reviews::parse_steps},
     state::AppState,
@@ -120,7 +120,7 @@ pub async fn create_deck_options(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order, review_sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order, $15::text::review_sort_order) RETURNING id",
+        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order, review_sort_order, show_on_screen_timer, stop_timer_on_answer, dont_play_audio_automatically, skip_question_when_replaying_answer, auto_advance_seconds_show_question, auto_advance_seconds_show_answer, auto_advance_wait_for_audio, auto_advance_question_action, auto_advance_answer_action) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order, $15::text::review_sort_order, $16, $17, $18, $19, $20, $21, $22, $23::text::auto_advance_question_action, $24::text::auto_advance_answer_action) RETURNING id",
         claims.school_id,
         body.name,
         body.desired_retention,
@@ -136,6 +136,15 @@ pub async fn create_deck_options(
         DbNewReviewOrder::from(body.new_review_order).as_str(),
         DbInterdayOrder::from(body.interday_order).as_str(),
         DbReviewSortOrder::from(body.review_sort_order).as_str(),
+        body.show_on_screen_timer,
+        body.stop_timer_on_answer,
+        body.dont_play_audio_automatically,
+        body.skip_question_when_replaying_answer,
+        body.auto_advance_seconds_show_question,
+        body.auto_advance_seconds_show_answer,
+        body.auto_advance_wait_for_audio,
+        DbAutoAdvanceQuestionAction::from(body.auto_advance_question_action).as_str(),
+        DbAutoAdvanceAnswerAction::from(body.auto_advance_answer_action).as_str(),
     )
     .fetch_one(&mut *tx)
     .await
@@ -466,6 +475,99 @@ pub async fn update_deck_options(
                 "Database error".to_string(),
             )
         })?;
+    }
+
+    // Selection-only (client-side) options — US-2.14. Boolean and numeric
+    // fields first, then the two enum actions.
+    if let Some(v) = body.show_on_screen_timer {
+        sqlx::query!(
+            "UPDATE deck_options SET show_on_screen_timer = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(v) = body.stop_timer_on_answer {
+        sqlx::query!(
+            "UPDATE deck_options SET stop_timer_on_answer = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(v) = body.dont_play_audio_automatically {
+        sqlx::query!(
+            "UPDATE deck_options SET dont_play_audio_automatically = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(v) = body.skip_question_when_replaying_answer {
+        sqlx::query!(
+            "UPDATE deck_options SET skip_question_when_replaying_answer = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(v) = body.auto_advance_seconds_show_question {
+        sqlx::query!(
+            "UPDATE deck_options SET auto_advance_seconds_show_question = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(v) = body.auto_advance_seconds_show_answer {
+        sqlx::query!(
+            "UPDATE deck_options SET auto_advance_seconds_show_answer = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(v) = body.auto_advance_wait_for_audio {
+        sqlx::query!(
+            "UPDATE deck_options SET auto_advance_wait_for_audio = $1 WHERE id = $2",
+            v,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(action) = body.auto_advance_question_action {
+        sqlx::query!(
+            "UPDATE deck_options SET auto_advance_question_action = $1::text::auto_advance_question_action WHERE id = $2",
+            DbAutoAdvanceQuestionAction::from(action).as_str(),
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(action) = body.auto_advance_answer_action {
+        sqlx::query!(
+            "UPDATE deck_options SET auto_advance_answer_action = $1::text::auto_advance_answer_action WHERE id = $2",
+            DbAutoAdvanceAnswerAction::from(action).as_str(),
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
     }
 
     if steps_changed {

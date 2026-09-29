@@ -346,7 +346,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       re-sort needs per-deck (or per-preset) positioning semantics, which is a
       small structural change to `cards.position` (see `0005_cards_position.sql`
       note). Resolve this before implementing.
-- [ ] **US-2.14 — Selection-only deck options (client-side behaviour)**
+- [x] **US-2.14 — Selection-only deck options (client-side behaviour)**
 
       Persist the deck options whose behaviour is purely client-side, so they
       are available on the wire now and consumable when the client implements
@@ -354,25 +354,25 @@ matrix's "Summary of the biggest gaps" is the working list:
       no behaviour, and tests assert persistence, not effect.
 
       Options (from `DECK_OPTIONS_SUPPORT.md` "Audio" / "Timers" / "Auto Advance"):
-      - [ ] On-screen timer — "Show on-screen timer" (boolean, default off).
-      - [ ] On-screen timer — "Stop on-screen timer on answer" (boolean, default off).
-      - [ ] Audio — "Don't play audio automatically" (boolean).
-      - [ ] Audio — "Skip question when replaying answer" (boolean).
-      - [ ] Auto advance — "Seconds to show question for" (f64 1dp, 0.0–9999.0, default 0.0).
-      - [ ] Auto advance — "Seconds to show answer for" (f64 1dp, 0.0–9999.0, default 0.0).
-      - [ ] Auto advance — "Wait for audio" (boolean, default on).
-      - [ ] Auto advance — "Question action" (enum `show_answer` | `show_card`, default `show_answer`).
-      - [ ] Auto advance — "Answer action" (enum `bury_card` | `answer_again` | `answer_good` | `answer_hard` | `show_reminder`, default `bury_card`).
+      - [x] On-screen timer — "Show on-screen timer" (boolean, default off).
+      - [x] On-screen timer — "Stop on-screen timer on answer" (boolean, default off).
+      - [x] Audio — "Don't play audio automatically" (boolean).
+      - [x] Audio — "Skip question when replaying answer" (boolean).
+      - [x] Auto advance — "Seconds to show question for" (f64 1dp, 0.0–9999.0, default 0.0).
+      - [x] Auto advance — "Seconds to show answer for" (f64 1dp, 0.0–9999.0, default 0.0).
+      - [x] Auto advance — "Wait for audio" (boolean, default on).
+      - [x] Auto advance — "Question action" (enum `show_answer` | `show_card`, default `show_answer`).
+      - [x] Auto advance — "Answer action" (enum `bury_card` | `answer_again` | `answer_good` | `answer_hard` | `show_reminder`, default `bury_card`).
 
       **Decision** — treated as client-side: the server persists the values only
       (no timing/advancing behaviour).
 
       **Acceptance criteria** (per option)
-      - [ ] Field added to the contract + `deck_options` table + CRUD
+      - [x] Field added to the contract + `deck_options` table + CRUD
             create/update/read plumbing.
-      - [ ] Field appears in the generated OpenAPI spec.
-      - [ ] Round-trip test: value survives create → read and update → read.
-      - [ ] Documented "behaviour client-side" with a stage-4 reference.
+      - [x] Field appears in the generated OpenAPI spec.
+      - [x] Round-trip test: value survives create → read and update → read.
+      - [x] Documented "behaviour client-side" with a stage-4 reference.
 
       **Out of scope** (until stage 4): any actual timer/audio/advance
       behaviour in a client.

@@ -143,26 +143,26 @@ each in-app selection to what we implemented and flags where the two diverge.
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Don't play audio automatically | ❌ | selection-only / client | Boolean. When on, audio is not auto-played; playback is a client behaviour (stage 4). Server only persists the toggle. |
-| Skip question when replaying answer | ❌ | selection-only / client | Boolean. Controls whether question audio is included in the Replay action on the answer side — purely client behaviour (stage 4). |
+| Don't play audio automatically | ✅ | selection-only / client | Boolean. Persisted in `deck_options.dont_play_audio_automatically`; playback is a client behaviour (stage 4). No server behaviour. |
+| Skip question when replaying answer | ✅ | selection-only / client | Boolean. Persisted in `deck_options.skip_question_when_replaying_answer`; purely client behaviour (stage 4). |
 
 ## Timers
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
 | Maximum answer seconds | 🟡 | server | In-app it is a **number (min 1, max 7200)**. The manual's "default 60" is the value, not the bound. We record `response_time_ms` but do **not** cap it server-side yet — capping the recorded time is the server behaviour to add. |
-| Show on-screen timer | ❌ | selection-only / client | Boolean, default off. Pure client UI — counts time per card on the Study screen. Server only persists the toggle. |
-| Stop on-screen timer on answer | ❌ | selection-only / client | Boolean, default off; "doesn't affect statistics". Client behaviour only. Server only persists the toggle. |
+| Show on-screen timer | ✅ | selection-only / client | Boolean, default off. Persisted in `deck_options.show_on_screen_timer`; counts time per card on the Study screen (client only, stage 4). |
+| Stop on-screen timer on answer | ✅ | selection-only / client | Boolean, default off; "doesn't affect statistics". Persisted in `deck_options.stop_timer_on_answer` (client only, stage 4). |
 
 ## Auto Advance
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Seconds to show question for | ❌ | selection-only / client | Decimal (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Client behaviour (stage 4). |
-| Seconds to show answer for | ❌ | selection-only / client | Decimal (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Client behaviour (stage 4). |
-| Wait for audio | ❌ | selection-only / client | Boolean, default on. Client behaviour (stage 4). |
-| Question action | ❌ | selection-only / client | Enum `Show Answer` \| `Show Card`, default `Show Answer`. Client behaviour (stage 4). |
-| Answer action | ❌ | selection-only / client | Enum `Bury Card` \| `Answer Again` \| `Answer Good` \| `Answer Hard` \| `Show Reminder`, default `Bury Card`. Client behaviour (stage 4). |
+| Seconds to show question for | ✅ | selection-only / client | F64 (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Persisted; client behaviour (stage 4). |
+| Seconds to show answer for | ✅ | selection-only / client | F64 (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Persisted; client behaviour (stage 4). |
+| Wait for audio | ✅ | selection-only / client | Boolean, default on. Persisted (`auto_advance_wait_for_audio`); client behaviour (stage 4). |
+| Question action | ✅ | selection-only / client | Enum `show_answer` \| `show_card`, default `show_answer`. Persisted (`auto_advance_question_action`); client behaviour (stage 4). |
+| Answer action | ✅ | selection-only / client | Enum `bury_card` \| `answer_again` \| `answer_good` \| `answer_hard` \| `show_reminder`, default `bury_card`. Persisted (`auto_advance_answer_action`); client behaviour (stage 4). |
 
 **Decision** — the whole Auto Advance group is treated as selection-only / client: the server persists the values (seconds, wait-for-audio flag, and the two action enums) but performs no timing or advancing (stage 4).
 
