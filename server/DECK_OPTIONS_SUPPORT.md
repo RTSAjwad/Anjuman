@@ -57,8 +57,8 @@ Each row below states which kind it is where it is not already obvious from a
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| New cards/day | ✅ | `new_per_day` (default 20); counted via `state_before = 'new'` reviews per day. |
-| Max reviews/day | ✅ | `review_per_day` (default 200). |
+| New cards/day | ✅ | `new_per_day` (default 20); counted via `state_before = 'new'` reviews per day. In-app it is a **number, min 0, max 9999**; we store an unwrapped `i64` (no 0–9999 clamp — see divergence note). |
+| Max reviews/day | ✅ | `review_per_day` (default 200). In-app **min 0, max 9999**; unwrapped `i64` (no clamp). Interday learning shares this limit (gathered first) — matches the in-app text. |
 | Per-deck daily limits (preset / this deck / today only) | ✅ | Per-deck `preset`/`this_deck`/`today_only` override stored on `decks` (US-2.6), with `today_only` lazy expiry at the study-day boundary. |
 | New cards ignore review limit | ⏳ | Deferred to after stage 7 — "collection-wide" in Anki; our school/user split makes its scope a stage-7 decision. |
 | Limits start from top (parent limits apply to subdecks) | ⏳ | Deferred to after stage 7 (same rationale as above). |
@@ -67,7 +67,7 @@ Each row below states which kind it is where it is not already obvious from a
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| Learning steps (e.g. `1m 10m`) | ✅ | Stored normalized in `deck_option_steps`; parsed from Anki-style `"1m 10m"` strings. |
+| Learning steps (e.g. `1m 10m`) | ✅ | Stored normalized in `deck_option_steps`; parsed from Anki-style `"1m 10m"` strings. Units `s`/`m`/`h`/`d` (and a bare number = minutes) are supported (`parse_steps`). Default `1m 10m` matches the in-app "1 minute / 10 minutes" defaults. |
 | Hard button step behaviour (avg of first two steps; 1.5× single step) | ✅ | Implemented in `apply_review` + `predict_intervals` via `hard_step_delay` (first step → avg of first two; single step → 1.5× capped at +1 day; other steps → repeat current). |
 | Learn-ahead (show learning cards early) | ✅ | `learn_ahead_seconds` user pref, default 1200s (20 min). Matches Anki default. |
 | Day boundaries (steps crossing a day boundary converted to days) | ✅ | `day_start_hour` user pref (default 4 AM); intraday vs interday learning computed in SQL. |
@@ -285,6 +285,10 @@ each in-app selection to what we implemented and flags where the two diverge.
   `0.0..=1.0` envelope, without the 70–99 clamp. Recorded as a deliberate
   relaxation — revisit if we ever mirror Anki's slider in the client, at which
   point the client (or server validation) should re-impose the range.
+- **Daily-limit numbers are 0–9999 in-app, but we store an unwrapped `i64`.**
+  `new_per_day` and `review_per_day` are `min 0, max 9999` in Anki; we validate
+  only non-negativity (no 9999 cap), same as the retention relaxation. Revisit
+  if the client mirrors Anki's numeric input bounds.
 
 ## Open questions / under-documented Anki behaviour
 
