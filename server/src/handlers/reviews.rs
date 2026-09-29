@@ -528,13 +528,18 @@ pub async fn apply_review(
         DbCardState::Relearning => is_interday_step(current.step_index, relearning_steps),
         _ => false,
     };
+    // Clamp the recorded answer time to the preset's maximum (US-2.15). The
+    // client measures elapsed time and sends `response_time_ms`; the server
+    // enforces the cap so statistics stay trustworthy regardless of client.
+    let capped_response_time_ms =
+        response_time_ms.map(|ms| ms.min(options.maximum_answer_seconds));
     sqlx::query!(
         "INSERT INTO reviews (student_id, card_id, rating, reviewed_at, response_time_ms, state_before, interday) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         student_id,
         card_id,
         rating as i64,
         now,
-        response_time_ms,
+        capped_response_time_ms,
         current.state.as_str(),
         interday
     )

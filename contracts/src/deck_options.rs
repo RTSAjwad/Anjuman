@@ -233,6 +233,9 @@ pub struct CreateDeckOptions {
     pub auto_advance_question_action: AutoAdvanceQuestionAction,
     #[serde(default)]
     pub auto_advance_answer_action: AutoAdvanceAnswerAction,
+    /// Maximum recorded answer time, in seconds (default 60; validated 1..=7200).
+    #[serde(default = "default_maximum_answer_seconds")]
+    pub maximum_answer_seconds: i64,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -265,6 +268,7 @@ pub struct UpdateDeckOptions {
     pub auto_advance_wait_for_audio: Option<bool>,
     pub auto_advance_question_action: Option<AutoAdvanceQuestionAction>,
     pub auto_advance_answer_action: Option<AutoAdvanceAnswerAction>,
+    pub maximum_answer_seconds: Option<i64>,
 }
 
 /// A deck options preset as returned to clients.
@@ -302,6 +306,7 @@ pub struct DeckOptions {
     pub auto_advance_wait_for_audio: bool,
     pub auto_advance_question_action: AutoAdvanceQuestionAction,
     pub auto_advance_answer_action: AutoAdvanceAnswerAction,
+    pub maximum_answer_seconds: i64,
 }
 
 fn default_learning_steps() -> String {
@@ -330,4 +335,8 @@ fn default_leech_threshold() -> i64 {
 
 fn default_wait_for_audio() -> bool {
     true
+}
+
+fn default_maximum_answer_seconds() -> i64 {
+    60
 }

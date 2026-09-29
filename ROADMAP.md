@@ -65,7 +65,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       buttons each open a distinct simulator (different graphs). Both are UI-
       heavy (and may need server-side simulation endpoints), so descoped until
       after the client lands (stage 4); no server work now.
-- [ ] **Maximum answer seconds (server-side cap)** → US-2.15.
+- [x] **Maximum answer seconds (server-side cap)** → US-2.15 (done).
 - [ ] **Easy Days (server-side scheduling)** → US-2.16.
 - [ ] **Maximum interval (server-side cap)** → US-2.17.
 - [ ] **Historical retention** → folded into US-2.18.
@@ -364,7 +364,7 @@ matrix's "Summary of the biggest gaps" is the working list:
 
       **Out of scope** (until stage 4): any actual timer/audio/advance
       behaviour in a client.
-- [ ] **US-2.15 — Maximum answer seconds (server-side cap)**
+- [x] **US-2.15 — Maximum answer seconds (server-side cap)**
 
       **As** a student,
       **I want** answers that took longer than a per-preset cap to be recorded
@@ -376,13 +376,20 @@ matrix's "Summary of the biggest gaps" is the working list:
       default value, not a hard bound).
 
       **Acceptance criteria**
-      - [ ] `maximum_answer_seconds` field on `deck_options` (`i64`, default 60,
-            validated `1..=7200`).
-      - [ ] `apply_review` caps the recorded `response_time_ms` at
+      - [x] `maximum_answer_seconds` field on `deck_options` (`i64`, default 60,
+            validated `1..=7200` — reject `0` and `>7200`, matching Anki).
+      - [x] `apply_review` caps the recorded `response_time_ms` at
             `maximum_answer_seconds` when writing the `reviews` row (and the
             pre-submission stats path reads the capped value).
-      - [ ] `GET /deck-options` reflects the field (OpenAPI regenerated).
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] `GET /deck-options` reflects the field (OpenAPI regenerated).
+      - [x] Each criterion has a `server/tests/` test.
+
+      **Client-side contract (documented, stage 4)**
+      - The client runs the stopwatch and sends `response_time_ms` (existing
+        `StudyAdvanceBody` field).
+      - The client mirrors the `1..=7200` range in its input UI, and *may*
+        pre-clamp `response_time_ms` for an accurate on-screen cap — but the
+        server's clamp is authoritative and sufficient for correctness.
 
       **Out of scope**
       - The on-screen timer UI (client, stage 4 — already persisted in US-2.14).

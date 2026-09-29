@@ -81,7 +81,7 @@ pub async fn replace_steps(
 /// Fetch a preset by id, including its normalised steps.
 pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
     let row = sqlx::query!(
-        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action as \"leech_action!: DbLeechAction\", new_gather_order as \"new_gather_order!: DbNewGatherOrder\", new_sort_order as \"new_sort_order!: DbNewSortOrder\", new_review_order as \"new_review_order!: DbNewReviewOrder\", interday_order as \"interday_order!: DbInterdayOrder\", review_sort_order as \"review_sort_order!: DbReviewSortOrder\", show_on_screen_timer, stop_timer_on_answer, dont_play_audio_automatically, skip_question_when_replaying_answer, auto_advance_seconds_show_question, auto_advance_seconds_show_answer, auto_advance_wait_for_audio, auto_advance_question_action as \"auto_advance_question_action!: DbAutoAdvanceQuestionAction\", auto_advance_answer_action as \"auto_advance_answer_action!: DbAutoAdvanceAnswerAction\" FROM deck_options WHERE id = $1",
+        "SELECT id, school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action as \"leech_action!: DbLeechAction\", new_gather_order as \"new_gather_order!: DbNewGatherOrder\", new_sort_order as \"new_sort_order!: DbNewSortOrder\", new_review_order as \"new_review_order!: DbNewReviewOrder\", interday_order as \"interday_order!: DbInterdayOrder\", review_sort_order as \"review_sort_order!: DbReviewSortOrder\", show_on_screen_timer, stop_timer_on_answer, dont_play_audio_automatically, skip_question_when_replaying_answer, auto_advance_seconds_show_question, auto_advance_seconds_show_answer, auto_advance_wait_for_audio, auto_advance_question_action as \"auto_advance_question_action!: DbAutoAdvanceQuestionAction\", auto_advance_answer_action as \"auto_advance_answer_action!: DbAutoAdvanceAnswerAction\", maximum_answer_seconds FROM deck_options WHERE id = $1",
         id
     )
     .fetch_optional(db)
@@ -119,6 +119,7 @@ pub async fn get_options(db: &PgPool, id: i64) -> Result<DeckOptions, String> {
         auto_advance_wait_for_audio: row.auto_advance_wait_for_audio,
         auto_advance_question_action: row.auto_advance_question_action.into(),
         auto_advance_answer_action: row.auto_advance_answer_action.into(),
+        maximum_answer_seconds: row.maximum_answer_seconds,
     })
 }
 

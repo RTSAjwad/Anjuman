@@ -150,9 +150,15 @@ each in-app selection to what we implemented and flags where the two diverge.
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Maximum answer seconds | 🟡 | server | In-app it is a **number (min 1, max 7200)**. The manual's "default 60" is the value, not the bound. We record `response_time_ms` but do **not** cap it server-side yet — capping the recorded time is the server behaviour to add. |
+| Maximum answer seconds | ✅ | server | In-app it is a **number (min 1, max 7200, default 60)**. The client measures elapsed time and sends `response_time_ms`; `apply_review` clamps it to `deck_options.maximum_answer_seconds` at write time (validated `1..=7200`). The on-screen timer is a separate client option (US-2.14). |
 | Show on-screen timer | ✅ | selection-only / client | Boolean, default off. Persisted in `deck_options.show_on_screen_timer`; counts time per card on the Study screen (client only, stage 4). |
 | Stop on-screen timer on answer | ✅ | selection-only / client | Boolean, default off; "doesn't affect statistics". Persisted in `deck_options.stop_timer_on_answer` (client only, stage 4). |
+
+**Client contract (stage 4):** the client runs the stopwatch and sends
+`response_time_ms` on `StudyAdvanceBody`; it mirrors the `1..=7200` range in its
+input UI, and *may* pre-clamp the on-screen value to `maximum_answer_seconds` for
+an accurate display — but the server's clamp is authoritative, so pre-clamping is
+optional polish, not a correctness requirement.
 
 ## Auto Advance
 
