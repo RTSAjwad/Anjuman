@@ -316,8 +316,10 @@ pub async fn apply_review(
         None
     };
 
-    // Run the FSRS scheduler.
-    let fsrs = fsrs::FSRS::default();
+    // Run the FSRS scheduler with the preset's stored parameters (empty → the
+    // FSRS default weights) — US-2.18a.
+    let fsrs = fsrs::FSRS::new(&options.fsrs_parameters)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "FSRS scheduling failed"))?;
 
     let next_states = fsrs
         .next_states(previous_memory, desired_retention as f32, elapsed_days)

@@ -285,6 +285,9 @@ pub struct CreateDeckOptions {
     pub easy_days: Vec<EasyDayStrength>,
     #[serde(default)]
     pub insertion_order: InsertionOrder,
+    /// FSRS weight vector (JSONB); empty = defaults. See `FSRS::new`.
+    #[serde(default)]
+    pub fsrs_parameters: Vec<f32>,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -321,6 +324,7 @@ pub struct UpdateDeckOptions {
     pub maximum_interval: Option<i64>,
     pub easy_days: Option<Vec<EasyDayStrength>>,
     pub insertion_order: Option<InsertionOrder>,
+    pub fsrs_parameters: Option<Vec<f32>>,
 }
 
 /// A deck options preset as returned to clients.
@@ -362,6 +366,7 @@ pub struct DeckOptions {
     pub maximum_interval: i64,
     pub easy_days: Vec<EasyDayStrength>,
     pub insertion_order: InsertionOrder,
+    pub fsrs_parameters: Vec<f32>,
 }
 
 fn default_learning_steps() -> String {

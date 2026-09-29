@@ -134,7 +134,7 @@ pub async fn create_deck_options(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order, review_sort_order, show_on_screen_timer, stop_timer_on_answer, dont_play_audio_automatically, skip_question_when_replaying_answer, auto_advance_seconds_show_question, auto_advance_seconds_show_answer, auto_advance_wait_for_audio, auto_advance_question_action, auto_advance_answer_action, maximum_answer_seconds, maximum_interval, easy_days, insertion_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order, $15::text::review_sort_order, $16, $17, $18, $19, $20, $21, $22, $23::text::auto_advance_question_action, $24::text::auto_advance_answer_action, $25, $26, $27, $28::text::insertion_order) RETURNING id",
+        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order, review_sort_order, show_on_screen_timer, stop_timer_on_answer, dont_play_audio_automatically, skip_question_when_replaying_answer, auto_advance_seconds_show_question, auto_advance_seconds_show_answer, auto_advance_wait_for_audio, auto_advance_question_action, auto_advance_answer_action, maximum_answer_seconds, maximum_interval, easy_days, insertion_order, fsrs_parameters) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order, $15::text::review_sort_order, $16, $17, $18, $19, $20, $21, $22, $23::text::auto_advance_question_action, $24::text::auto_advance_answer_action, $25, $26, $27, $28::text::insertion_order, $29) RETURNING id",
         claims.school_id,
         body.name,
         body.desired_retention,
@@ -163,6 +163,7 @@ pub async fn create_deck_options(
         body.maximum_interval,
         serde_json::to_value(&body.easy_days).unwrap_or(serde_json::Value::Null),
         DbInsertionOrder::from(body.insertion_order).as_str(),
+        serde_json::to_value(&body.fsrs_parameters).unwrap_or(serde_json::Value::Null),
     )
     .fetch_one(&mut *tx)
     .await
@@ -657,6 +658,16 @@ pub async fn update_deck_options(
             "UPDATE cards c SET position = {reorder} FROM decks d JOIN deck_options o ON o.id = COALESCE(d.options_id, 0) WHERE c.deck_id = d.id AND o.id = $1"
         ))
         .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(params) = &body.fsrs_parameters {
+        sqlx::query!(
+            "UPDATE deck_options SET fsrs_parameters = $1 WHERE id = $2",
+            serde_json::to_value(params).unwrap_or(serde_json::Value::Null),
+            id
+        )
         .execute(&mut *tx)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;

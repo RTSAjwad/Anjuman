@@ -55,7 +55,7 @@ matrix's "Summary of the biggest gaps" is the working list:
 
 - [x] **Display order** — US-2.8–US-2.12 (gather, sort, new/review, interday,
       review-sort) all done. See below.
-- [ ] **FSRS parameter optimization** → US-2.18 (also folds in `historical_retention`).
+- [x] **FSRS parameter optimization** → US-2.18a (store+consume, done) + US-2.18b (optimizer, deferred).
 - [ ] **Collection-wide FSRS toggles (descoped to stage 7)** — "Reschedule cards
       on change" (transient, not saved) and "Check health when optimizing" are
       both collection-wide booleans in-app; deferred with the other
@@ -457,37 +457,58 @@ matrix's "Summary of the biggest gaps" is the working list:
       **Out of scope**
       - Learning/relearning *step* delays are not capped by maximum interval
         (Anki applies it to the review interval only).
-- [ ] **US-2.18 — FSRS parameter optimization + historical retention**
+- [x] **US-2.18a — FSRS parameters (store + consume)**
+
+      **As** a teacher,
+      **I want** to store FSRS parameters on a preset and have scheduling use
+      them,
+      **so that** shared decks can be tuned beyond the default parameters.
+
+      Anki manual: <https://docs.ankiweb.net/deck-options.html#fsrs-parameters>.
+
+      **Acceptance criteria**
+      - [x] `fsrs_parameters` (JSONB weight vector) field on `deck_options`
+            (empty/absent = `FSRS::default()`).
+      - [x] `apply_review` uses `FSRS::new(&preset.fsrs_parameters)` (empty →
+            default) instead of `FSRS::default()`.
+      - [x] `GET /deck-options` reflects the field (OpenAPI regenerated).
+      - [x] Each criterion has a `server/tests/` test (incl. one proving stored
+            parameters are consumed without error).
+
+      **Out of scope** — the optimizer endpoint (US-2.18b) and
+      `historical_retention` (which only feeds the optimizer's gap-filling, so
+      it is deferred with it).
+- [ ] **US-2.18b — FSRS parameter optimizer (deferred)**
 
       **As** a teacher,
       **I want** to optimise a preset's FSRS parameters from the school's review
       history (optionally filtered to a search),
-      **so that** scheduling fits the class's actual retention rather than the
-      default parameters.
+      **so that** scheduling fits the class's actual retention.
 
       Anki manual:
       <https://docs.ankiweb.net/deck-options.html#fsrs-parameters> and
       <https://docs.ankiweb.net/deck-options.html#historical-retention>.
 
-      **Acceptance criteria**
-      - [ ] `fsrs_parameters` (stored weight vector) + `historical_retention`
-            (percentage, default 90, `0.5..=1.0`) fields on `deck_options`.
-      - [ ] `apply_review` uses the preset's stored `fsrs_parameters` (falling
-            back to `FSRS::default()`) instead of always-default weights.
-      - [ ] Optimizer endpoint (e.g. `POST /deck-options/:id/optimize`) that
-            runs FSRS optimization over the preset's history and stores the
-            result; accepts an optional review-history filter (the in-app
-            `preset: "Default" ~is:suspended` search box).
-      - [ ] `historical_retention` feeds the optimizer's gap-filling.
-      - [ ] `GET /deck-options` reflects the fields (OpenAPI regenerated).
+      **Acceptance criteria** (deferred — not yet written/tested)
+      - [ ] Optimizer endpoint (`POST /deck-options/:id/optimize`) running
+            `fsrs::compute_parameters` over history reconstructed from `reviews`
+            (per-card `FSRSItem`s, day deltas), storing the result.
+      - [ ] `historical_retention` field (default 0.9, `0.7..=0.97`) feeds the
+            optimizer's gap-filling.
+      - [ ] Optional `param_search` filter (the in-app
+            `preset: "Default" ~is:suspended` box).
+      - [ ] `num_relearning_steps` aligned to the preset's relearning steps.
       - [ ] Each criterion has a `server/tests/` test.
 
       **Out of scope / decision needed**
       - "Check health when optimizing" (collection-wide, stage 7) and the
-        simulators (post-client) are excluded from this story.
-      - Whether parameters are stored per-preset or per-school/user must be
-        settled (Anki: per-preset, shared across the collection) — record the
-        decision; the current default is per-preset columns on `deck_options`.
+        simulators (post-client).
+      - Storage scope is per-preset columns on `deck_options` (Anki: per-preset
+        shared across the collection — recorded).
+      - Search-filter and `ignore_revlogs_before_date` semantics need Anki
+        fidelity research before implementing.
+- [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
+      descope each (record the descope decision in the matrix).
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 
