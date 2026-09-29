@@ -57,8 +57,8 @@ Each row below states which kind it is where it is not already obvious from a
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| New cards/day | ✅ | `new_per_day` (default 20); counted via `state_before = 'new'` reviews per day. In-app it is a **number, min 0, max 9999**; we store an unwrapped `i64` (no 0–9999 clamp — see divergence note). |
-| Max reviews/day | ✅ | `review_per_day` (default 200). In-app **min 0, max 9999**; unwrapped `i64` (no clamp). Interday learning shares this limit (gathered first) — matches the in-app text. |
+| New cards/day | ✅ | `new_per_day` (default 20); counted via `state_before = 'new'` reviews per day. In-app **min 0, max 9999**; validated `0..=9999`. |
+| Max reviews/day | ✅ | `review_per_day` (default 200). In-app **min 0, max 9999**; validated `0..=9999`. Interday learning shares this limit (gathered first) — matches the in-app text. |
 | Per-deck daily limits (preset / this deck / today only) | ✅ | Per-deck `preset`/`this_deck`/`today_only` override stored on `decks` (US-2.6), with `today_only` lazy expiry at the study-day boundary. |
 | New cards ignore review limit | ⏳ | Deferred to after stage 7 — "collection-wide" in Anki; our school/user split makes its scope a stage-7 decision. |
 | Limits start from top (parent limits apply to subdecks) | ⏳ | Deferred to after stage 7 (same rationale as above). |
@@ -88,7 +88,7 @@ Each row below states which kind it is where it is not already obvious from a
 | Empty relearning steps → skip relearning, FSRS recomputes interval | ✅ | Under FSRS, empty relearning steps skip the relearning phase and recompute the interval directly (US-2.4). The manual's "1 day" wording is the SM-2 rule; FSRS uses the FSRS interval. |
 | Empty learning steps → FSRS controls short-term scheduling | ❌ | Not implemented (US-2.5). Matches Anki's "experimental" flag; deferred behind the non-experimental gaps. |
 | Minimum interval | ⚪ | **SM-2 only** — the in-app FSRS Lapses section shows only relearning/leech options (no Minimum interval), confirming it is hidden under FSRS. Out of scope. |
-| Leech threshold | ✅ | `leech_threshold` (default 8); counted on review-card "Again" only. In-app it is a **number, min 1, max 9999**; we store an unwrapped `i64`. |
+| Leech threshold | ✅ | `leech_threshold` (default 8); counted on review-card "Again" only. In-app **number, min 1, max 9999**; validated `1..=9999`. |
 | Leech action (Tag Only / Suspend Card) | 🟡 | `leech_action` enum. `SuspendCard` suspends at threshold; `TagOnly` is a documented no-op, and neither action tags the note (no tag system yet — see ROADMAP stage 6). `notes.leech_tagged_at` captures the leech marker. The in-app text confirms both actions *tag* the note; only the tag half is deferred. |
 
 ## Display Order
@@ -164,8 +164,8 @@ optional polish, not a correctness requirement.
 
 | Anki feature | Status | Kind | Notes |
 |---|---|---|---|
-| Seconds to show question for | ✅ | selection-only / client | F64 (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Persisted; client behaviour (stage 4). |
-| Seconds to show answer for | ✅ | selection-only / client | F64 (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables). Persisted; client behaviour (stage 4). |
+| Seconds to show question for | ✅ | selection-only / client | F64 (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables); validated `0.0..=9999.0`. Persisted; client behaviour (stage 4). |
+| Seconds to show answer for | ✅ | selection-only / client | F64 (1 dp), min 0.0, max 9999.0, default 0.0 (`0` disables); validated `0.0..=9999.0`. Persisted; client behaviour (stage 4). |
 | Wait for audio | ✅ | selection-only / client | Boolean, default on. Persisted (`auto_advance_wait_for_audio`); client behaviour (stage 4). |
 | Question action | ✅ | selection-only / client | Enum `show_answer` \| `show_card`, default `show_answer`. Persisted (`auto_advance_question_action`); client behaviour (stage 4). |
 | Answer action | ✅ | selection-only / client | Enum `bury_card` \| `answer_again` \| `answer_good` \| `answer_hard` \| `show_reminder`, default `bury_card`. Persisted (`auto_advance_answer_action`); client behaviour (stage 4). |
@@ -184,7 +184,7 @@ optional polish, not a correctness requirement.
 |---|---|---|
 | FSRS algorithm itself | ✅ | `fsrs` 6.6 crate, `FSRS::default()`. |
 | FSRS enable/disable (global) | ⚪ | A single collection-wide boolean toggle in Anki, shared by all presets. Anjuman is FSRS-only, so we omit it — always on, no SM-2 toggle. |
-| Desired retention | ✅ | `desired_retention` (default 0.9), a **70–99% slider** in-app. We store a `f64` validated `0.0..=1.0` (no 70–99 clamp — see divergence note). |
+| Desired retention | ✅ | `desired_retention` (default 0.9), a **70–99% slider** in-app. Validated `0.70..=0.99`. |
 | Desired retention per deck (deck scoping) | 🟡 | The in-app retention selector has a **Preset / This deck** scope toggle (same as the daily limits); our `desired_retention` is preset-scoped only — per-deck retention is not implemented. See stage-7 per-deck personalisation. |
 | FSRS parameters | 🟡 | Stored per-preset as a JSONB weight vector (`fsrs_parameters`); empty = `FSRS::default()`, consumed by `apply_review` via `FSRS::new` (US-2.18a). The **optimizer** that *produces* weights (the in-app parameters editor, search filter `preset: "Default" ~is:suspended`, and "Optimise Current/All Presets") is **deferred** (US-2.18b): it needs a review-kind/reset marker on `reviews`, a search engine (for `param_search`), and memory-state reconstruction (for `historical_retention`). |
 | Reschedule cards on change | ⏳ | Collection-wide, **not saved** (a transient action), in-app. Descoped to after stage 7 alongside the other collection-wide toggles. |
@@ -288,17 +288,13 @@ optional polish, not a correctness requirement.
   overdueness" and "descending retrievability" (and their ascending counterparts)
   produce the *same* ordering — overdueness is Anki's linear proxy for the exact
   FSRS forgetting-curve retrievability.
-- **Desired retention is a 70–99% range in-app, but we accept any `0.0..=1.0`.**
-  Anki's UI constrains desired retention to a [70%, 99%] slider (the manual says
-  "you can set your desired retention below 0.7 with the expert edits to the
-  config, but it is not recommended"); we store a `f64` and validate only the
-  `0.0..=1.0` envelope, without the 70–99 clamp. Recorded as a deliberate
-  relaxation — revisit if we ever mirror Anki's slider in the client, at which
-  point the client (or server validation) should re-impose the range.
-- **Daily-limit numbers are 0–9999 in-app, but we store an unwrapped `i64`.**
-  `new_per_day` and `review_per_day` are `min 0, max 9999` in Anki; we validate
-  only non-negativity (no 9999 cap), same as the retention relaxation. Revisit
-  if the client mirrors Anki's numeric input bounds.
+- **Numeric bounds match Anki (previously relaxed, now enforced).** Desired
+  retention `0.70..=0.99`, daily limits `0..=9999`, leech threshold `1..=9999`,
+  maximum interval `1..=36500`, maximum answer seconds `1..=7200`, and
+  auto-advance seconds `0.0..=9999.0` are all validated in the create/update
+  handlers to match the in-app min/max. (The only deliberately-divergent bound
+  is maximum interval rejecting the redundant `0` — Anki floors it to `1`
+  anyway, as documented in the Advanced section.)
 
 ## Open questions / under-documented Anki behaviour
 

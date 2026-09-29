@@ -107,6 +107,44 @@ pub async fn create_deck_options(
         ));
     }
 
+    // Numeric bounds (matching Anki's in-app min/max).
+    if !(1..=9999).contains(&body.leech_threshold) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "leech_threshold must be between 1 and 9999".to_string(),
+        ));
+    }
+    if !(0..=9999).contains(&body.new_per_day) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "new_per_day must be between 0 and 9999".to_string(),
+        ));
+    }
+    if !(0..=9999).contains(&body.review_per_day) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "review_per_day must be between 0 and 9999".to_string(),
+        ));
+    }
+    if !(0.70..=0.99).contains(&body.desired_retention) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "desired_retention must be between 0.70 and 0.99".to_string(),
+        ));
+    }
+    if !(0.0..=9999.0).contains(&body.auto_advance_seconds_show_question) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "auto_advance_seconds_show_question must be between 0 and 9999".to_string(),
+        ));
+    }
+    if !(0.0..=9999.0).contains(&body.auto_advance_seconds_show_answer) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "auto_advance_seconds_show_answer must be between 0 and 9999".to_string(),
+        ));
+    }
+
     let learning_steps =
         parse_steps(&body.learning_steps).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
     let relearning_steps =
@@ -233,11 +271,11 @@ pub async fn update_deck_options(
         return Err((StatusCode::BAD_REQUEST, "Name cannot be empty".to_string()));
     }
     if let Some(retention) = body.desired_retention
-        && !(0.0..=1.0).contains(&retention)
+        && !(0.70..=0.99).contains(&retention)
     {
         return Err((
             StatusCode::BAD_REQUEST,
-            "desired_retention must be between 0 and 1".to_string(),
+            "desired_retention must be between 0.70 and 0.99".to_string(),
         ));
     }
     if let Some(cap) = body.maximum_answer_seconds
@@ -254,6 +292,46 @@ pub async fn update_deck_options(
         return Err((
             StatusCode::BAD_REQUEST,
             "maximum_interval must be between 1 and 36500".to_string(),
+        ));
+    }
+    if let Some(v) = body.leech_threshold
+        && !(1..=9999).contains(&v)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "leech_threshold must be between 1 and 9999".to_string(),
+        ));
+    }
+    if let Some(v) = body.new_per_day
+        && !(0..=9999).contains(&v)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "new_per_day must be between 0 and 9999".to_string(),
+        ));
+    }
+    if let Some(v) = body.review_per_day
+        && !(0..=9999).contains(&v)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "review_per_day must be between 0 and 9999".to_string(),
+        ));
+    }
+    if let Some(v) = body.auto_advance_seconds_show_question
+        && !(0.0..=9999.0).contains(&v)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "auto_advance_seconds_show_question must be between 0 and 9999".to_string(),
+        ));
+    }
+    if let Some(v) = body.auto_advance_seconds_show_answer
+        && !(0.0..=9999.0).contains(&v)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "auto_advance_seconds_show_answer must be between 0 and 9999".to_string(),
         ));
     }
 
