@@ -42,7 +42,7 @@ Each row below states which kind it is where it is not already obvious from a
 | Presets shared across decks | ✅ | `deck_options` table + `decks.options_id`. Matches Anki's "dconf" preset model. |
 | New decks use "Default" preset | ✅ | Falls back to global default preset (system school, id 0). |
 | Add preset / Clone / Rename / Delete | ✅ | `POST`/`PATCH`/`DELETE /deck-options`. No dedicated "clone" endpoint — clone by creating a new preset from an existing one's values. |
-| "Save to all subdecks" | ❌ | No bulk "assign preset to subtree" operation. |
+| "Save to all subdecks" | ⏳ | No bulk "assign preset to subtree" operation. Deferred — a convenience, not missing scheduling behaviour (see stage 7 / deck-management polish). |
 | Options not retroactive | ✅ | Settings only persist; already-scheduled cards keep their existing `due_at`/state (same as Anki). |
 
 ## Subdecks
@@ -51,7 +51,7 @@ Each row below states which kind it is where it is not already obvious from a
 |---|---|---|
 | Subdecks can have their own preset | ✅ | Each deck has its own `options_id`; nested decks are supported. |
 | Per-deck new/review limits vs. selected-deck total | ✅ | Subdeck aggregation (US-2.7): each subdeck's effective limit caps gathering from that subdeck, while the selected deck's limit caps the total. `limits_start_from_top` (the collection-wide toggle) is deferred to after stage 7. |
-| Display order taken from selected deck | ❌ | No configurable display order (see Display Order). |
+| Display order taken from selected deck | ✅ | Implemented — the display-order options (gather/sort/mix/review-sort) are read from the selected deck's effective preset (matching the in-app "Anki will use the display order from the deck you select"). |
 
 ## Daily Limits
 

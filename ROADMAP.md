@@ -533,8 +533,16 @@ matrix's "Summary of the biggest gaps" is the working list:
         simulators (post-client).
       - Storage scope is per-preset columns on `deck_options` (Anki: per-preset
         shared across the collection — recorded).
-- [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
-      descope each (record the descope decision in the matrix).
+- [x] Cross-check the remaining ❌/🟡 rows and either implement or consciously
+      descope each. **Done 2026-09-29.** Every remaining non-✅ row now carries a
+      descope/deferral note: the ⏳ collection-wide FSRS options (stage 7), the
+      post-client simulators, `historical_retention`/`ignore_before` (with
+      US-2.18b), custom scheduling (stage 7), desired-retention per-deck
+      (stage 7), leech tagging (stage 6), Easy Days scheduling (interval load
+      balancer), US-2.5 (empty learning steps, experimental), US-2.18b
+      (optimizer). Fixed two stale rows: "Display order taken from selected
+      deck" (now ✅ — it is implemented) and "Save to all subdecks" (now ⏳ —
+      deferred convenience, not missing scheduling).
 
 Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
 `/api-docs`).
