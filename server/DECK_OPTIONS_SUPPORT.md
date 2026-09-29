@@ -199,7 +199,7 @@ optional polish, not a correctness requirement.
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| Maximum interval | ❌ | **Number, default 36500 (≈100 years), min 0, max 36500.** Caps the review interval; at the cap Hard/Good/Easy give the same delay. A real FSRS feature (not SM-2), not yet implemented — we leave intervals unbounded. |
+| Maximum interval | ✅ | **Number, default 36500 (≈100 years), min 0, max 36500.** Caps the review interval; at the cap Hard/Good/Easy give the same delay. `apply_review` clamps the FSRS interval to `deck_options.maximum_interval` (stored `stability` stays uncapped). We validate `1..=36500` (reject `0`): Anki's scheduler floors the max at 1 (`maximum.max(1)`), so `0` is redundant with `1` — a documented UI-only divergence. |
 | Historical retention | ❌ | **Percentage, default 90%, min 50%, max 100%.** FSRS-only: fills gaps in missing review history. Not implemented. |
 | Ignore cards reviewed before | ❌ | **Date field, default 01/01/1970 (epoch).** Cards reviewed before this date are ignored when optimizing FSRS parameters. Not implemented (depends on the optimizer). |
 | Custom scheduling (JS) | ⏳ | Text-area JS hook, **collection-wide**, "use at your own risk". Descoped (collection-wide) — see stage-7 note. |

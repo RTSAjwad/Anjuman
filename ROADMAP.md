@@ -67,7 +67,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       after the client lands (stage 4); no server work now.
 - [x] **Maximum answer seconds (server-side cap)** → US-2.15 (done).
 - [ ] **Easy Days (server-side scheduling)** → US-2.16.
-- [ ] **Maximum interval (server-side cap)** → US-2.17.
+- [x] **Maximum interval (server-side cap)** → US-2.17 (done).
 - [ ] **Historical retention** → folded into US-2.18.
 - [ ] **Custom scheduling (JS) — descoped (collection-wide)** — text-area JS
       hook, collection-wide, "use at your own risk"; deferred with the other
@@ -421,7 +421,7 @@ matrix's "Summary of the biggest gaps" is the working list:
         record the resolution in `DECK_OPTIONS_SUPPORT.md` before coding.
       - Collection-wide (Anki scopes Easy Days per collection); we scope it
         per-preset, de facto a stage-7 collection-wide decision.
-- [ ] **US-2.17 — Maximum interval (server-side cap)**
+- [x] **US-2.17 — Maximum interval (server-side cap)**
 
       **As** a student,
       **I want** to cap how far out a review card can be scheduled,
@@ -432,16 +432,21 @@ matrix's "Summary of the biggest gaps" is the working list:
       Hard/Good/Easy give the same delay).
 
       **Acceptance criteria**
-      - [ ] `maximum_interval` field on `deck_options` (`i64` days, default
-            36500, validated `0..=36500`).
-      - [ ] `apply_review` clamps the computed FSRS interval to
-            `maximum_interval` days.
-      - [ ] `GET /deck-options` reflects the field (OpenAPI regenerated).
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] `maximum_interval` field on `deck_options` (`i64` days, default
+            36500, validated `1..=36500` — reject `0` and `>36500`).
+      - [x] `apply_review` clamps the computed FSRS interval to
+            `maximum_interval` days (stored `stability` stays uncapped).
+      - [x] `GET /deck-options` reflects the field (OpenAPI regenerated).
+      - [x] Each criterion has a `server/tests/` test.
+
+      **Divergence from Anki (documented)** — Anki's UI permits `0`, but its
+      scheduler floors the maximum at 1 day (`maximum.max(1)`), so `0` *behaves
+      identically to `1`. We reject `0` and use `1` as the minimum, diverging
+      only in *not accepting the redundant input*, not in behaviour.
 
       **Out of scope**
-      - The 0-vs-unbounded distinction is simply `0` = no card ever advances
-        (stay in learning) per Anki; confirm this edge and record it.
+      - Learning/relearning *step* delays are not capped by maximum interval
+        (Anki applies it to the review interval only).
 - [ ] **US-2.18 — FSRS parameter optimization + historical retention**
 
       **As** a teacher,

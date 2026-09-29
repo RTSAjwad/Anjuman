@@ -236,6 +236,9 @@ pub struct CreateDeckOptions {
     /// Maximum recorded answer time, in seconds (default 60; validated 1..=7200).
     #[serde(default = "default_maximum_answer_seconds")]
     pub maximum_answer_seconds: i64,
+    /// Maximum review interval, in days (default 36500; validated 1..=36500).
+    #[serde(default = "default_maximum_interval")]
+    pub maximum_interval: i64,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -269,6 +272,7 @@ pub struct UpdateDeckOptions {
     pub auto_advance_question_action: Option<AutoAdvanceQuestionAction>,
     pub auto_advance_answer_action: Option<AutoAdvanceAnswerAction>,
     pub maximum_answer_seconds: Option<i64>,
+    pub maximum_interval: Option<i64>,
 }
 
 /// A deck options preset as returned to clients.
@@ -307,6 +311,7 @@ pub struct DeckOptions {
     pub auto_advance_question_action: AutoAdvanceQuestionAction,
     pub auto_advance_answer_action: AutoAdvanceAnswerAction,
     pub maximum_answer_seconds: i64,
+    pub maximum_interval: i64,
 }
 
 fn default_learning_steps() -> String {
@@ -339,4 +344,8 @@ fn default_wait_for_audio() -> bool {
 
 fn default_maximum_answer_seconds() -> i64 {
     60
+}
+
+fn default_maximum_interval() -> i64 {
+    36500
 }

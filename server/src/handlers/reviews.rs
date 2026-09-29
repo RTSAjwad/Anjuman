@@ -332,11 +332,14 @@ pub async fn apply_review(
         _ => unreachable!(),
     };
 
-    let interval_days = next.interval.round().max(1.0) as i64;
+    let interval_days = (next.interval.round().max(1.0) as i64).min(options.maximum_interval);
     let interval_fsrs_secs = interval_days * 86400;
     // `interval_days`/`interval_fsrs_secs` are the FSRS *graduation* interval,
-    // used only when the card transitions to 'review'. Step outcomes below
-    // ignore these in favour of explicit learning/relearning step intervals.
+    // used only when the card transitions to (or stays in) 'review', capped at
+    // the preset's `maximum_interval` (US-2.17). The stored FSRS `stability` is
+    // *not* capped — only the scheduled interval/due offset is.
+    // Step outcomes below ignore these in favour of explicit learning/relearning
+    // step intervals.
 
     // Determine the new state, step index, and due timestamp.
     //
