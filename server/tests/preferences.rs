@@ -176,3 +176,106 @@ async fn preferences_reject_missing_token() {
 
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
+
+// ---------------------------------------------------------------------------
+// US-3.1 — timezone
+// ---------------------------------------------------------------------------
+
+/// The default timezone is `"UTC"` before any update, preserving pre-timezone
+/// behaviour exactly.
+#[tokio::test]
+async fn preferences_timezone_defaults_to_utc() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_, token) = create_user(&app, UserRole::Student).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/preferences")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["timezone"], "UTC");
+}
+
+/// A valid IANA timezone round-trips through PATCH → GET.
+#[tokio::test]
+async fn preferences_timezone_round_trips() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_, token) = create_user(&app, UserRole::Student).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(patch(&token, &serde_json::json!({ "timezone": "Europe/London" })))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/preferences")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["timezone"], "Europe/London");
+}
+
+/// An unparseable timezone falls back to `"UTC"` (no 400), and the other
+/// fields are still applied.
+#[tokio::test]
+async fn preferences_timezone_invalid_falls_back_to_utc() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_, token) = create_user(&app, UserRole::Student).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(patch(
+            &token,
+            &serde_json::json!({ "timezone": "Not/AZone", "day_start_hour": 5 }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/preferences")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["timezone"], "UTC");
+    assert_eq!(json["day_start_hour"], 5);
+}

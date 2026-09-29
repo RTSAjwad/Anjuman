@@ -620,9 +620,11 @@ implication.
   `ReviewResponse`/`StudyCounts`.
 - **Scope**: `timebox_time_limit` is a *preference* (per-user), not a deck
   option — matching Anki (Preferences → Scheduler).
-- [ ] **Timezone correctness** — the day boundary is UTC-anchored via
+- [x] **Timezone correctness** — the day boundary is UTC-anchored via
       `day_start_hour`; add a per-user timezone so "next day starts at" means
-      the user's local wall-clock time (see US-3.1 below).
+      the user's local wall-clock time (see US-3.1 below). Implemented: per-
+      user IANA `timezone` (default `UTC`), timezone-aware day boundary in
+      `study.rs` via `chrono-tz`.
 
 ### US-3.1 — Timezone correctness
 
@@ -648,22 +650,28 @@ rest of `user_preferences`).
 
 **Acceptance criteria**
 
-- [ ] Add a per-user timezone to `user_preferences` and expose it on the wire:
+- [x] Add a per-user timezone to `user_preferences` and expose it on the wire:
       `UserPreferences`/`UpdatePreferences` gain a `timezone` field (IANA name,
       e.g. `"Europe/London"`; default `"UTC"`), round-tripped through
       `GET`/`PATCH /preferences` and reflected in the OpenAPI spec.
-- [ ] A helper resolves "start of study day" for a user by interpreting
+- [x] A helper resolves "start of study day" for a user by interpreting
       `day_start_hour` in the *user's* timezone and converting the result to a
       `DateTime<Utc>` (replaces the raw `day_start_utc`).
-- [ ] The study/scheduling path uses the timezone-aware boundary everywhere it
+- [x] The study/scheduling path uses the timezone-aware boundary everywhere it
       currently calls `start_of_day` — day boundary for daily limits, burial
       auto-expiry, and study bucketing/`seen_today` remain consistent.
-- [ ] Daily-limit "today" (`effective_daily_limits`'s `NaiveDate`) is derived
+- [x] Daily-limit "today" (`effective_daily_limits`'s `NaiveDate`) is derived
       from the user's local day, so a limit reset happens at the user's local
       rollover, not UTC.
-- [ ] An invalid/unparseable timezone falls back to `UTC` (and a `0..=23`
+- [x] An invalid/unparseable timezone falls back to `UTC` (and a `0..=23`
       `day_start_hour` is still enforced).
-- [ ] Each criterion has a `server/tests/` test.
+- [x] Each criterion has a `server/tests/` test.
+
+  **Implemented**: added `user_preferences.timezone` (migration `0020`), a
+  `timezone` field on the preferences DTOs + handler (normalized to `UTC` on
+  parse failure), a timezone-aware `day_start_local` replacing `day_start_utc`
+  in `study.rs` (driven by `chrono-tz`), unit tests in `study.rs` and HTTP
+  round-trip/fallback tests in `server/tests/preferences.rs`.
 
 **Out of scope / decisions to document**
 

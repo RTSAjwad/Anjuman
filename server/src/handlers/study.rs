@@ -26,7 +26,9 @@ use axum::{
     http::StatusCode,
 };
 
-use chrono::{DateTime, Duration, Timelike, Utc};
+use chrono::{DateTime, Duration, Utc};
+use chrono_tz::Tz;
+use std::str::FromStr;
 
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 
@@ -67,40 +69,60 @@ struct CardRow {
     step_index: i64,
 }
 
-/// Compute the start of the current "study day" as a `DateTime<Utc>`, given a
-/// day-start hour (0-23). The day is anchored to UTC for now (no timezone).
+/// Compute the start of the current "study day" as a `DateTime<Utc>`.
 ///
-/// Preserves the original integer `% 86400` day-boundary logic by operating on
-/// whole elapsed seconds since midnight, then re-wrapping in a `DateTime<Utc>`.
-fn day_start_utc(now: DateTime<Utc>, day_start_hour: i64) -> DateTime<Utc> {
-    let secs_of_day = now.num_seconds_from_midnight() as i64;
-    let start_seconds = day_start_hour * 3600;
-    let offset = if secs_of_day >= start_seconds {
-        secs_of_day - start_seconds
+/// The boundary is `day_start_hour` expressed in the *user's* timezone
+/// (US-3.1): we convert `now` into the user's local time, snap to the most
+/// recent `day_start_hour` wall-clock boundary, and convert back to UTC.
+///
+/// Preserves the original `% 86400` day-boundary semantics: if the local time
+/// is at/after `hour`, the boundary is today at `hour`; otherwise it wrapped,
+/// and the boundary is yesterday at `hour`.
+fn day_start_local(now: DateTime<Utc>, day_start_hour: i64, tz: Tz) -> DateTime<Utc> {
+    let local = now.with_timezone(&tz);
+    let local_date = local.date_naive();
+    let candidate = local_date.and_hms_opt(day_start_hour as u32, 0, 0).unwrap();
+    let boundary = if local.time() >= candidate.time() {
+        candidate
     } else {
-        secs_of_day + 86400 - start_seconds
+        candidate - Duration::days(1)
     };
-    now - Duration::seconds(offset)
+    // Convert the local wall-clock boundary back to a UTC instant. `earliest()`
+    // resolves DST gaps/overlaps (a day-start hour may coincide with a DST
+    // transition) by picking the earliest valid offset — stable and predictable.
+    boundary
+        .and_local_timezone(tz)
+        .earliest()
+        .map(|d| d.with_timezone(&Utc))
+        .unwrap_or(now)
 }
 
-/// Resolve the student's start-of-day hour (Anki's "Next day starts at",
-/// default 4 AM). Falls back to 4 when no preference row exists.
-async fn day_start_hour(db: &sqlx::PgPool, student_id: i64) -> i64 {
-    sqlx::query_scalar!(
-        "SELECT day_start_hour FROM user_preferences WHERE user_id = $1",
+/// Resolve the student's start-of-day hour and timezone (Anki's "Next day
+/// starts at", default 4 AM in `UTC`). Falls back to defaults when no
+/// preference row exists, and to `UTC` when the stored zone is unparseable.
+async fn day_start_hour_and_tz(db: &sqlx::PgPool, student_id: i64) -> (i64, Tz) {
+    let row = sqlx::query!(
+        "SELECT day_start_hour, timezone FROM user_preferences WHERE user_id = $1",
         student_id
     )
     .fetch_optional(db)
     .await
     .ok()
-    .flatten()
-    .unwrap_or(4)
+    .flatten();
+
+    let hour = row.as_ref().map(|r| r.day_start_hour).unwrap_or(4);
+    let tz = row
+        .as_ref()
+        .and_then(|r| Tz::from_str(&r.timezone).ok())
+        .unwrap_or(Tz::UTC);
+    (hour, tz)
 }
 
-/// Start of the current study day for a student.
+/// Start of the current study day for a student, resolved in the student's
+/// timezone and returned as a `DateTime<Utc>` (US-3.1).
 async fn start_of_day(db: &sqlx::PgPool, student_id: i64) -> DateTime<Utc> {
-    let hour = day_start_hour(db, student_id).await;
-    day_start_utc(Utc::now(), hour)
+    let (hour, tz) = day_start_hour_and_tz(db, student_id).await;
+    day_start_local(Utc::now(), hour, tz)
 }
 
 /// Resolve the student's learn-ahead limit (in seconds).
@@ -893,6 +915,108 @@ mod tests {
     fn intersperser_empty_b() {
         // a=[1,2,3], b=[] => 1,2,3
         assert_eq!(intersperse_b_draws(3, 0), vec![false, false, false]);
+    }
+
+    // --- US-3.1 timezone-aware day start ---
+
+    use super::day_start_local;
+    use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
+    use chrono_tz::Tz;
+
+    fn utc(y: i32, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(y, mo, d, h, mi, s).unwrap()
+    }
+
+    /// The authoritative conversion: what a local wall-clock boundary
+    /// (`day:hh:00`) *should* resolve to as a UTC instant in `tz`.
+    fn expected_boundary(tz: Tz, d: chrono::NaiveDate, hour: u32) -> DateTime<Utc> {
+        tz.with_ymd_and_hms(d.year(), d.month(), d.day(), hour, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    /// In UTC with `day_start_hour = 4`, a time at 08:00 resolves to 04:00 the
+    /// same day; a time at 02:00 wraps to 04:00 the previous day.
+    #[test]
+    fn day_start_utc_matches_previous_behaviour() {
+        assert_eq!(
+            day_start_local(utc(2026, 9, 30, 8, 0, 0), 4, Tz::UTC),
+            utc(2026, 9, 30, 4, 0, 0)
+        );
+        assert_eq!(
+            day_start_local(utc(2026, 9, 30, 2, 0, 0), 4, Tz::UTC),
+            utc(2026, 9, 29, 4, 0, 0)
+        );
+    }
+
+    /// In a non-UTC zone, the boundary is the user's local wall-clock hour
+    /// converted to UTC (verified against chrono-tz's own conversion).
+    #[test]
+    fn day_start_is_local_wall_clock_in_utc() {
+        for tz in [Tz::Australia__Sydney, Tz::Europe__London, Tz::America__New_York] {
+            // 08:00 local on 2026-09-30 → boundary is 04:00 local today.
+            let now = tz
+                .with_ymd_and_hms(2026, 9, 30, 8, 0, 0)
+                .unwrap()
+                .with_timezone(&Utc);
+            let want = expected_boundary(tz, chrono::NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(), 4);
+            assert_eq!(day_start_local(now, 4, tz), want, "{tz}");
+
+            // 02:00 local on 2026-09-30 → wraps to 04:00 local on the 29th.
+            let now = tz
+                .with_ymd_and_hms(2026, 9, 30, 2, 0, 0)
+                .unwrap()
+                .with_timezone(&Utc);
+            let want = expected_boundary(tz, chrono::NaiveDate::from_ymd_opt(2026, 9, 29).unwrap(), 4);
+            assert_eq!(day_start_local(now, 4, tz), want, "{tz} wrap");
+        }
+    }
+
+    /// `day_start_hour = 0` (midnight boundary) still lands on the correct UTC
+    /// instant for the user's local day, not shifted by 24h.
+    #[test]
+    fn day_start_midnight_in_local_zone() {
+        for tz in [Tz::Europe__London, Tz::Australia__Sydney] {
+            let now = tz
+                .with_ymd_and_hms(2026, 9, 30, 1, 30, 0)
+                .unwrap()
+                .with_timezone(&Utc);
+            let want = expected_boundary(tz, chrono::NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(), 0);
+            assert_eq!(day_start_local(now, 0, tz), want, "{tz}");
+        }
+    }
+
+    /// A boundary exactly at the hour resolves to today (not wrapped), matching
+    /// the `>=` semantics of the original logic.
+    #[test]
+    fn day_start_at_exact_hour_is_today() {
+        assert_eq!(
+            day_start_local(utc(2026, 9, 30, 4, 0, 0), 4, Tz::UTC),
+            utc(2026, 9, 30, 4, 0, 0)
+        );
+    }
+
+    /// DST date arithmetic is not hard-coded: the day before a DST "spring
+    /// forward" (23h day) and "fall back" (25h day) still yields a correct,
+    /// non-panicking boundary.
+    #[test]
+    fn day_start_handles_dst_transition_days() {
+        // US DST 2026: spring forward 2026-03-08, fall back 2026-11-01.
+        let ny = Tz::America__New_York;
+        for (date, hour) in [
+            (chrono::NaiveDate::from_ymd_opt(2026, 3, 8).unwrap(), 4),
+            (chrono::NaiveDate::from_ymd_opt(2026, 11, 1).unwrap(), 4),
+        ] {
+            let noon = ny
+                .with_ymd_and_hms(date.year(), date.month(), date.day(), 12, 0, 0)
+                .unwrap()
+                .with_timezone(&Utc);
+            let got = day_start_local(noon, hour, ny);
+            // Must be a valid instant and land on the expected local day at `hour`.
+            let back = got.with_timezone(&ny);
+            assert_eq!(back.date_naive(), date, "date mismatch for {date}");
+            assert_eq!(back.hour(), hour as u32, "hour mismatch for {date}");
+        }
     }
 }
 

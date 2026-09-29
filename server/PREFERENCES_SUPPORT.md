@@ -32,24 +32,27 @@ The upshot: **the server owns only three preferences today** — `day_start_hour
 `timebox_time_limit` ("timebox time limit", persistence only — see below) — plus
 the CRUD endpoint that edits them.
 
-### Timezone (US-3.1)
+### Timezone (US-3.1) ✅ implemented
 
-"Next day starts at" is honoured as a whole-hours-offset from **UTC** today,
-which is wrong for any student not in UTC — a Sydney student's 4 AM boundary
-lands at 15:00 local. Fixing this is the timezone-correctness story (US-3.1),
-with three decisions already recorded:
+"Next day starts at" was honoured as a whole-hours-offset from **UTC**, which
+is wrong for any student not in UTC (a Sydney student's 4 AM boundary landed at
+15:00 local). Implemented a per-user IANA timezone with the following decisions
+recorded:
 
 - **Storage format**: per-user IANA timezone name (`TEXT`), *not* a fixed
   `UTC+hh` offset (an offset silently breaks across DST; the IANA name follows
   the zone's own offset transitions).
-- **Default**: `"UTC"`, preserving current behaviour exactly until a
+- **Default**: `"UTC"`, preserving previous behaviour exactly until a
   client/onboarding sets a real zone. Revisit later (school-based,
   location-based, etc.).
 - **Scope**: per-user, not per-school/per-preset — same call as the rest of
   `user_preferences`. A future stage may add a school-wide default.
+- **Behaviour**: the study-day boundary in `study.rs` is now resolved via
+  `chrono-tz` (`day_start_local`), interpreting `day_start_hour` in the user's
+  zone; unparseable zones fall back to `UTC`.
 
-Analytics bucketing (`DATE_TRUNC('day', …)` roll-ups) is deliberately **out of
-scope** for US-3.1 — separate story.
+Analytics bucketing (`DATE_TRUNC('day', …)` roll-ups) remains deliberately **out
+of scope** — separate story.
 
 ## Appearance
 
@@ -73,7 +76,7 @@ scope** for US-3.1 — separate story.
 
 | Anki feature | Status | Default | Notes |
 |---|---|---|---|
-| Next day starts at | 🟡 | 4 | `user_preferences.day_start_hour` (whole hours 0–23). Drives day boundary for limits, burial expiry, and study bucketing. **Boundary is UTC-anchored today**; per-user timezone is tracked in US-3.1 (see note below). |
+| Next day starts at | ✅ | 4 | `user_preferences.day_start_hour` (whole hours 0–23) + `user_preferences.timezone` (IANA, default `UTC`). Drives the day boundary, resolved in the user's local zone via `chrono-tz` (US-3.1). |
 | Learn ahead limit | ✅ | 20 (min) | `user_preferences.learn_ahead_seconds` (default 1200 s). In-app it's **minutes, 0–100, default 20**. |
 | Timebox time limit | 🟡 | 0 | Int minutes, 0–9999, default 0 (`0` = disabled). **Persisted server-side; behaviour is client-side** (stage 4) — the timebox popup is a UI concern the client drives locally (see US-3.2). |
 
@@ -110,7 +113,7 @@ scope** for US-3.1 — separate story.
 | Third-party services (AnkiHub, …) | ⚪ | Anki-specific. **Decision: drop.** |
 | Experiments (Svelte editor, …) | ⚪ | Anki-specific. **Decision: drop.** |
 
-## Summary of the biggest gaps
+us3.1## Summary of the biggest gaps
 
 1. **Timezone correctness (US-3.1)** — the day boundary is UTC-anchored; needs
    a per-user timezone so "next day starts at" matches local time.
@@ -123,9 +126,11 @@ scope** for US-3.1 — separate story.
   `learn_ahead_seconds`, and (planned) `timebox_time_limit` (persistence only;
   its behaviour is client-side). Everything else in Anki's preferences dialog is
   client-side, form-factor-specific, or deliberately dropped as Anki-specific.
-- **Day boundary is UTC-anchored** — "next day starts at" stores only an hour
-  (`day_start_hour`) with no per-user timezone, so the boundary is computed
-  against UTC (per-user timezone is a possible future refinement).
+- **Day boundary is user-local** — "next day starts at" stores both an hour
+  (`day_start_hour`) and a per-user IANA timezone (`timezone`), so the study-day
+  boundary is computed in the user's local zone, not UTC (US-3.1).
+- **Timezone is an Anjuman extension** — Anki is single-user and reads the OS
+  timezone; Anjuman stores it per-user (default `UTC`).
 - **Preferences are user-editable** — `GET/PATCH /preferences` provides CRUD for
   the three persisted preferences (deck options have their own full CRUD).
 - **Form-factor preferences are intentionally deferred** to the client shells;

@@ -17,6 +17,8 @@ pub struct UserPreferences {
     pub learn_ahead_minutes: i64,
     /// "Next day starts at" — whole hours past midnight (0–23), default 4.
     pub day_start_hour: i64,
+    /// IANA timezone name (e.g. `"Europe/London"`), default `"UTC"`.
+    pub timezone: String,
 }
 
 /// Request body for `PATCH /preferences`. Fields are optional; omitted fields
@@ -28,4 +30,6 @@ pub struct UpdatePreferences {
     pub learn_ahead_minutes: Option<i64>,
     /// "Next day starts at" — whole hours past midnight (0–23).
     pub day_start_hour: Option<i64>,
+    /// IANA timezone name (e.g. `"Europe/London"`). Invalid names fall back to `"UTC"`.
+    pub timezone: Option<String>,
 }

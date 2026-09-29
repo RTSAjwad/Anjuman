@@ -30,6 +30,7 @@ password-hash = { version = "0.5", features = ["rand_core", "getrandom"] }
 
 jsonwebtoken = "9"
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 axum-extra = { version = "0.10", features = ["typed-header"] }
 uuid = { version = "1", features = ["v4"] }
 fsrs = "6.6"
