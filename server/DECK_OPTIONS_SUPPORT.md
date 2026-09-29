@@ -186,7 +186,7 @@ optional polish, not a correctness requirement.
 | FSRS enable/disable (global) | ⚪ | A single collection-wide boolean toggle in Anki, shared by all presets. Anjuman is FSRS-only, so we omit it — always on, no SM-2 toggle. |
 | Desired retention | ✅ | `desired_retention` (default 0.9), a **70–99% slider** in-app. We store a `f64` validated `0.0..=1.0` (no 70–99 clamp — see divergence note). |
 | Desired retention per deck (deck scoping) | 🟡 | The in-app retention selector has a **Preset / This deck** scope toggle (same as the daily limits); our `desired_retention` is preset-scoped only — per-deck retention is not implemented. See stage-7 per-deck personalisation. |
-| FSRS parameters | 🟡 | Stored per-preset as a JSONB weight vector (`fsrs_parameters`); empty = `FSRS::default()` and `apply_review` consumes them via `FSRS::new`. The **optimizer** that *produces* weights (the in-app parameters editor, search filter `preset: "Default" ~is:suspended`, and "Optimise Current/All Presets") is still missing (US-2.18b). `historical_retention` is also deferred with the optimizer. |
+| FSRS parameters | 🟡 | Stored per-preset as a JSONB weight vector (`fsrs_parameters`); empty = `FSRS::default()`, consumed by `apply_review` via `FSRS::new` (US-2.18a). The **optimizer** that *produces* weights (the in-app parameters editor, search filter `preset: "Default" ~is:suspended`, and "Optimise Current/All Presets") is **deferred** (US-2.18b): it needs a review-kind/reset marker on `reviews`, a search engine (for `param_search`), and memory-state reconstruction (for `historical_retention`). |
 | Reschedule cards on change | ⏳ | Collection-wide, **not saved** (a transient action), in-app. Descoped to after stage 7 alongside the other collection-wide toggles. |
 | Check health when optimizing | ⏳ | Collection-wide boolean (default off), in-app; only performed for "Optimise Current Preset". Descoped to after stage 7 (collection-wide). |
 | FSRS Simulator (Experimental) | ⏳ | The "FSRS Simulator (Experimental)" button and the "Help Me Decide (Experimental)" button open **two different simulators** (they display different graphs). Both are descoped to a **future post-client stage** (simulation is a UI-heavy feature; see ROADMAP Notes). (`Compute minimum recommended retention` was **removed upstream** in Anki 25.07.) |
@@ -200,8 +200,8 @@ optional polish, not a correctness requirement.
 | Anki feature | Status | Notes |
 |---|---|---|
 | Maximum interval | ✅ | **Number, default 36500 (≈100 years), min 0, max 36500.** Caps the review interval; at the cap Hard/Good/Easy give the same delay. `apply_review` clamps the FSRS interval to `deck_options.maximum_interval` (stored `stability` stays uncapped). We validate `1..=36500` (reject `0`): Anki's scheduler floors the max at 1 (`maximum.max(1)`), so `0` is redundant with `1` — a documented UI-only divergence. |
-| Historical retention | ❌ | **Percentage, default 90%, min 50%, max 100%.** FSRS-only: fills gaps in missing review history. Not implemented. |
-| Ignore cards reviewed before | ❌ | **Date field, default 01/01/1970 (epoch).** Cards reviewed before this date are ignored when optimizing FSRS parameters. Not implemented (depends on the optimizer). |
+| Historical retention | ⏳ | **Percentage, default 90%, 50–100%.** FSRS-only: feeds memory-state gap-filling when review history is incomplete (`memory_state.rs`). Deferred with the optimizer (US-2.18b) — its prerequisite (memory-state reconstruction) doesn't exist yet. |
+| Ignore cards reviewed before | ⏳ | **Date field, default 01/01/1970 (epoch).** Cards reviewed before this date are ignored when optimizing FSRS parameters. Deferred with the optimizer (US-2.18b). |
 | Custom scheduling (JS) | ⏳ | Text-area JS hook, **collection-wide**, "use at your own risk". Descoped (collection-wide) — see stage-7 note. |
 | Starting ease | ⚪ | SM-2 only (hidden under FSRS); FSRS uses difficulty. |
 | Easy bonus | ⚪ | SM-2 only. |

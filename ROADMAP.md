@@ -55,7 +55,7 @@ matrix's "Summary of the biggest gaps" is the working list:
 
 - [x] **Display order** — US-2.8–US-2.12 (gather, sort, new/review, interday,
       review-sort) all done. See below.
-- [x] **FSRS parameter optimization** → US-2.18a (store+consume, done) + US-2.18b (optimizer, deferred).
+- [x] **FSRS parameter optimization** → US-2.18a (store+consume, done) + US-2.18b (optimizer, **deferred** — needs search engine + memory-state reconstruction + review-kind markers; see story).
 - [ ] **Collection-wide FSRS toggles (descoped to stage 7)** — "Reschedule cards
       on change" (transient, not saved) and "Check health when optimizing" are
       both collection-wide booleans in-app; deferred with the other
@@ -500,15 +500,39 @@ matrix's "Summary of the biggest gaps" is the working list:
       - [ ] `num_relearning_steps` aligned to the preset's relearning steps.
       - [ ] Each criterion has a `server/tests/` test.
 
+      **Deferred (decision recorded 2026-09-29).** The optimizer needs several
+      prerequisites our schema/features don't yet have, and is low-value before
+      the client generates real review history. Defer until after stage 4 (and
+      stage 6's tag/search work). Reason (from Anki source, `rslib/src/scheduler/fsrs/params.rs`):
+
+      1. **`review_kind` + reset/manual markers.** Anki's `reviews_for_fsrs`
+         filters out cramming (`Filtered`), manual/set-due (`Manual`), and reset
+         (ease==0) entries before building `FSRSItem`s, and classifies
+         Learning/Review/Relearning. Our `reviews` table has only `state_before`
+         (new/learning/review/relearning), `rating`, and `interday` — no reset
+         or manual/filtered marker, so faithful training-data selection is
+         impossible without a `reviews` schema change + `apply_review` write
+         path additions.
+      2. **`param_search` needs a search engine.** The in-app filter
+         (`preset: "Default" ~is:suspended`) is a full card-search query over
+         the revlog. We have no search engine (stage 6 territory).
+      3. **`historical_retention` needs memory-state reconstruction.** In Anki
+         it feeds `memory_state.rs` (gap-filling when history is incomplete),
+         *not* `compute_parameters` directly. That reconstruction logic doesn't
+         exist here, so `historical_retention` can only be *persisted* (like
+         US-2.18a), not meaningfully consumed, until it's built.
+      4. **"keep-if-better" guard + health check** rely on model evaluation
+         (`evaluate`/`evaluate_with_time_series_splits`) and the descoped
+         collection-wide "check health" toggle (stage 7).
+      5. **No real corpus yet.** The optimizer is only useful with hundreds of
+         reviews per preset; we're pre-client, so there's nothing meaningful to
+         optimize against.
+
       **Out of scope / decision needed**
       - "Check health when optimizing" (collection-wide, stage 7) and the
         simulators (post-client).
       - Storage scope is per-preset columns on `deck_options` (Anki: per-preset
         shared across the collection — recorded).
-      - Search-filter and `ignore_revlogs_before_date` semantics need Anki
-        fidelity research before implementing.
-- [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
-      descope each (record the descope decision in the matrix).
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 
