@@ -264,11 +264,12 @@ each in-app selection to what we implemented and flags where the two diverge.
   with `Mix` restored as the default (matching Anki). The three-bucket *count*
   split (interday learning shares the `review` limit but is separately counted)
   is captured via a persisted `reviews.interday` flag — see ROADMAP Notes.
-- **Review sort "ease" is surfaced via FSRS `difficulty`, not SM-2 ease.** Anki's
-  "Easy cards first" / "Difficult cards first" sort on the SM-2 *ease* factor,
-  which FSRS has no analogue for; we map them to FSRS `difficulty` ASC/DESC. The
-  in-app label still says "easy"/"difficult", but the underlying key is FSRS
-  difficulty — a documented FSRS-vs-SM-2 inconsistency.
+- **Review sort names "Ascending/Descending intervals" (not "ease") map to FSRS
+  `stability`.** The in-app FSRS list names options 4–5 "Ascending intervals" /
+  "Descending intervals", and 6–7 "Easy cards first" / "Difficult cards first" —
+  the manual's SM-2-era "Ascending/Descending ease" wording does not even appear
+  under FSRS. We map "intervals" to FSRS `stability`, and "easy/difficult" to FSRS
+  `difficulty` ASC/DESC (SM-2 ease has no FSRS analogue).
 - **"Relative overdueness" appears in-app despite the manual marking it removed
   under FSRS.** The in-app FSRS review-sort selector lists all 13 options
   including "relative overdueness"; the web manual describes it as removed in
