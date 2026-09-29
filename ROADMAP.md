@@ -564,10 +564,62 @@ Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
       `preferences` handler + contract DTOs (`UserPreferences`/`UpdatePreferences`,
       minutes on the wire), routes/openapi wiring, and HTTP round-trip tests
       in `server/tests/preferences.rs`.
-- [ ] **Timebox time limit** — add the `timebox_time_limit` preference (minutes,
-      0–9999, default 0) *alongside* a timeboxing feature that consumes it (the
-      preference alone has no effect until timeboxing exists). Decide whether
-      timeboxing is in-scope for stage 3 or a separate story.
+- [ ] **Timebox time limit** — see US-3.2 below (persist the preference
+      server-side; the timebox popup itself is a client-side concern, stage 4).
+
+### US-3.2 — Timebox time limit (persist the preference; behaviour client-side)
+
+**As** a student who studies in focused blocks,
+**I want** my timebox interval ("show me a summary every N minutes") to be
+saved in my preferences,
+**so that** it follows me across devices and the client can prompt me at my
+chosen cadence, without re-entering it on each device.
+
+**Background / scope decision**
+
+Timeboxing is a **client-side behaviour**. The Anki manual defines it as: *"If
+you set the timebox time limit to a non-zero number of minutes, Anki will
+periodically show you how many cards you've managed to study during the
+prescribed time limit."* It is a study-session timer + popup — no server-side
+scheduling effect at all (unlike `day_start_hour` and `learn_ahead_seconds`,
+which do change due dates and limits).
+
+So, per the established "server vs. client" split (mirroring US-2.14, the
+selection-only deck options), **stage 3 does only the persistence half**: add the
+column + wire it into the preferences contract + CRUD + OpenAPI, and test its
+round-trip. The actual timebox popup is a stage-4 client story.
+
+**Classification**: algorithm-neutral (neither SM-2 nor FSRS); no scheduling
+implication.
+
+**Acceptance criteria**
+
+- [ ] `user_preferences.timebox_time_limit` column added (minutes, `BIGINT`,
+      default 0), `0` = disabled.
+- [ ] `UserPreferences`/`UpdatePreferences` gain `timebox_time_limit` (minutes
+      on the wire, matching Anki's input), round-tripped through
+      `GET`/`PATCH /preferences` and reflected in the OpenAPI spec.
+- [ ] Bounds enforced: `0..=9999` (Anki in-app range; `0` disables). Out-of-
+      range → `400`.
+- [ ] A missing preference row still returns the default (`timebox_time_limit =
+      0`), consistent with the other two prefs.
+- [ ] Each criterion has a `server/tests/` test.
+
+**Out of scope / decisions to document**
+
+- **Behaviour is client-side (stage 4)**: the periodic "N cards studied this
+  timebox" prompt, its wording, and dismissal are a client concern. Anjuman's
+  stateless, sessionless design makes this cleaner client-side — the client
+  already knows the local answer count, so no server round-trip drives the
+  timer.
+- **No server-side enforcement**: the server stores and returns the value but
+  never acts on it (no server notion of a live study session). Recorded so
+  nobody later expects a backend timer.
+- **No timebox history/metrics**: no persisted "reviews per timebox" ledger
+  server-side; the client derives any running count locally from
+  `ReviewResponse`/`StudyCounts`.
+- **Scope**: `timebox_time_limit` is a *preference* (per-user), not a deck
+  option — matching Anki (Preferences → Scheduler).
 - [ ] **Timezone correctness** — the day boundary is UTC-anchored via
       `day_start_hour`; add a per-user timezone so "next day starts at" means
       the user's local wall-clock time (see US-3.1 below).

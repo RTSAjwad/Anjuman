@@ -29,8 +29,8 @@ Most of Anki's preferences do **not** belong in the server:
 
 The upshot: **the server owns only three preferences today** — `day_start_hour`
 ("next day starts at"), `learn_ahead_seconds` ("learn ahead limit"), and
-`timebox_time_limit` (a future timeboxing feature) — plus the CRUD endpoint that
-edits them.
+`timebox_time_limit` ("timebox time limit", persistence only — see below) — plus
+the CRUD endpoint that edits them.
 
 ### Timezone (US-3.1)
 
@@ -75,7 +75,7 @@ scope** for US-3.1 — separate story.
 |---|---|---|---|
 | Next day starts at | 🟡 | 4 | `user_preferences.day_start_hour` (whole hours 0–23). Drives day boundary for limits, burial expiry, and study bucketing. **Boundary is UTC-anchored today**; per-user timezone is tracked in US-3.1 (see note below). |
 | Learn ahead limit | ✅ | 20 (min) | `user_preferences.learn_ahead_seconds` (default 1200 s). In-app it's **minutes, 0–100, default 20**. |
-| Timebox time limit | ❌ | 0 | Int minutes, 0–9999, default 0 (`0` = disabled). Genuine server-side gap — depends on implementing timeboxing itself (no timebox feature yet). |
+| Timebox time limit | 🟡 | 0 | Int minutes, 0–9999, default 0 (`0` = disabled). **Persisted server-side; behaviour is client-side** (stage 4) — the timebox popup is a UI concern the client drives locally (see US-3.2). |
 
 ### Review (client-side / form-factor)
 
@@ -112,22 +112,21 @@ scope** for US-3.1 — separate story.
 
 ## Summary of the biggest gaps
 
-1. **Preferences CRUD** — no `GET/PATCH /preferences` endpoint yet (the two
-   persisted columns are read directly, but users can't edit them).
-2. **Timebox time limit** — the missing server-side preference, gated on
-   implementing timeboxing.
+1. **Timezone correctness (US-3.1)** — the day boundary is UTC-anchored; needs
+   a per-user timezone so "next day starts at" matches local time.
+2. **Timebox time limit (US-3.2)** — the preference is not yet persisted; once
+   added, its *behaviour* remains a client concern (stage 4).
 
 ## Key architectural differences vs. Anki
 
-- **Only two persisted server-side preferences** (`day_start_hour`,
-  `learn_ahead_seconds`); a third (`timebox_time_limit`) is planned. Everything
-  else in Anki's preferences dialog is client-side, form-factor-specific, or
-  deliberately dropped as Anki-specific.
+- **Only three persisted server-side preferences** — `day_start_hour`,
+  `learn_ahead_seconds`, and (planned) `timebox_time_limit` (persistence only;
+  its behaviour is client-side). Everything else in Anki's preferences dialog is
+  client-side, form-factor-specific, or deliberately dropped as Anki-specific.
 - **Day boundary is UTC-anchored** — "next day starts at" stores only an hour
   (`day_start_hour`) with no per-user timezone, so the boundary is computed
   against UTC (per-user timezone is a possible future refinement).
-- **Preferences are not yet user-editable** — the `user_preferences` columns
-  have defaults and are read by `study.rs`, but there is no endpoint to
-  read/update them (unlike deck options, which have full CRUD).
+- **Preferences are user-editable** — `GET/PATCH /preferences` provides CRUD for
+  the three persisted preferences (deck options have their own full CRUD).
 - **Form-factor preferences are intentionally deferred** to the client shells;
   we may consult AnkiDroid for mobile conventions rather than invent our own.
