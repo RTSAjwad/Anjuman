@@ -23,6 +23,7 @@ use crate::{auth::AuthUser, state::AppState};
 const DEFAULT_LEARN_AHEAD_MINUTES: i64 = 20; // 1200 seconds
 const DEFAULT_DAY_START_HOUR: i64 = 4;
 const DEFAULT_TIMEZONE: &str = "UTC";
+const DEFAULT_TIMEBOX_TIME_LIMIT: i64 = 0; // disabled
 
 /// Resolve a user-supplied timezone to a valid IANA name, falling back to
 /// `"UTC"` when the value is empty or unparseable (US-3.1).
@@ -40,7 +41,7 @@ pub async fn get_preferences(
     State(state): State<AppState>,
 ) -> Result<Json<UserPreferences>, StatusCode> {
     let row = sqlx::query!(
-        "SELECT learn_ahead_seconds, day_start_hour, timezone FROM user_preferences WHERE user_id = $1",
+        "SELECT learn_ahead_seconds, day_start_hour, timezone, timebox_time_limit FROM user_preferences WHERE user_id = $1",
         claims.sub
     )
     .fetch_optional(&state.db)
@@ -52,11 +53,13 @@ pub async fn get_preferences(
             learn_ahead_minutes: r.learn_ahead_seconds / 60,
             day_start_hour: r.day_start_hour,
             timezone: r.timezone,
+            timebox_time_limit: r.timebox_time_limit,
         })),
         None => Ok(Json(UserPreferences {
             learn_ahead_minutes: DEFAULT_LEARN_AHEAD_MINUTES,
             day_start_hour: DEFAULT_DAY_START_HOUR,
             timezone: DEFAULT_TIMEZONE.to_string(),
+            timebox_time_limit: DEFAULT_TIMEBOX_TIME_LIMIT,
         })),
     }
 }
@@ -78,10 +81,15 @@ pub async fn update_preferences(
     {
         return Err(StatusCode::BAD_REQUEST);
     }
+    if let Some(t) = body.timebox_time_limit
+        && !(0..=9999).contains(&t)
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     // Read current (or default) values, then apply the provided fields.
     let current = sqlx::query!(
-        "SELECT learn_ahead_seconds, day_start_hour, timezone FROM user_preferences WHERE user_id = $1",
+        "SELECT learn_ahead_seconds, day_start_hour, timezone, timebox_time_limit FROM user_preferences WHERE user_id = $1",
         claims.sub
     )
     .fetch_optional(&state.db)
@@ -102,14 +110,19 @@ pub async fn update_preferences(
         .map(normalize_timezone)
         .or_else(|| current.as_ref().map(|r| r.timezone.clone()))
         .unwrap_or_else(|| DEFAULT_TIMEZONE.to_string());
+    let timebox_time_limit = body
+        .timebox_time_limit
+        .or_else(|| current.as_ref().map(|r| r.timebox_time_limit))
+        .unwrap_or(DEFAULT_TIMEBOX_TIME_LIMIT);
 
     sqlx::query!(
-        "INSERT INTO user_preferences (user_id, learn_ahead_seconds, day_start_hour, timezone) VALUES ($1, $2, $3, $4) \
-         ON CONFLICT (user_id) DO UPDATE SET learn_ahead_seconds = $2, day_start_hour = $3, timezone = $4",
+        "INSERT INTO user_preferences (user_id, learn_ahead_seconds, day_start_hour, timezone, timebox_time_limit) VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (user_id) DO UPDATE SET learn_ahead_seconds = $2, day_start_hour = $3, timezone = $4, timebox_time_limit = $5",
         claims.sub,
         learn_ahead_minutes * 60,
         day_start_hour,
-        timezone
+        timezone,
+        timebox_time_limit
     )
     .execute(&state.db)
     .await
@@ -119,5 +132,6 @@ pub async fn update_preferences(
         learn_ahead_minutes,
         day_start_hour,
         timezone,
+        timebox_time_limit,
     }))
 }

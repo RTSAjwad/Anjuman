@@ -564,8 +564,10 @@ Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
       `preferences` handler + contract DTOs (`UserPreferences`/`UpdatePreferences`,
       minutes on the wire), routes/openapi wiring, and HTTP round-trip tests
       in `server/tests/preferences.rs`.
-- [ ] **Timebox time limit** — see US-3.2 below (persist the preference
+- [x] **Timebox time limit** — see US-3.2 below (persist the preference
       server-side; the timebox popup itself is a client-side concern, stage 4).
+      Implemented: `user_preferences.timebox_time_limit` (minutes, default 0)
+      + CRUD round-trip + bounds test.
 
 ### US-3.2 — Timebox time limit (persist the preference; behaviour client-side)
 
@@ -594,16 +596,20 @@ implication.
 
 **Acceptance criteria**
 
-- [ ] `user_preferences.timebox_time_limit` column added (minutes, `BIGINT`,
+- [x] `user_preferences.timebox_time_limit` column added (minutes, `BIGINT`,
       default 0), `0` = disabled.
-- [ ] `UserPreferences`/`UpdatePreferences` gain `timebox_time_limit` (minutes
+- [x] `UserPreferences`/`UpdatePreferences` gain `timebox_time_limit` (minutes
       on the wire, matching Anki's input), round-tripped through
       `GET`/`PATCH /preferences` and reflected in the OpenAPI spec.
-- [ ] Bounds enforced: `0..=9999` (Anki in-app range; `0` disables). Out-of-
+- [x] Bounds enforced: `0..=9999` (Anki in-app range; `0` disables). Out-of-
       range → `400`.
-- [ ] A missing preference row still returns the default (`timebox_time_limit =
+- [x] A missing preference row still returns the default (`timebox_time_limit =
       0`), consistent with the other two prefs.
-- [ ] Each criterion has a `server/tests/` test.
+- [x] Each criterion has a `server/tests/` test.
+
+  **Implemented**: migration `0021`, `timebox_time_limit` (minutes) on the
+  preferences DTOs + handler with `0..=9999` bounds, and round-trip/default/
+  bound tests in `server/tests/preferences.rs`.
 
 **Out of scope / decisions to document**
 

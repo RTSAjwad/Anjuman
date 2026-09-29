@@ -29,8 +29,8 @@ Most of Anki's preferences do **not** belong in the server:
 
 The upshot: **the server owns only three preferences today** — `day_start_hour`
 ("next day starts at"), `learn_ahead_seconds` ("learn ahead limit"), and
-`timebox_time_limit` ("timebox time limit", persistence only — see below) — plus
-the CRUD endpoint that edits them.
+`timebox_time_limit` ("timebox time limit", persistence only) — plus the CRUD
+endpoint that edits them.
 
 ### Timezone (US-3.1) ✅ implemented
 
@@ -78,7 +78,7 @@ of scope** — separate story.
 |---|---|---|---|
 | Next day starts at | ✅ | 4 | `user_preferences.day_start_hour` (whole hours 0–23) + `user_preferences.timezone` (IANA, default `UTC`). Drives the day boundary, resolved in the user's local zone via `chrono-tz` (US-3.1). |
 | Learn ahead limit | ✅ | 20 (min) | `user_preferences.learn_ahead_seconds` (default 1200 s). In-app it's **minutes, 0–100, default 20**. |
-| Timebox time limit | 🟡 | 0 | Int minutes, 0–9999, default 0 (`0` = disabled). **Persisted server-side; behaviour is client-side** (stage 4) — the timebox popup is a UI concern the client drives locally (see US-3.2). |
+| Timebox time limit | ✅ | 0 | Int minutes, 0–9999, default 0 (`0` = disabled). **Persisted server-side; behaviour is client-side** (stage 4) — the timebox popup is a UI concern the client drives locally (US-3.2). |
 
 ### Review (client-side / form-factor)
 
@@ -113,18 +113,18 @@ of scope** — separate story.
 | Third-party services (AnkiHub, …) | ⚪ | Anki-specific. **Decision: drop.** |
 | Experiments (Svelte editor, …) | ⚪ | Anki-specific. **Decision: drop.** |
 
-us3.1## Summary of the biggest gaps
+## Summary of the biggest gaps
 
-1. **Timezone correctness (US-3.1)** — the day boundary is UTC-anchored; needs
-   a per-user timezone so "next day starts at" matches local time.
-2. **Timebox time limit (US-3.2)** — the preference is not yet persisted; once
-   added, its *behaviour* remains a client concern (stage 4).
+- **None outstanding in stage 3.** Preferences CRUD, timezone (US-3.1), and
+  timebox time limit (US-3.2) are all implemented. The timebox *behaviour*
+  (the popup) and any analytics day-bucketing by local timezone remain client/
+  future concerns (stage 4 / separate story respectively).
 
 ## Key architectural differences vs. Anki
 
 - **Only three persisted server-side preferences** — `day_start_hour`,
-  `learn_ahead_seconds`, and (planned) `timebox_time_limit` (persistence only;
-  its behaviour is client-side). Everything else in Anki's preferences dialog is
+  `learn_ahead_seconds`, and `timebox_time_limit` (persistence only; its
+  behaviour is client-side). Everything else in Anki's preferences dialog is
   client-side, form-factor-specific, or deliberately dropped as Anki-specific.
 - **Day boundary is user-local** — "next day starts at" stores both an hour
   (`day_start_hour`) and a per-user IANA timezone (`timezone`), so the study-day

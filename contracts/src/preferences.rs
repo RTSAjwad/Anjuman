@@ -19,6 +19,8 @@ pub struct UserPreferences {
     pub day_start_hour: i64,
     /// IANA timezone name (e.g. `"Europe/London"`), default `"UTC"`.
     pub timezone: String,
+    /// Timebox interval in minutes (0–9999), default 0 (`0` = disabled).
+    pub timebox_time_limit: i64,
 }
 
 /// Request body for `PATCH /preferences`. Fields are optional; omitted fields
@@ -32,4 +34,6 @@ pub struct UpdatePreferences {
     pub day_start_hour: Option<i64>,
     /// IANA timezone name (e.g. `"Europe/London"`). Invalid names fall back to `"UTC"`.
     pub timezone: Option<String>,
+    /// Timebox interval in minutes (0–9999).
+    pub timebox_time_limit: Option<i64>,
 }

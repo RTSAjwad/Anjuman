@@ -279,3 +279,84 @@ async fn preferences_timezone_invalid_falls_back_to_utc() {
     assert_eq!(json["timezone"], "UTC");
     assert_eq!(json["day_start_hour"], 5);
 }
+
+// ---------------------------------------------------------------------------
+// US-3.2 — timebox time limit
+// ---------------------------------------------------------------------------
+
+/// The default timebox time limit is `0` (disabled) before any update.
+#[tokio::test]
+async fn preferences_timebox_defaults_to_zero() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_, token) = create_user(&app, UserRole::Student).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/preferences")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["timebox_time_limit"], 0);
+}
+
+/// A timebox time limit round-trips through PATCH → GET (minutes on the wire).
+#[tokio::test]
+async fn preferences_timebox_round_trips() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_, token) = create_user(&app, UserRole::Student).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(patch(&token, &serde_json::json!({ "timebox_time_limit": 30 })))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/preferences")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["timebox_time_limit"], 30);
+}
+
+/// Values outside 0..=9999 are rejected with 400.
+#[tokio::test]
+async fn preferences_timebox_rejects_out_of_range() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_, token) = create_user(&app, UserRole::Student).await;
+
+    for bad in [serde_json::json!({ "timebox_time_limit": -1 }), serde_json::json!({ "timebox_time_limit": 10000 })] {
+        let res = app.app.clone().oneshot(patch(&token, &bad)).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::BAD_REQUEST,
+            "value {bad} should be rejected"
+        );
+    }
+}
