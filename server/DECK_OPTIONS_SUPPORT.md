@@ -133,11 +133,11 @@ each in-app selection to what we implemented and flags where the two diverge.
 
 | Anki feature | Status | Notes |
 |---|---|---|
-| Bury new siblings | ✅ | `bury_new`. |
-| Bury review siblings | ✅ | `bury_review`. |
-| Bury interday learning siblings | ✅ | `bury_interday`. |
-| Directional burying (earlier card types can't be buried by later) | ✅ | Implemented per gathering order. |
-| Defaults | 🟡 | Anki documents these ON; we default **OFF** (a deliberate divergence). |
+| Bury new siblings | ✅ | `bury_new` (boolean, default off — matches the in-app default). |
+| Bury review siblings | ✅ | `bury_review` (boolean, default off). |
+| Bury interday learning siblings | ✅ | `bury_interday` (boolean, default off). |
+| Directional burying (earlier card types can't be buried by later) | ✅ | Implemented per gathering order (intraday never buried; a later-priority answered card cannot bury an earlier-priority sibling).
+| Defaults | ✅ | All three booleans are **off by default**, matching the in-app defaults. (The web manual's text describing burying ON is stale; the application itself defaults them off — so this is a manual-vs-app inconsistency, not a divergence of ours.) |
 
 ## Audio
 
@@ -229,7 +229,10 @@ each in-app selection to what we implemented and flags where the two diverge.
   and minimum interval) are marked ⚪ below and are out of scope, not "missing".
 - **Steps are normalized** into `deck_option_steps` (one row per step) rather than stored as a space-separated string — enabling the SQL-side intraday/interday computation.
 - **Day boundary is UTC-anchored** via a per-user `day_start_hour`, with no per-user timezone yet (Anki stores a full "next day starts at" timestamp per collection).
-- **Burying defaults are OFF**, diverging from Anki's documented ON default.
+- **Burying defaults are OFF — and this *matches* the app.** The web manual's
+  prose describes burying as on by default, but the in-app options are
+  **off by default**, and we follow the app. This is a manual-vs-app
+  inconsistency, not a divergence of ours.
 - **Hard-button delay precision**: Anki's manual says the first-step Hard delay for
   `1m 10m` is "6m", but the raw average is `5m30s`; the real client shows `<6m`.
   We store the exact average in seconds (`330s`) rather than replicating Anki's
