@@ -63,18 +63,41 @@ async fn sync_card_rows(
     deck_id: i64,
     nt: &note_types::NoteType,
 ) -> Result<(), StatusCode> {
+    // Resolve this deck's insertion order: when `random`, new cards get a random
+    // `position` instead of the monotonic sequence default (US-2.13).
+    let random_order: bool = sqlx::query_scalar(
+        "SELECT o.insertion_order = 'random' FROM decks d JOIN deck_options o ON o.id = COALESCE(d.options_id, 0) WHERE d.id = $1",
+    )
+    .bind(deck_id)
+    .fetch_one(&mut **tx)
+    .await
+    .unwrap_or(false);
+
     // Insert a card per template (by template id), preserving template order.
     for template in &nt.templates {
-        sqlx::query!(
-            "INSERT INTO cards (note_id, deck_id, template_id, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (note_id, template_id) DO NOTHING",
-            note_id,
-            deck_id,
-            template.id,
-            Utc::now()
-        )
-        .execute(&mut **tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if random_order {
+            sqlx::query!(
+                "INSERT INTO cards (note_id, deck_id, template_id, created_at, position) VALUES ($1, $2, $3, $4, floor(random() * 100000000)::bigint) ON CONFLICT (note_id, template_id) DO NOTHING",
+                note_id,
+                deck_id,
+                template.id,
+                Utc::now()
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        } else {
+            sqlx::query!(
+                "INSERT INTO cards (note_id, deck_id, template_id, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (note_id, template_id) DO NOTHING",
+                note_id,
+                deck_id,
+                template.id,
+                Utc::now()
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
     }
 
     // Remove cards whose template no longer belongs to this note type.

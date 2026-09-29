@@ -119,6 +119,27 @@ impl Default for ReviewSortOrder {
     }
 }
 
+/// New-card insertion order (US-2.13).
+///
+/// Controls the `cards.position` (due #) assigned to new cards: `Sequential`
+/// appends monotonically (oldest-first), `Random` assigns a random position on
+/// insert and re-sorts existing new cards when the setting changes. The
+/// re-sort is scoped to the preset's decks (a documented divergence — Anki's
+/// position namespace is global).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum InsertionOrder {
+    Sequential,
+    Random,
+}
+
+impl Default for InsertionOrder {
+    fn default() -> Self {
+        InsertionOrder::Sequential
+    }
+}
+
 /// The action taken when a card reaches the leech threshold.
 ///
 /// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
@@ -262,6 +283,8 @@ pub struct CreateDeckOptions {
     /// Per-weekday workload (Monday-first, length 7); default all normal.
     #[serde(default = "default_easy_days")]
     pub easy_days: Vec<EasyDayStrength>,
+    #[serde(default)]
+    pub insertion_order: InsertionOrder,
 }
 
 /// Fields that can be updated on a deck options preset.
@@ -297,6 +320,7 @@ pub struct UpdateDeckOptions {
     pub maximum_answer_seconds: Option<i64>,
     pub maximum_interval: Option<i64>,
     pub easy_days: Option<Vec<EasyDayStrength>>,
+    pub insertion_order: Option<InsertionOrder>,
 }
 
 /// A deck options preset as returned to clients.
@@ -337,6 +361,7 @@ pub struct DeckOptions {
     pub maximum_answer_seconds: i64,
     pub maximum_interval: i64,
     pub easy_days: Vec<EasyDayStrength>,
+    pub insertion_order: InsertionOrder,
 }
 
 fn default_learning_steps() -> String {

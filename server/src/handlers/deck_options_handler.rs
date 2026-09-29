@@ -15,8 +15,9 @@ use anjuman_contracts::UserRole;
 
 use crate::{
     auth::AuthUser,
-    db_types::{DbAutoAdvanceAnswerAction, DbAutoAdvanceQuestionAction, DbInterdayOrder,
-        DbLeechAction, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder, DbReviewSortOrder},
+    db_types::{DbAutoAdvanceAnswerAction, DbAutoAdvanceQuestionAction, DbInsertionOrder,
+        DbInterdayOrder, DbLeechAction, DbNewGatherOrder, DbNewReviewOrder, DbNewSortOrder,
+        DbReviewSortOrder},
     deck_options::{self, DeckOptions},
     handlers::{reviews::parse_steps},
     state::AppState,
@@ -133,7 +134,7 @@ pub async fn create_deck_options(
     })?;
 
     let result = sqlx::query!(
-        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order, review_sort_order, show_on_screen_timer, stop_timer_on_answer, dont_play_audio_automatically, skip_question_when_replaying_answer, auto_advance_seconds_show_question, auto_advance_seconds_show_answer, auto_advance_wait_for_audio, auto_advance_question_action, auto_advance_answer_action, maximum_answer_seconds, maximum_interval, easy_days) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order, $15::text::review_sort_order, $16, $17, $18, $19, $20, $21, $22, $23::text::auto_advance_question_action, $24::text::auto_advance_answer_action, $25, $26, $27) RETURNING id",
+        "INSERT INTO deck_options (school_id, name, desired_retention, bury_new, bury_review, bury_interday, new_per_day, review_per_day, leech_threshold, leech_action, new_gather_order, new_sort_order, new_review_order, interday_order, review_sort_order, show_on_screen_timer, stop_timer_on_answer, dont_play_audio_automatically, skip_question_when_replaying_answer, auto_advance_seconds_show_question, auto_advance_seconds_show_answer, auto_advance_wait_for_audio, auto_advance_question_action, auto_advance_answer_action, maximum_answer_seconds, maximum_interval, easy_days, insertion_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::leech_action, $11::text::new_gather_order, $12::text::new_sort_order, $13::text::new_review_order, $14::text::interday_order, $15::text::review_sort_order, $16, $17, $18, $19, $20, $21, $22, $23::text::auto_advance_question_action, $24::text::auto_advance_answer_action, $25, $26, $27, $28::text::insertion_order) RETURNING id",
         claims.school_id,
         body.name,
         body.desired_retention,
@@ -161,6 +162,7 @@ pub async fn create_deck_options(
         body.maximum_answer_seconds,
         body.maximum_interval,
         serde_json::to_value(&body.easy_days).unwrap_or(serde_json::Value::Null),
+        DbInsertionOrder::from(body.insertion_order).as_str(),
     )
     .fetch_one(&mut *tx)
     .await
@@ -627,6 +629,34 @@ pub async fn update_deck_options(
             serde_json::to_value(easy_days).unwrap_or(serde_json::Value::Null),
             id
         )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+    if let Some(order) = body.insertion_order {
+        sqlx::query!(
+            "UPDATE deck_options SET insertion_order = $1::text::insertion_order WHERE id = $2",
+            DbInsertionOrder::from(order).as_str(),
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+
+        // Retroactive re-sort of existing new cards in this preset's decks
+        // (US-2.13). Scoped to the preset (a documented divergence from Anki's
+        // global position namespace). `random` shuffles; `sequential` restores
+        // monotonic creation order. Renumbering all cards in the deck is
+        // harmless — `position` only affects new-card ordering.
+        let reorder = if order == anjuman_contracts::deck_options::InsertionOrder::Random {
+            "floor(random() * 100000000)::bigint"
+        } else {
+            "c.id"
+        };
+        sqlx::query(&format!(
+            "UPDATE cards c SET position = {reorder} FROM decks d JOIN deck_options o ON o.id = COALESCE(d.options_id, 0) WHERE c.deck_id = d.id AND o.id = $1"
+        ))
+        .bind(id)
         .execute(&mut *tx)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;

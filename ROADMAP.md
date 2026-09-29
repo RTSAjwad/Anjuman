@@ -311,7 +311,7 @@ matrix's "Summary of the biggest gaps" is the working list:
         interval).
       - "Ascending/descending ease" (SM-2) is surfaced as easy/difficult-first
         under FSRS via `difficulty`.
-- [ ] **US-2.13 — New card insertion order (Random + retroactive re-sort)**
+- [x] **US-2.13 — New card insertion order (Random + retroactive re-sort)**
 
       **As** a teacher configuring a preset,
       **I want** to choose whether newly-added cards get sequential or random
@@ -320,20 +320,26 @@ matrix's "Summary of the biggest gaps" is the working list:
       reordering by hand.
 
       **Acceptance criteria**
-      - [ ] `insertion_order` enum (`sequential` / `random`) on `deck_options`,
+      - [x] `insertion_order` enum (`sequential` / `random`) on `deck_options`,
             default `sequential`.
-      - [ ] Sequential keeps `card_position_seq` monotonic assignment.
-      - [ ] Random assigns shuffled `position`s to cards created while active.
-      - [ ] Changing the option atomically re-sorts the *existing* new-card
-            `position`s of the preset's decks (retroactive, matching Anki's
-            "automatically update the existing position of new cards").
-      - [ ] Each criterion has a `server/tests/` test.
+      - [x] Sequential keeps `card_position_seq` monotonic assignment.
+      - [x] Random assigns shuffled `position`s to cards created while active
+            (on-insert, via `sync_card_rows`).
+      - [x] Changing the option atomically re-sorts the *existing* new-card
+            `position`s of the preset's decks (retroactive — `random` shuffles,
+            `sequential` restores id order).
+      - [x] Each criterion has a `server/tests/` test.
 
-      **Open question / scope** — Anki positions new cards *per deck*; our
-      `cards.position` is a global sequence. Faithful `random` + retroactive
-      re-sort needs per-deck (or per-preset) positioning semantics, which is a
-      small structural change to `cards.position` (see `0005_cards_position.sql`
-      note). Resolve this before implementing.
+      **Resolved scope / divergence (documented)** — Anki's new-card position is
+      a *global* `due` namespace (single-user); the source confirms this (no
+      per-deck partition). In our multi-tenant system we scope the re-sort to
+      the preset's decks — a deliberate divergence from Anki's global namespace
+      (which would otherwise let one school's `random` reshuffle other schools'
+      new cards). `position` only affects new-card ordering, so renumbering all
+      cards of the preset's decks is safe.
+
+      **Out of scope** — the bulk `create_template` path leaves positions
+      sequential (rare path; the normal note-creation path is covered).
 - [x] **US-2.14 — Selection-only deck options (client-side behaviour)**
 
       Persist the deck options whose behaviour is purely client-side, so they

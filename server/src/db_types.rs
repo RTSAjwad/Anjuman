@@ -132,6 +132,14 @@ pub enum DbReviewSortOrder {
     LatestAddedFirst,
 }
 
+/// Mirrors the `insertion_order` enum (`sequential`, `random`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[sqlx(type_name = "insertion_order", rename_all = "snake_case")]
+pub enum DbInsertionOrder {
+    Sequential,
+    Random,
+}
+
 /// Mirrors the `auto_advance_question_action` enum (`show_answer`, `show_card`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[sqlx(type_name = "auto_advance_question_action", rename_all = "snake_case")]
@@ -501,6 +509,35 @@ impl DbReviewSortOrder {
             DbReviewSortOrder::Random => "random",
             DbReviewSortOrder::OrderAdded => "order_added",
             DbReviewSortOrder::LatestAddedFirst => "latest_added_first",
+        }
+    }
+}
+
+impl From<anjuman_contracts::deck_options::InsertionOrder> for DbInsertionOrder {
+    fn from(o: anjuman_contracts::deck_options::InsertionOrder) -> Self {
+        match o {
+            anjuman_contracts::deck_options::InsertionOrder::Sequential => {
+                DbInsertionOrder::Sequential
+            }
+            anjuman_contracts::deck_options::InsertionOrder::Random => DbInsertionOrder::Random,
+        }
+    }
+}
+
+impl From<DbInsertionOrder> for anjuman_contracts::deck_options::InsertionOrder {
+    fn from(o: DbInsertionOrder) -> Self {
+        match o {
+            DbInsertionOrder::Sequential => anjuman_contracts::deck_options::InsertionOrder::Sequential,
+            DbInsertionOrder::Random => anjuman_contracts::deck_options::InsertionOrder::Random,
+        }
+    }
+}
+
+impl DbInsertionOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DbInsertionOrder::Sequential => "sequential",
+            DbInsertionOrder::Random => "random",
         }
     }
 }
