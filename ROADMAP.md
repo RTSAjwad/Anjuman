@@ -55,11 +55,7 @@ matrix's "Summary of the biggest gaps" is the working list:
 
 - [x] **Display order** — US-2.8–US-2.12 (gather, sort, new/review, interday,
       review-sort) all done. See below.
-- [ ] **FSRS parameter optimization** — store per-school/user FSRS weights and
-      add an optimizer endpoint (`compute_parameters`); today it's
-      `FSRS::default()` weights only. The in-app UI has the parameters editor,
-      an optimization search filter (`preset: "Default" ~is:suspended`), and
-      "Optimise Current Preset"/"Optimise All Presets" actions.
+- [ ] **FSRS parameter optimization** → US-2.18 (also folds in `historical_retention`).
 - [ ] **Collection-wide FSRS toggles (descoped to stage 7)** — "Reschedule cards
       on change" (transient, not saved) and "Check health when optimizing" are
       both collection-wide booleans in-app; deferred with the other
@@ -69,18 +65,10 @@ matrix's "Summary of the biggest gaps" is the working list:
       buttons each open a distinct simulator (different graphs). Both are UI-
       heavy (and may need server-side simulation endpoints), so descoped until
       after the client lands (stage 4); no server work now.
-- [ ] **Maximum answer seconds (server-side cap)** — in-app it is a number
-      (min 1, max 7200); the recorded `response_time_ms` is capped at this value
-      when written. Small server behaviour (not a selection-only option).
-- [ ] **Easy Days (server-side scheduling)** — one three-value slider
-      (`Minimum`/`Reduced`/`Normal`) per weekday, adjusting FSRS due dates
-      (non-retroactively). A genuine server scheduling gap; needs a weekday field
-      + due-date adjustment in the FSRS path.
-- [ ] **Maximum interval (server-side cap)** — number (default 36500, min 0,
-      max 36500); caps the FSRS interval so Hard/Good/Easy converge at the cap.
-      We currently leave intervals unbounded.
-- [ ] **Historical retention** — percentage (default 90%, 50–100%); feeds the
-      FSRS optimizer's gap-filling. Fold into the FSRS parameterization work.
+- [ ] **Maximum answer seconds (server-side cap)** → US-2.15.
+- [ ] **Easy Days (server-side scheduling)** → US-2.16.
+- [ ] **Maximum interval (server-side cap)** → US-2.17.
+- [ ] **Historical retention** → folded into US-2.18.
 - [ ] **Custom scheduling (JS) — descoped (collection-wide)** — text-area JS
       hook, collection-wide, "use at your own risk"; deferred with the other
       collection-wide options (stage 7 note below).
@@ -376,6 +364,108 @@ matrix's "Summary of the biggest gaps" is the working list:
 
       **Out of scope** (until stage 4): any actual timer/audio/advance
       behaviour in a client.
+- [ ] **US-2.15 — Maximum answer seconds (server-side cap)**
+
+      **As** a student,
+      **I want** answers that took longer than a per-preset cap to be recorded
+      as the cap,
+      **so that** my statistics aren't skewed by time I was away from the screen.
+
+      Anki manual: <https://docs.ankiweb.net/deck-options.html#timers> (in-app it
+      is a **number, min 1, max 7200**, default 60; the manual's "60s" is the
+      default value, not a hard bound).
+
+      **Acceptance criteria**
+      - [ ] `maximum_answer_seconds` field on `deck_options` (`i64`, default 60,
+            validated `1..=7200`).
+      - [ ] `apply_review` caps the recorded `response_time_ms` at
+            `maximum_answer_seconds` when writing the `reviews` row (and the
+            pre-submission stats path reads the capped value).
+      - [ ] `GET /deck-options` reflects the field (OpenAPI regenerated).
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - The on-screen timer UI (client, stage 4 — already persisted in US-2.14).
+      - Collection-wide cap: this is preset-scoped (in-app it lives under Timers
+        in deck options), not a preferences value.
+- [ ] **US-2.16 — Easy Days (per-weekday workload)**
+
+      **As** a student,
+      **I want** to reduce my FSRS workload on chosen weekdays,
+      **so that** I can lighten or spread reviews around my weekly schedule.
+
+      Anki manual: <https://docs.ankiweb.net/deck-options.html#easy-days>.
+      In-app it is **one three-value slider per weekday** (`minimum` / `reduced` /
+      `normal`), non-retroactive (only affects future intervals).
+
+      **Acceptance criteria**
+      - [ ] `easy_days` field on `deck_options` — one `EasyDayStrength` enum per
+            weekday (7 values), default all `normal`.
+      - [ ] `apply_review` / FSRS interval computation adjusts the post-scheduling
+            `due_at` for `minimum`/`reduced` weekdays (skip the day / shift short)
+            without mutating the FSRS memory state.
+      - [ ] Adjustment is non-retroactive (only cards scheduled from now).
+      - [ ] `GET /deck-options` reflects the field (OpenAPI regenerated).
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope / decision needed**
+      - Exact "minimum vs reduced" day-shift semantics must be pinned down
+        against Anki's scheduler (the manual describes the effect loosely);
+        record the resolution in `DECK_OPTIONS_SUPPORT.md` before coding.
+      - Collection-wide (Anki scopes Easy Days per collection); we scope it
+        per-preset, de facto a stage-7 collection-wide decision.
+- [ ] **US-2.17 — Maximum interval (server-side cap)**
+
+      **As** a student,
+      **I want** to cap how far out a review card can be scheduled,
+      **so that** my intervals don't grow beyond a bound I choose.
+
+      Anki manual: <https://docs.ankiweb.net/deck-options.html#maximum-interval>.
+      In-app it is a **number, default 36500, min 0, max 36500** (at the cap,
+      Hard/Good/Easy give the same delay).
+
+      **Acceptance criteria**
+      - [ ] `maximum_interval` field on `deck_options` (`i64` days, default
+            36500, validated `0..=36500`).
+      - [ ] `apply_review` clamps the computed FSRS interval to
+            `maximum_interval` days.
+      - [ ] `GET /deck-options` reflects the field (OpenAPI regenerated).
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope**
+      - The 0-vs-unbounded distinction is simply `0` = no card ever advances
+        (stay in learning) per Anki; confirm this edge and record it.
+- [ ] **US-2.18 — FSRS parameter optimization + historical retention**
+
+      **As** a teacher,
+      **I want** to optimise a preset's FSRS parameters from the school's review
+      history (optionally filtered to a search),
+      **so that** scheduling fits the class's actual retention rather than the
+      default parameters.
+
+      Anki manual:
+      <https://docs.ankiweb.net/deck-options.html#fsrs-parameters> and
+      <https://docs.ankiweb.net/deck-options.html#historical-retention>.
+
+      **Acceptance criteria**
+      - [ ] `fsrs_parameters` (stored weight vector) + `historical_retention`
+            (percentage, default 90, `0.5..=1.0`) fields on `deck_options`.
+      - [ ] `apply_review` uses the preset's stored `fsrs_parameters` (falling
+            back to `FSRS::default()`) instead of always-default weights.
+      - [ ] Optimizer endpoint (e.g. `POST /deck-options/:id/optimize`) that
+            runs FSRS optimization over the preset's history and stores the
+            result; accepts an optional review-history filter (the in-app
+            `preset: "Default" ~is:suspended` search box).
+      - [ ] `historical_retention` feeds the optimizer's gap-filling.
+      - [ ] `GET /deck-options` reflects the fields (OpenAPI regenerated).
+      - [ ] Each criterion has a `server/tests/` test.
+
+      **Out of scope / decision needed**
+      - "Check health when optimizing" (collection-wide, stage 7) and the
+        simulators (post-client) are excluded from this story.
+      - Whether parameters are stored per-preset or per-school/user must be
+        settled (Anki: per-preset, shared across the collection) — record the
+        decision; the current default is per-preset columns on `deck_options`.
 - [ ] Cross-check the remaining ❌/🟡 rows and either implement or consciously
       descope each (record the descope decision in the matrix).
 
