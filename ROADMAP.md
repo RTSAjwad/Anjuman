@@ -797,7 +797,8 @@ injected `HttpResponse`s, never a running server).
       `crux_http`/`crux_kv` capabilities + login screen.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
       dependency order). Decks list is US-4.3 (done); study entry is US-4.4
-      (done) and the study loop is US-4.5 (drafted, next); notes + cards remain.
+      (done) and the study loop core is US-4.5 (done; Leptos rendering pending
+      the shell agent); notes + cards remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -1039,21 +1040,21 @@ needs the mirror direction (same as auth/decks).
 
 **Acceptance criteria**
 
-- [ ] `Model` holds study-session state (`current_card: Option<StudyCard>`,
+- [x] `Model` holds study-session state (`current_card: Option<StudyCard>`,
       `counts: StudyCounts`, plus the deck being studied).
-- [ ] `Event::StartStudy` emits `GET /decks/{id}/study` with the bearer header;
+- [x] `Event::StartStudy` emits `GET /decks/{id}/study` with the bearer header;
       the response's `next_card` becomes `model.current_card` (or `None` →
       "nothing due").
-- [ ] `Event::Answer { rating }` emits `POST /decks/{id}/study` with a
+- [x] `Event::Answer { rating }` emits `POST /decks/{id}/study` with a
       `StudyAdvanceBody` carrying the current card id + rating; the response's
       `next_card` replaces `current_card`, and `counts` update.
-- [ ] Ratings are constrained to 1–4 (Again/Hard/Good/Easy); an invalid rating
+- [x] Ratings are constrained to 1–4 (Again/Hard/Good/Easy); an invalid rating
       is ignored (no request emitted).
-- [ ] When `next_card` is `None`, the `ViewModel` exposes a "finished / nothing
+- [x] When `next_card` is `None`, the `ViewModel` exposes a "finished / nothing
       due" state (not a panic).
-- [ ] The contracts prerequisite is done: study DTOs round-trip
+- [x] The contracts prerequisite is done: study DTOs round-trip
       (`Serialize`/`Deserialize` on the response types and `StudyAdvanceBody`).
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes.
 
 **Shell contract**
 

@@ -30,7 +30,7 @@ pub struct ReviewResponse {
 }
 
 /// The post-review scheduling state of a card.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReviewedCardState {
     pub card_id: i64,

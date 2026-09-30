@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse};
+use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 
 /// The base URL of the Anjuman server.
 ///
@@ -44,6 +45,12 @@ pub struct Model {
     pub decks_error: Option<String>,
     /// The deck the user has opened to study (null until one is selected).
     pub selected_deck: Option<DeckSummary>,
+    /// The card currently shown, if study has started and a card is due.
+    pub current_card: Option<StudyCard>,
+    /// Due counts for the deck being studied.
+    pub counts: StudyCounts,
+    /// A human-readable error from the last study request, if any.
+    pub study_error: Option<String>,
 }
 
 /// Authentication state.
@@ -81,8 +88,22 @@ pub enum Event {
     OpenDeck {
         deck_id: i64,
     },
+    /// Begin studying the selected deck: fetch the first due card (+ counts).
+    StartStudy,
+    /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
+    Answer {
+        rating: i32,
+    },
 
     // --- Core-local completion events (never cross the FFI boundary) ---
+
+    #[serde(skip)]
+    #[facet(skip)]
+    StudyStarted(#[facet(opaque)] crux_http::Result<crux_http::Response<StudyAdvance>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    StudyAdvanced(#[facet(opaque)] crux_http::Result<crux_http::Response<StudyAdvance>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -146,6 +167,61 @@ pub struct ViewModel {
     pub selected_deck: Option<DeckSummary>,
     /// A human-readable error from the last decks fetch, if any.
     pub decks_error: Option<String>,
+    /// The card currently shown during study, or `None` when nothing is due
+    /// (study not started, or the deck is finished).
+    pub current_card: Option<StudyCardView>,
+    /// Due counts for the deck being studied.
+    pub counts: StudyCountsView,
+    /// A human-readable error from the last study request, if any.
+    pub study_error: Option<String>,
+}
+
+/// The shell-facing view of a card during study (a Facet/FFI-friendly mirror of
+/// the wire `StudyCard`, following the same core-local mapping as `DeckSummary`
+/// vs. `DeckResponse`). Only the fields US-4.5 renders are exposed; bury/suspend,
+/// flags, and `predicted_interval` are out of scope for now.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct StudyCardView {
+    pub card_id: i64,
+    pub front: String,
+    pub back: String,
+    /// The scheduling state label (`new`, `learning`, `review`, `relearning`).
+    pub state: String,
+    /// Current position in the learning/relearning steps list (0-based).
+    pub step_index: i64,
+}
+
+/// The shell-facing per-state counts for a study session (a Facet-friendly
+/// mirror of the wire `StudyCounts`).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct StudyCountsView {
+    pub new_count: i64,
+    pub learning_count: i64,
+    pub review_count: i64,
+    pub relearning_count: i64,
+}
+
+impl From<StudyCounts> for StudyCountsView {
+    fn from(c: StudyCounts) -> Self {
+        StudyCountsView {
+            new_count: c.new_count,
+            learning_count: c.learning_count,
+            review_count: c.review_count,
+            relearning_count: c.relearning_count,
+        }
+    }
+}
+
+impl From<&StudyCard> for StudyCardView {
+    fn from(c: &StudyCard) -> Self {
+        StudyCardView {
+            card_id: c.card_id,
+            front: c.front.clone(),
+            back: c.back.clone(),
+            state: c.state.clone(),
+            step_index: c.step_index,
+        }
+    }
 }
 
 /// A deck as shown in the list view (title + due counts), with subdecks nested
@@ -333,6 +409,9 @@ impl crux_core::App for Anjuman {
                 model.decks.clear();
                 model.decks_error = None;
                 model.selected_deck = None;
+                model.current_card = None;
+                model.counts = StudyCounts::default();
+                model.study_error = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
             }
@@ -343,6 +422,79 @@ impl crux_core::App for Anjuman {
                 if let Some(summary) = find_deck(&model.decks, deck_id) {
                     model.selected_deck = Some(summary);
                 }
+                render::render()
+            }
+
+            Event::StartStudy => {
+                // Requires a selected deck (and a token); otherwise a no-op.
+                let Some(deck) = &model.selected_deck else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.study_error = None;
+                Http::get(format!("{API_URL}/decks/{}/study", deck.id))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::StudyStarted)
+            }
+
+            Event::Answer { rating } => {
+                // Only answered while a card is shown, and only a valid 1..=4
+                // rating does anything; otherwise ignore (no request emitted).
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let Some(deck) = &model.selected_deck else {
+                    return render::render();
+                };
+                if !(1..=4).contains(&rating) {
+                    return render::render();
+                }
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let body = StudyAdvanceBody {
+                    card_id: card.card_id,
+                    rating,
+                    response_time_ms: None,
+                };
+                Http::post(format!("{API_URL}/decks/{}/study", deck.id))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize study advance body")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::StudyAdvanced)
+            }
+
+            Event::StudyStarted(Ok(mut response)) => {
+                let advance = response.take_body().expect("study response has a body");
+                model.current_card = advance.next_card;
+                model.counts = advance.counts;
+                model.study_error = None;
+                render::render()
+            }
+
+            Event::StudyStarted(Err(e)) => {
+                model.study_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::StudyAdvanced(Ok(mut response)) => {
+                let advance = response.take_body().expect("study response has a body");
+                model.current_card = advance.next_card;
+                model.counts = advance.counts;
+                model.study_error = None;
+                render::render()
+            }
+
+            Event::StudyAdvanced(Err(e)) => {
+                model.study_error = Some(e.to_string());
                 render::render()
             }
 
@@ -398,6 +550,8 @@ impl crux_core::App for Anjuman {
 
     fn view(&self, model: &Model) -> ViewModel {
         let decks = build_deck_tree(&model.decks);
+        let current_card = model.current_card.as_ref().map(StudyCardView::from);
+        let counts = StudyCountsView::from(model.counts);
 
         match &model.auth {
             Auth::Authenticated { user, .. } => ViewModel {
@@ -409,6 +563,9 @@ impl crux_core::App for Anjuman {
                 decks,
                 selected_deck: model.selected_deck.clone(),
                 decks_error: model.decks_error.clone(),
+                current_card,
+                counts,
+                study_error: model.study_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -419,6 +576,9 @@ impl crux_core::App for Anjuman {
                 decks,
                 selected_deck: None,
                 decks_error: model.decks_error.clone(),
+                current_card: None,
+                counts: StudyCountsView::default(),
+                study_error: None,
             },
         }
     }
@@ -856,5 +1016,182 @@ mod tests {
         let _ = update(Event::OpenDeck { deck_id: 1 }, &mut model);
         let selected = model.selected_deck.clone().expect("selected");
         assert!(!selected.studyable);
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.5 — study session (single-card loop)
+    // --------------------------------------------------------------------
+
+    use anjuman_contracts::study::StudyAdvance;
+
+    fn study_card(card_id: i64) -> StudyCard {
+        StudyCard {
+            card_id,
+            note_id: 1,
+            front: "front".to_string(),
+            back: "back".to_string(),
+            state: "new".to_string(),
+            due_at: None,
+            stability: 0.0,
+            difficulty: 0.0,
+            reps: 0,
+            lapses: 0,
+            flag: 0,
+            suspended: false,
+            buried_at: None,
+            bury_reason: None,
+            step_index: 0,
+            predicted_interval: None,
+        }
+    }
+
+    fn study_advance(next_card: Option<StudyCard>) -> StudyAdvance {
+        StudyAdvance {
+            next_card,
+            reviewed_card: None,
+            counts: StudyCounts {
+                new_count: 3,
+                learning_count: 1,
+                review_count: 5,
+                relearning_count: 0,
+            },
+            deck_id: 1,
+            deck_title: "Spanish".to_string(),
+        }
+    }
+
+    /// A model with a selected deck ready to study (US-4.4 already ran).
+    fn study_ready_model() -> Model {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+        model.selected_deck = Some(find_deck(&model.decks.clone(), 1).expect("deck 1"));
+        model
+    }
+
+    /// `StartStudy` emits `GET /decks/{id}/study` with the bearer header.
+    #[test]
+    fn start_study_emits_get_with_bearer() {
+        let mut model = study_ready_model();
+        let effects = update(Event::StartStudy, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/1/study"
+                );
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `Answer` emits `POST /decks/{id}/study` with a `StudyAdvanceBody` carrying
+    /// the current card id + rating.
+    #[test]
+    fn answer_emits_post_with_body() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+
+        let effects = update(Event::Answer { rating: 3 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/1/study"
+                );
+                let body: StudyAdvanceBody =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.card_id, 42);
+                assert_eq!(body.rating, 3);
+                assert_eq!(body.response_time_ms, None);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A study response populates `current_card` + `counts` (and the view).
+    #[test]
+    fn study_populates_current_card() {
+        let mut model = study_ready_model();
+        let response = ResponseBuilder::ok()
+            .body(study_advance(Some(study_card(7))))
+            .build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        let card = model.current_card.as_ref().expect("current card");
+        assert_eq!(card.card_id, 7);
+        assert_eq!(model.counts.new_count, 3);
+        assert!(model.study_error.is_none());
+
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.current_card.as_ref().map(|c| c.card_id), Some(7));
+        assert_eq!(vm.counts.review_count, 5);
+    }
+
+    /// A finished study session (`next_card: None`) exposes a "nothing due" state
+    /// (empty `current_card` in the view), not a panic.
+    #[test]
+    fn study_finished_when_next_card_none() {
+        let mut model = study_ready_model();
+        let response = ResponseBuilder::ok().body(study_advance(None)).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        assert!(model.current_card.is_none());
+
+        let vm = Anjuman.view(&model);
+        assert!(vm.current_card.is_none(), "finished state has no current card");
+    }
+
+    /// Answering with an invalid rating (or with no current card) is ignored —
+    /// no request is emitted.
+    #[test]
+    fn answer_invalid_rating_is_ignored() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+
+        // Out-of-range rating.
+        let effects = update(Event::Answer { rating: 5 }, &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+
+        // No current card to answer.
+        let mut empty = study_ready_model();
+        let effects2 = update(Event::Answer { rating: 3 }, &mut empty);
+        assert!(!effects2.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// A study error (start or advance) surfaces in `study_error` and the view.
+    #[test]
+    fn study_error_surfaces() {
+        let mut model = study_ready_model();
+        let err = crux_http::testing::rejection::<StudyAdvance>(500, "boom").unwrap_err();
+        let _ = update(Event::StudyStarted(Err(err)), &mut model);
+
+        assert!(model.study_error.is_some());
+        let vm = Anjuman.view(&model);
+        assert!(vm.study_error.is_some());
+    }
+
+    /// Logout clears the in-flight study state.
+    #[test]
+    fn logout_clears_study_state() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        model.counts = StudyCounts {
+            new_count: 9,
+            ..Default::default()
+        };
+        let _ = update(Event::Logout, &mut model);
+        assert!(model.current_card.is_none());
+        assert_eq!(model.counts.new_count, 0);
     }
 }

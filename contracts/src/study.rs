@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::reviews::ReviewedCardState;
 
 /// A card presented during study.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StudyCard {
     pub card_id: i64,
@@ -44,7 +44,7 @@ pub struct StudyCard {
 /// `new_count` and `review_count` are clamped to the remaining daily budget,
 /// so they represent what the student can still actually do today. Learning
 /// and relearning are exempt from limits (in-progress steps always return).
-#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StudyCounts {
     pub new_count: i64,
@@ -54,7 +54,7 @@ pub struct StudyCounts {
 }
 
 /// The unified response for both GET (start) and POST (advance).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StudyAdvance {
     /// The next card to study, or null when nothing is currently due.
@@ -68,7 +68,7 @@ pub struct StudyAdvance {
 }
 
 /// Request body for `POST /decks/:id/study`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StudyAdvanceBody {
     pub card_id: i64,
