@@ -339,26 +339,20 @@ fn study_card_view(
 
     let front = card.front;
     let back = card.back;
-    let state = card.state;
 
     view! {
         <div class="study-card-view">
-            <div class="study-card-view__front">
-                <span class="thaw-study-card__state">{state}</span>
-                <div class="study-card-frame">
-                    <iframe
-                        class="study-card-frame__iframe"
-                        sandbox=""
-                        srcdoc=move || {
-                            if revealed.get() {
-                                card_html(&back)
-                            } else {
-                                card_html(&front)
-                            }
-                        }
-                    ></iframe>
-                </div>
-            </div>
+            <iframe
+                class="study-card-view__iframe"
+                sandbox=""
+                srcdoc=move || {
+                    if revealed.get() {
+                        card_html(&back)
+                    } else {
+                        card_html(&front)
+                    }
+                }
+            ></iframe>
 
             <div class="study-card-view__controls">
                 {move || {
