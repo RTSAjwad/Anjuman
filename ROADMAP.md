@@ -814,23 +814,33 @@ both ends round-trip the same DTOs.
       emits `GET /me` with `Authorization: Bearer <token>` (assert header).
 - [ ] `GET /me` success stores the `UserResponse`; `/me` 401 clears the stored
       token (session expired) and returns to `Unauthenticated`.
+- [ ] `Event::Logout` clears the token (a KV `delete` effect) and resets the
+      model to `Unauthenticated`.
 - [ ] The contracts prerequisite is done: `LoginRequest: Serialize`,
       `LoginResponse`/`UserResponse: Deserialize` (server build + OpenAPI
       unchanged otherwise).
 - [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
 
-**Shell (acceptance, not core-tested)**
+**Shell contract** (a checklist every shell satisfies — not a per-shell story; see
+`client/AGENTS.md` §7 and `SCREENS_SUPPORT.md` "Shell coverage").
 
-- [ ] The Leptos shell implements the `crux_http` capability (perform the fetch
-      and feed the bytes back via `resolve`) and the `crux_kv` capability
-      (localStorage) — replacing US-4.1's `Effect::Http(_)` stub. A minimal login
-      screen drives `LoginSubmit`/`RestoreSession`.
+- [ ] Implement the `crux_http` capability (perform the fetch, feed bytes back
+      via `resolve`) and `crux_kv` (localStorage) — replaces US-4.1's
+      `Effect::Http(_)` stub.
+- [ ] Render a login form (email + password) forwarding `Event::LoginSubmit`;
+      on startup, forward `Event::RestoreSession`.
+- [ ] Render `ViewModel` auth state (a signed-in vs. signed-out view), with a
+      sign-out affordance forwarding `Event::Logout`.
+
+> **Verified in Leptos now; SwiftUI/WinUI/Compose/Libadwaita check the same
+> checklist off when they land.** Shell-specific gotchas (e.g. non-Rust shells use
+> the FFI `Bridge` instead of the typed `Core`) are recorded inline as they arise.
 
 **Out of scope**
 
-- Registration, token refresh/rotation, logout (a later story), role-based
-  routing, and any protected screen beyond `/me` (decks/study are their own
-  stories).
+- Registration, token refresh/rotation, role-based routing, and any protected
+  screen beyond `/me` (decks/study are their own stories). Logout is **in
+  scope** (clears the stored token and returns to `Unauthenticated`).
 
 ---
 

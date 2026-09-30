@@ -35,6 +35,34 @@ Legend:
 | Classes / dashboard (teacher) | ❌ | Consumer of `/classes`, `/dashboard`; lower priority. |
 | Tagging / search | ❌ | Deferred to stage 6 (search) — no client work now. |
 
+## Shell coverage (per-platform parity)
+
+Stories target the **core**; each carries a `Shell contract` checklist that every
+shell satisfies. This table is the single parity ledger — one ✅/❌/⚪ cell per
+screen/behaviour per shell. When a new shell lands, check off its column against
+the existing shell contracts (do **not** author parallel stories). Form-factor-
+specific items (answer keys, "spacebar also answers", theme) are shell-owned and
+tracked here only.
+
+| Screen / behaviour | Leptos (now) | SwiftUI | WinUI | Compose | Libadwaita |
+|---|---|---|---|---|---|
+| Auth (login / restore session / `/me`) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Decks | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Notes | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Cards / browser | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Study session | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Deck options / preferences settings | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Classes / dashboard | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| On-screen timer | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Audio playback | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Auto-advance | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Timebox popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Leech "Tag Only" popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Theme (dark/light/follow-system) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Answer-key bindings | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+
+Legend: ✅ implemented · 🟡 partial · ⚪ not yet / shell not built.
+
 ## Client-side behaviours deferred from stages 2–3
 
 These were persisted server-side (or descoped) with a "behaviour client-side

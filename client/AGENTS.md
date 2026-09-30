@@ -185,3 +185,27 @@ See `ARCHITECTURE.md` §8 for the full settled-vs-open list.
 - Centralize crate versions in the root `Cargo.toml` `[workspace.dependencies]`.
 - Generated code is gitignored (`shells/*/generated/`, `shells/leptos/dist/`).
 - No global `cargo`/`rustc` — always `nix develop` first.
+
+### Stories target the core; shells are tracked, not duplicated
+
+This app will grow multiple native shells (Leptos now; SwiftUI/WinUI/Compose/
+Libadwaita later). To avoid one story per shell (and the drift that would cause):
+
+- **Write the story once, against the core.** Acceptance criteria live in and
+  test `shared/` (`update` + `effects()`). The behaviour is defined exactly
+  once; every shell inherits it.
+- **Each story carries a `Shell contract` checklist** — the *minimum* a shell
+  must do to run the feature (render `ViewModel` field X, forward `Event` Y,
+  execute `Effect` Z). This is a checklist, **not** a set of per-shell stories.
+- **Shells are columns in `SCREENS_SUPPORT.md`**, not stories. A screen/behaviour's
+  coverage per shell (`Leptos | SwiftUI | WinUI | Compose | Libadwaita`) is one
+  ✅/❌/⚪ cell. When a new shell lands, you check off its column against the
+  existing shell contracts — you don't author parallel stories.
+- **Genuinely shell-specific behaviour** (form-factor: answer-key bindings,
+  "spacebar also answers", theme) is **not** a core story. It is classified ⚪ in
+  the `SCREENS_SUPPORT.md` matrix and tracked per-shell there. (For mobile
+  conventions, consult AnkiDroid later rather than inventing our own.)
+
+This mirrors `PLANNING.md` §3 "Core vs. shell test split": the core is the
+single source of truth for behaviour; the shell contract + matrix record the
+thin per-platform glue without duplicating the story.
