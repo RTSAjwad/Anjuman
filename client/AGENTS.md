@@ -5,7 +5,9 @@ first; it exists to save you from re-discovering version-specific APIs and
 gotchas — and from trusting "latest" docs where the exact version matters.
 
 For the *why* behind the design, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
-This file is the *how* and *where to look*.
+This file is the *how* and *where to look*. For building a shell (Leptos now,
+SwiftUI/WinUI/Compose/Libadwaita later), see [`SHELLS.md`](./SHELLS.md) — the
+shared capability-implementation and effect-resolve patterns every shell follows.
 
 ---
 

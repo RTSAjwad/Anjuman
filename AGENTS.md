@@ -47,6 +47,8 @@ User stories and the acceptance-criteria→test discipline are defined in
   Leptos 0.8, BoltFFI 0.30.1, thaw 0.5-beta). Read before touching `client/`.
 - `client/ARCHITECTURE.md` — the client's design rationale (core-first, thin
   shells, FFI boundaries).
+- `client/SHELLS.md` — the shell implementation guide (capability + effect-resolve
+  patterns). Read before building a shell; owned by the shell agent.
 - `client/SCREENS_SUPPORT.md` — client screens + client-side behaviour matrix.
   Drives roadmap task 4 (the client analog of the two server support matrices).
 - `server/DECK_OPTIONS_SUPPORT.md` — Anki deck-options feature matrix (what's
