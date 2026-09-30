@@ -1057,6 +1057,9 @@ needs the mirror direction (same as auth/decks).
       is ignored (no request emitted).
 - [x] When `next_card` is `None`, the `ViewModel` exposes a "finished / nothing
       due" state (not a panic).
+- [x] Study fetches signal in-flight state via `busy`: `StartStudy` sets it,
+      `StudyStarted`/`StudyAdvanced` (Ok and Err) clear it — so the shell can
+      distinguish "fetching" from "nothing due" (carve-out).
 - [x] The contracts prerequisite is done: study DTOs round-trip
       (`Serialize`/`Deserialize` on the response types and `StudyAdvanceBody`).
 - [x] Each criterion has a `shared` test named after it; `cargo test` passes.
@@ -1066,7 +1069,8 @@ needs the mirror direction (same as auth/decks).
 - [ ] When a deck is selected, forward `Event::StartStudy`.
 - [ ] Render the current card (front; reveal back on demand), plus the four
       answer buttons (Again/Hard/Good/Easy) forwarding `Event::Answer { rating }`.
-- [ ] Render the counts and the "nothing due" completion state.
+- [ ] Render the counts and the "nothing due" completion state, using
+      `ViewModel.busy` to show "loading" while `busy && current_card == None`.
 
 **Out of scope**
 

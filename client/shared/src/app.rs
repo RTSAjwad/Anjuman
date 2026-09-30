@@ -447,6 +447,7 @@ impl crux_core::App for Anjuman {
                     Auth::Authenticated { token, .. } => token.clone(),
                     Auth::Unauthenticated => return render::render(),
                 };
+                model.busy = true;
                 model.study_error = None;
                 Http::get(format!("{API_URL}/decks/{}/study", deck.id))
                     .header("authorization", format!("Bearer {token}"))
@@ -489,11 +490,13 @@ impl crux_core::App for Anjuman {
                 let advance = response.take_body().expect("study response has a body");
                 model.current_card = advance.next_card;
                 model.counts = advance.counts;
+                model.busy = false;
                 model.study_error = None;
                 render::render()
             }
 
             Event::StudyStarted(Err(e)) => {
+                model.busy = false;
                 model.study_error = Some(e.to_string());
                 render::render()
             }
@@ -502,11 +505,13 @@ impl crux_core::App for Anjuman {
                 let advance = response.take_body().expect("study response has a body");
                 model.current_card = advance.next_card;
                 model.counts = advance.counts;
+                model.busy = false;
                 model.study_error = None;
                 render::render()
             }
 
             Event::StudyAdvanced(Err(e)) => {
+                model.busy = false;
                 model.study_error = Some(e.to_string());
                 render::render()
             }
@@ -1087,6 +1092,7 @@ mod tests {
         let mut model = study_ready_model();
         let effects = update(Event::StartStudy, &mut model);
 
+        assert!(model.busy, "study fetch sets busy");
         match effects.as_slice() {
             [Effect::Http(req)] => {
                 assert_eq!(req.operation.method.as_str(), "GET");
@@ -1104,6 +1110,43 @@ mod tests {
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
+    }
+
+    /// `StartStudy` sets `busy`, and every completion arm clears it — so the
+    /// shell can distinguish "fetching" from "nothing due".
+    #[test]
+    fn study_sets_and_clears_busy() {
+        // Start sets busy.
+        let mut model = study_ready_model();
+        let _ = update(Event::StartStudy, &mut model);
+        assert!(model.busy);
+
+        // StudyStarted(Ok) clears it.
+        let response = ResponseBuilder::ok().body(study_advance(None)).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+        assert!(!model.busy);
+
+        // StudyStarted(Err) clears it.
+        let mut err_model = study_ready_model();
+        let _ = update(Event::StartStudy, &mut err_model);
+        assert!(err_model.busy);
+        let err = crux_http::testing::rejection::<StudyAdvance>(500, "boom").unwrap_err();
+        let _ = update(Event::StudyStarted(Err(err)), &mut err_model);
+        assert!(!err_model.busy);
+
+        // StudyAdvanced(Ok/Err) clear it too (they run after an answer, where
+        // busy may already be false — the clear is idempotent).
+        let mut ans = study_ready_model();
+        ans.current_card = Some(study_card(42));
+        let adv_ok = ResponseBuilder::ok().body(study_advance(Some(study_card(43)))).build();
+        let _ = update(Event::StudyAdvanced(Ok(adv_ok)), &mut ans);
+        assert!(!ans.busy);
+
+        let mut ans_err = study_ready_model();
+        ans_err.current_card = Some(study_card(42));
+        let e = crux_http::testing::rejection::<StudyAdvance>(500, "boom").unwrap_err();
+        let _ = update(Event::StudyAdvanced(Err(e)), &mut ans_err);
+        assert!(!ans_err.busy);
     }
 
     /// `Answer` emits `POST /decks/{id}/study` with a `StudyAdvanceBody` carrying
