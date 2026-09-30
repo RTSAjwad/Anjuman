@@ -796,8 +796,8 @@ injected `HttpResponse`s, never a running server).
       below). Done: contracts derives + auth core + 7 tests + Leptos
       `crux_http`/`crux_kv` capabilities + login screen.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
-      dependency order). Decks list is US-4.3 (done); study entry + loop are
-      US-4.4/US-4.5 (drafted, see stories below); notes + cards remain.
+      dependency order). Decks list is US-4.3 (done); study entry is US-4.4
+      (done) and the study loop is US-4.5 (drafted, next); notes + cards remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -991,14 +991,18 @@ already in `model.decks` (the study *cards* are fetched by US-4.5).
 
 **Acceptance criteria**
 
-- [ ] `Event::OpenDeck { deck_id }` records the selected deck (e.g.
-      `model.selected_deck: Option<DeckSummary>` or the `deck_id`) and emits a
-      render.
-- [ ] `ViewModel` exposes the selected deck (id + title) so the shell can show
-      a study screen heading/context.
-- [ ] Opening an unknown `deck_id` (not in the list) is a no-op that does not
+- [x] `Event::OpenDeck { deck_id }` records the selected deck
+      (`model.selected_deck: Option<DeckSummary>`) and emits a render.
+- [x] `ViewModel` exposes the selected deck (id + title + `studyable`) so the
+      shell can show a study screen heading/context (and gate the study button).
+- [x] Opening an unknown `deck_id` (not in the list) is a no-op that does not
       crash or select a bogus deck.
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+  **Implemented**: `selected_deck` model state, `Event::OpenDeck`, `find_deck`
+  selection helper, `ViewModel.selected_deck`; `DeckSummary` gained `studyable`
+  (US-2.19 carve-out) so the shell can disable study on context-only decks.
+  3 new tests (17 total in `shared`). Logout clears selection.
 
 **Shell contract**
 

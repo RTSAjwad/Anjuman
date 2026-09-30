@@ -42,6 +42,8 @@ pub struct Model {
     pub decks: Vec<DeckResponse>,
     /// A human-readable error from the last decks fetch, if any.
     pub decks_error: Option<String>,
+    /// The deck the user has opened to study (null until one is selected).
+    pub selected_deck: Option<DeckSummary>,
 }
 
 /// Authentication state.
@@ -74,6 +76,11 @@ pub enum Event {
     Logout,
     /// Fetch the signed-in user's decks (fired after a successful login/restore).
     DecksRequested,
+    /// Open a deck (by id) to study it — records the selection and switches the
+    /// shell from the list view to the study screen.
+    OpenDeck {
+        deck_id: i64,
+    },
 
     // --- Core-local completion events (never cross the FFI boundary) ---
 
@@ -134,6 +141,9 @@ pub struct ViewModel {
     pub error: Option<String>,
     /// Decks to render (title + per-state counts).
     pub decks: Vec<DeckSummary>,
+    /// The selected deck (id + title + studyable) to show on the study screen,
+    /// or `None` when showing the list.
+    pub selected_deck: Option<DeckSummary>,
     /// A human-readable error from the last decks fetch, if any.
     pub decks_error: Option<String>,
 }
@@ -150,6 +160,9 @@ pub struct DeckSummary {
     pub learning_count: i64,
     pub review_count: i64,
     pub total_count: i64,
+    /// Whether the user may study this deck (US-2.19: a context-only ancestor
+    /// is `false`). The shell disables the study affordance for `false` decks.
+    pub studyable: bool,
     /// Subdecks of this deck, in input order.
     pub children: Vec<DeckSummary>,
 }
@@ -175,6 +188,7 @@ fn build_deck_tree(decks: &[DeckResponse]) -> Vec<DeckSummary> {
                     learning_count: d.learning_count.unwrap_or(0),
                     review_count: d.review_count.unwrap_or(0),
                     total_count: d.total_count.unwrap_or(0),
+                    studyable: d.studyable,
                     children: Vec::new(),
                 },
             )
@@ -200,6 +214,22 @@ fn build_deck_tree(decks: &[DeckResponse]) -> Vec<DeckSummary> {
         .into_iter()
         .filter_map(|id| by_id.remove(&id))
         .collect()
+}
+
+/// Find a deck (by id) in the flat `GET /decks` list, returning a `DeckSummary`
+/// clone for selection. Returns `None` for an unknown id.
+fn find_deck(decks: &[DeckResponse], deck_id: i64) -> Option<DeckSummary> {
+    let d = decks.iter().find(|d| d.id == deck_id)?;
+    Some(DeckSummary {
+        id: d.id,
+        title: d.title.clone(),
+        new_count: d.new_count.unwrap_or(0),
+        learning_count: d.learning_count.unwrap_or(0),
+        review_count: d.review_count.unwrap_or(0),
+        total_count: d.total_count.unwrap_or(0),
+        studyable: d.studyable,
+        children: Vec::new(),
+    })
 }
 
 #[derive(Default)]
@@ -302,8 +332,18 @@ impl crux_core::App for Anjuman {
                 model.error = None;
                 model.decks.clear();
                 model.decks_error = None;
+                model.selected_deck = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
+            }
+
+            Event::OpenDeck { deck_id } => {
+                // Only decks already in the list are openable; an unknown id is
+                // a no-op (no crash, no bogus selection).
+                if let Some(summary) = find_deck(&model.decks, deck_id) {
+                    model.selected_deck = Some(summary);
+                }
+                render::render()
             }
 
             Event::DecksRequested => {
@@ -367,6 +407,7 @@ impl crux_core::App for Anjuman {
                 busy: model.busy,
                 error: model.error.clone(),
                 decks,
+                selected_deck: model.selected_deck.clone(),
                 decks_error: model.decks_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
@@ -376,6 +417,7 @@ impl crux_core::App for Anjuman {
                 busy: model.busy,
                 error: model.error.clone(),
                 decks,
+                selected_deck: None,
                 decks_error: model.decks_error.clone(),
             },
         }
@@ -768,5 +810,51 @@ mod tests {
         model.decks = vec![deck(1, "Spanish")];
         let _ = update(Event::Logout, &mut model);
         assert!(model.decks.is_empty());
+        assert!(model.selected_deck.is_none(), "logout clears selection");
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.4 — open a deck (study entry)
+    // --------------------------------------------------------------------
+
+    /// `OpenDeck` records the selection and exposes it in the view.
+    #[test]
+    fn open_deck_records_selection() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish"), deck(2, "Maths")];
+
+        let effects = update(Event::OpenDeck { deck_id: 2 }, &mut model);
+        assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
+
+        let selected = model.selected_deck.clone().expect("selected");
+        assert_eq!(selected.id, 2);
+        assert_eq!(selected.title, "Maths");
+
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.selected_deck.as_ref().map(|d| d.title.clone()), Some("Maths".to_string()));
+    }
+
+    /// Opening an unknown deck is a no-op (no selection, no crash).
+    #[test]
+    fn open_deck_unknown_id_is_noop() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+
+        let _ = update(Event::OpenDeck { deck_id: 999 }, &mut model);
+        assert!(model.selected_deck.is_none());
+    }
+
+    /// The selection carries the `studyable` flag from the wire, so the shell
+    /// can gate the study affordance on a context-only ancestor (US-2.19).
+    #[test]
+    fn open_deck_carries_studyable() {
+        let mut model = authenticated_model();
+        let mut parent = deck(1, "Biology 101");
+        parent.studyable = false;
+        model.decks = vec![parent];
+
+        let _ = update(Event::OpenDeck { deck_id: 1 }, &mut model);
+        let selected = model.selected_deck.clone().expect("selected");
+        assert!(!selected.studyable);
     }
 }
