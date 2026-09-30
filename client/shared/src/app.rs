@@ -17,7 +17,11 @@ use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse};
 
 /// The base URL of the Anjuman server.
-const API_URL: &str = "http://localhost:3000";
+///
+/// Uses `127.0.0.1` rather than `localhost` to avoid the browser resolving
+/// `localhost` to IPv6 `::1` first (the server binds IPv4 `127.0.0.1` only),
+/// which would fail the connection even after CORS is configured.
+const API_URL: &str = "http://127.0.0.1:3000";
 
 /// The key under which the JWT is persisted (by the shell's KV capability).
 const TOKEN_KEY: &str = "auth_token";
@@ -376,7 +380,7 @@ mod tests {
             .expect("expected an Http effect");
 
         assert_eq!(http.method.as_str(), "POST");
-        assert_eq!(http.url.as_str(), "http://localhost:3000/auth/login");
+        assert_eq!(http.url.as_str(), "http://127.0.0.1:3000/auth/login");
         // The JSON body carries the credentials.
         let body: LoginRequest =
             serde_json::from_slice(&http.body).expect("login body is JSON");
@@ -458,7 +462,7 @@ mod tests {
         match effects.as_slice() {
             [Effect::Http(req)] => {
                 assert_eq!(req.operation.method.as_str(), "GET");
-                assert_eq!(req.operation.url.as_str(), "http://localhost:3000/me");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/me");
                 let auth = req
                     .operation
                     .headers
@@ -599,7 +603,7 @@ mod tests {
         match effects.as_slice() {
             [Effect::Http(req)] => {
                 assert_eq!(req.operation.method.as_str(), "GET");
-                assert_eq!(req.operation.url.as_str(), "http://localhost:3000/decks");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/decks");
                 let auth = req
                     .operation
                     .headers

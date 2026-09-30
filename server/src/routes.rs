@@ -4,6 +4,7 @@ use axum::{
     Router,
     routing::{delete, get, patch, post},
 };
+use tower_http::cors::{Any, CorsLayer};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -18,6 +19,15 @@ use crate::{
 };
 
 pub fn router(state: AppState) -> Router {
+    // CORS: permissive, for local development only. `trunk serve` hosts the
+    // Leptos shell on a different origin (127.0.0.1:8080) than the server
+    // (127.0.0.1:3000), so the browser's same-origin policy blocks every fetch
+    // without these headers. Tighten the origin list before production.
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     Router::new()
         // OpenAPI / Swagger UI (documentation only)
         .merge(
@@ -159,5 +169,6 @@ pub fn router(state: AppState) -> Router {
         .route("/notes/{note_id}", get(notes::get_note))
         .route("/notes/{note_id}", patch(notes::update_note))
         .route("/notes/{note_id}", delete(notes::delete_note))
+        .layer(cors)
         .with_state(state)
 }
