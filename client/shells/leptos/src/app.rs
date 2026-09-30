@@ -69,7 +69,7 @@ pub fn RootComponent() -> impl IntoView {
                                 </Button>
                             </div>
 
-                            <DeckList vm=vm.clone() />
+                            <DeckList vm=vm.clone() set_event=set_event />
                         }.into_any()
                     } else {
                         view! {
@@ -119,7 +119,7 @@ pub fn RootComponent() -> impl IntoView {
 /// explicit error and empty states. Pure rendering of the `ViewModel` — no
 /// logic beyond deciding what the three states look like.
 #[component]
-fn deck_list(vm: ViewModel) -> impl IntoView {
+fn deck_list(vm: ViewModel, set_event: WriteSignal<Event>) -> impl IntoView {
     // Error state — a deck fetch failed.
     if let Some(err) = vm.decks_error {
         return view! {
@@ -161,7 +161,7 @@ fn deck_list(vm: ViewModel) -> impl IntoView {
                 <span class="thaw-deck-col">"Review"</span>
             </div>
             <div class="thaw-deck-tree" role="tree">
-                {deck_subtree(decks, 0, open_items)}
+                {deck_subtree(decks, 0, open_items, set_event)}
             </div>
         </Card>
     }
@@ -175,10 +175,11 @@ fn deck_subtree(
     decks: Vec<DeckSummary>,
     depth: usize,
     open_items: RwSignal<HashSet<i64>>,
+    set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     decks
         .into_iter()
-        .map(|deck| deck_item(deck, depth, open_items))
+        .map(|deck| deck_item(deck, depth, open_items, set_event))
         .collect_view()
 }
 
@@ -187,15 +188,21 @@ fn deck_item(
     deck: DeckSummary,
     depth: usize,
     open_items: RwSignal<HashSet<i64>>,
+    set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     let id = deck.id;
     let has_children = !deck.children.is_empty();
+    let studyable = deck.studyable;
     let children = deck.children;
     // Indent the whole title cell (expander + label) by one step per level.
     let indent = format!("padding-left: calc(var(--spacingHorizontalXXL, 24px) * {depth})");
 
     view! {
-        <div class="thaw-deck-row" role="treeitem">
+        <div
+            class="thaw-deck-row"
+            class:thaw-deck-row--disabled=move || !studyable
+            role="treeitem"
+        >
             <div class="thaw-deck-row__title" style=indent>
                 {if has_children {
                     let open_items = open_items;
@@ -243,7 +250,30 @@ fn deck_item(
                     }
                     .into_any()
                 }}
-                <span class="thaw-deck-row__label">{deck.title}</span>
+                {if studyable {
+                    let set_event = set_event;
+                    view! {
+                        <button
+                            class="thaw-deck-row__label thaw-deck-row__label--study"
+                            on:click=move |_| set_event.set(Event::OpenDeck { deck_id: id })
+                        >
+                            {deck.title}
+                        </button>
+                    }
+                    .into_any()
+                } else {
+                    // Context-only ancestor (US-2.19): visible in the tree, but
+                    // not studyable. Greyed out and non-interactive with a hint.
+                    view! {
+                        <span
+                            class="thaw-deck-row__label thaw-deck-row__label--disabled"
+                            title="Shared for context only"
+                        >
+                            {deck.title}
+                        </span>
+                    }
+                    .into_any()
+                }}
             </div>
             <Badge
                 appearance=BadgeAppearance::Tint
@@ -269,7 +299,7 @@ fn deck_item(
         </div>
         {move || {
             if has_children && open_items.get().contains(&id) {
-                deck_subtree(children.clone(), depth + 1, open_items).into_any()
+                deck_subtree(children.clone(), depth + 1, open_items, set_event).into_any()
             } else {
                 ().into_any()
             }

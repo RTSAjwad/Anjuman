@@ -71,6 +71,31 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      /* Studyable deck title is a link-style button (opens the deck). */
+      .thaw-deck-row__label--study {
+        border: none;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .thaw-deck-row__label--study:hover {
+        color: var(--colorBrandForeground1);
+        text-decoration: underline;
+      }
+      /* Context-only ancestor: greyed, non-interactive, with a hint. */
+      .thaw-deck-row__label--disabled {
+        color: var(--colorNeutralForegroundDisabled);
+        cursor: not-allowed;
+      }
+      .thaw-deck-row--disabled {
+        opacity: 0.6;
+      }
       .thaw-deck-row .thaw-badge {
         justify-self: end;
       }
