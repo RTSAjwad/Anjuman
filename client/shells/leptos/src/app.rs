@@ -247,21 +247,21 @@ fn deck_item(
             </div>
             <Badge
                 appearance=BadgeAppearance::Tint
-                color=BadgeColor::Informative
+                color=deck_badge_color(deck.new_count, BadgeColor::Brand)
                 size=BadgeSize::Small
             >
                 {deck.new_count.to_string()}
             </Badge>
             <Badge
                 appearance=BadgeAppearance::Tint
-                color=BadgeColor::Danger
+                color=deck_badge_color(deck.learning_count, BadgeColor::Danger)
                 size=BadgeSize::Small
             >
                 {deck.learning_count.to_string()}
             </Badge>
             <Badge
                 appearance=BadgeAppearance::Tint
-                color=BadgeColor::Success
+                color=deck_badge_color(deck.review_count, BadgeColor::Success)
                 size=BadgeSize::Small
             >
                 {deck.review_count.to_string()}
@@ -274,5 +274,16 @@ fn deck_item(
                 ().into_any()
             }
         }}
+    }
+}
+
+/// The badge colour for a due-count cell: a zero count is shown in a neutral
+/// grey (`Informative`), otherwise the per-state colour (new = blue, learning =
+/// red, review = green).
+fn deck_badge_color(count: i64, themed: BadgeColor) -> BadgeColor {
+    if count == 0 {
+        BadgeColor::Informative
+    } else {
+        themed
     }
 }
