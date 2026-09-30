@@ -52,7 +52,7 @@ pub fn RootComponent() -> impl IntoView {
 
     view! {
         <ConfigProvider>
-            <main style="max-width: 24rem; margin: 4rem auto; padding: 0 1rem;">
+            <main style="max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
                 <h1>"Anjuman"</h1>
 
                 {move || {
