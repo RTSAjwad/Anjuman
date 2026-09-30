@@ -213,6 +213,29 @@ async fn context_only_ancestor_detail_hides_collaborators_and_classes() {
     assert_eq!(json["classes"].as_array().map(Vec::len), Some(0));
 }
 
+/// The class roster endpoint (`GET /decks/{id}/classes`) also hides the roster
+/// from a student who only reaches the deck as context-only ancestor.
+#[tokio::test]
+async fn context_only_ancestor_class_roster_is_empty() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, _ttok) = create_user(&app, UserRole::Teacher).await;
+    let (student_id, stok) = create_user(&app, UserRole::Student).await;
+    let (parent, child) = seed_parent_child(&app, teacher_id).await;
+    grant_via_class(&app, teacher_id, student_id, child).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(get(&format!("/decks/{parent}/classes"), &stok))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let classes: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert!(classes.is_empty(), "context-only ancestor roster must be empty");
+}
+
 /// `deck_access` is the correct level when queried directly: Studyable for
 /// self/ancestor grant, ContextOnly for a descendant grant.
 #[tokio::test]

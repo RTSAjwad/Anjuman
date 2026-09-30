@@ -335,6 +335,45 @@ pub async fn check_deck_studyable(
     Ok(())
 }
 
+/// Whether the user is an owner, admin, or direct collaborator of the deck —
+/// i.e. entitled to see the deck's *administrative* detail (collaborator list
+/// and class roster), which is hidden from students who reach the deck only via
+/// a subtree/class grant. Shares logic with `get_deck`.
+pub async fn is_deck_collaborator(
+    db: &sqlx::PgPool,
+    deck_id: i64,
+    claims: &crate::auth::Claims,
+) -> Result<bool, (StatusCode, &'static str)> {
+    // Owner or admin.
+    let row = sqlx::query!(
+        "SELECT created_by FROM decks WHERE id = $1",
+        deck_id
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    if claims.role == UserRole::Admin {
+        return Ok(true);
+    }
+    if let Some(r) = &row {
+        if r.created_by == claims.sub {
+            return Ok(true);
+        }
+    }
+
+    // Direct collaborator.
+    let count = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2",
+        deck_id,
+        claims.sub
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    Ok(count.unwrap_or(0) > 0)
+}
+
 /// Fetch a deck row and convert to response DTO.
 async fn fetch_deck(
     db: &sqlx::PgPool,
@@ -1055,27 +1094,33 @@ pub async fn list_deck_classes(
 ) -> Result<Json<Vec<ClassInfo>>, (StatusCode, &'static str)> {
     check_deck_visible(&state.db, deck_id, claims.school_id, &claims).await?;
 
-    let rows = sqlx::query!(
-        r#"
-        SELECT c.id, c.name
-        FROM deck_classes dc
-        JOIN classes c ON c.id = dc.class_id
-        WHERE dc.deck_id = $1
-        ORDER BY c.name
-        "#,
-        deck_id
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    // The class roster is administrative meta — hidden from a student who isn't
+    // the owner/admin/direct collaborator of this deck (e.g. a context-only
+    // ancestor under US-2.19).
+    let classes = if is_deck_collaborator(&state.db, deck_id, &claims).await? {
+        let rows = sqlx::query!(
+            r#"
+            SELECT c.id, c.name
+            FROM deck_classes dc
+            JOIN classes c ON c.id = dc.class_id
+            WHERE dc.deck_id = $1
+            ORDER BY c.name
+            "#,
+            deck_id
+        )
+        .fetch_all(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    let classes: Vec<ClassInfo> = rows
-        .into_iter()
-        .map(|r| ClassInfo {
-            id: r.id,
-            name: r.name,
-        })
-        .collect();
+        rows.into_iter()
+            .map(|r| ClassInfo {
+                id: r.id,
+                name: r.name,
+            })
+            .collect()
+    } else {
+        vec![]
+    };
 
     Ok(Json(classes))
 }
@@ -1102,19 +1147,7 @@ pub async fn get_deck(
         == DeckAccess::Studyable;
 
     // Owner, admins, and collaborators can see who else is on the deck.
-    let is_collab = if claims.role == UserRole::Admin || deck.created_by == claims.sub {
-        true
-    } else {
-        let count = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2",
-            deck_id,
-            claims.sub
-        )
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-        count.unwrap_or(0) > 0
-    };
+    let is_collab = is_deck_collaborator(&state.db, deck_id, &claims).await?;
 
     let collaborators = if is_collab {
         let rows = sqlx::query!(
