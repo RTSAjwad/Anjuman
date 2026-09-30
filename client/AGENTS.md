@@ -213,3 +213,20 @@ Libadwaita later). To avoid one story per shell (and the drift that would cause)
 This mirrors `PLANNING.md` §3 "Core vs. shell test split": the core is the
 single source of truth for behaviour; the shell contract + matrix record the
 thin per-platform glue without duplicating the story.
+
+### Agent ownership (core agent vs. shell agent)
+
+This workspace is worked by two agents with disjoint write scopes:
+
+- **Core agent** owns `client/shared/` plus the **workspace manifests**
+  (`client/Cargo.toml`, `client/shared/Cargo.toml`). It also owns `contracts/`
+  and `server/` in this repo, and is the **only** agent that edits the shared
+  wire types in `contracts/`.
+- **Shell agent** owns `client/shells/*` only. It adds dependencies to
+  `client/shells/*/Cargo.toml`, and **flags** any `[workspace.dependencies]`
+  addition (a new shared crate version is the core agent's call).
+
+Neither agent edits the other's files. A new `Event`/`Effect`/`ViewModel` field
+or a `contracts/` change a shell needs is a **carve-out** the core agent makes on
+request — the shell agent asks rather than editing `shared/` or `contracts/`
+itself.
