@@ -10,7 +10,7 @@
 //! `IntoFragment` error).
 
 use leptos::prelude::*;
-use shared::app::DeckSummary;
+use shared::app::{DeckSummary, StudyCardView};
 use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
@@ -50,6 +50,34 @@ pub fn RootComponent() -> impl IntoView {
     };
     let logout = move |_| set_event.set(Event::Logout);
 
+    // -----------------------------------------------------------------
+    // Study-session UI state (created once, for the app's lifetime).
+    //
+    // `revealed` tracks whether the current card's answer is visible. It resets
+    // to front-only whenever a different card is shown. `started_for` guards
+    // `StartStudy` so it fires exactly once per opened deck (not every re-render).
+    let revealed = RwSignal::new(false);
+    let started_for = StoredValue::new(0i64);
+    let seen_card = StoredValue::new(0i64);
+    Effect::new(move |_| {
+        let vm = view.get();
+
+        // Once per newly-opened deck, request the first due card.
+        if let Some(deck) = &vm.selected_deck {
+            if started_for.get_value() != deck.id {
+                started_for.set_value(deck.id);
+                set_event.set(Event::StartStudy);
+            }
+        }
+
+        // Reset the reveal whenever the shown card changes.
+        let card_id = vm.current_card.as_ref().map(|c| c.card_id).unwrap_or(0);
+        if seen_card.get_value() != card_id {
+            seen_card.set_value(card_id);
+            revealed.set(false);
+        }
+    });
+
     view! {
         <ConfigProvider>
             <main style="max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
@@ -69,7 +97,18 @@ pub fn RootComponent() -> impl IntoView {
                                 </Button>
                             </div>
 
-                            <DeckList vm=vm.clone() set_event=set_event />
+                            {if let Some(deck) = vm.selected_deck.clone() {
+                                view! {
+                                    <StudyScreen
+                                        vm=vm.clone() deck=deck revealed=revealed set_event=set_event />
+                                }
+                                .into_any()
+                            } else {
+                                view! {
+                                    <DeckList vm=vm.clone() set_event=set_event />
+                                }
+                                .into_any()
+                            }}
                         }.into_any()
                     } else {
                         view! {
@@ -166,6 +205,102 @@ fn deck_list(vm: ViewModel, set_event: WriteSignal<Event>) -> impl IntoView {
         </Card>
     }
     .into_any()
+}
+
+/// The study screen: one card at a time, reveal-then-answer, plus due counts,
+/// a "nothing due" completion state, and the study error surface. Pure rendering
+/// of the given `ViewModel` snapshot — study state (`StartStudy` gating, reveal
+/// reset) lives in `RootComponent`.
+#[component]
+fn study_screen(
+    vm: ViewModel,
+    deck: DeckSummary,
+    revealed: RwSignal<bool>,
+    set_event: WriteSignal<Event>,
+) -> impl IntoView {
+    let current = vm.current_card;
+    let counts = vm.counts;
+    let study_error = vm.study_error;
+
+    view! {
+        <Card>
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <h2 style="margin: 0;">{deck.title}</h2>
+                    <span class="thaw-study-counts">
+                        "New " {counts.new_count}
+                        " · Learn " {counts.learning_count}
+                        " · Review " {counts.review_count}
+                    </span>
+                </div>
+
+                {study_error.map(|err| view! {
+                    <p style="color: #c00;">{err}</p>
+                })}
+
+                {match current {
+                    Some(card) => study_card_view(card, revealed, set_event).into_any(),
+                    None => study_done_view(set_event).into_any(),
+                }}
+            </div>
+        </Card>
+    }
+}
+
+/// A single card: front, then (on demand) the back + answer buttons.
+fn study_card_view(
+    card: StudyCardView,
+    revealed: RwSignal<bool>,
+    set_event: WriteSignal<Event>,
+) -> impl IntoView {
+    let rating = move |r: i32| {
+        set_event.set(Event::Answer { rating: r });
+    };
+
+    view! {
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <div class="thaw-study-card">
+                <span class="thaw-study-card__state">{card.state.clone()}</span>
+                <p class="thaw-study-card__front">{card.front.clone()}</p>
+            </div>
+
+            {move || {
+                if revealed.get() {
+                    view! {
+                        <div class="thaw-study-card thaw-study-card--answer">
+                            <p class="thaw-study-card__back">{card.back.clone()}</p>
+                        </div>
+                        <div class="thaw-study-answers">
+                            <Button appearance=ButtonAppearance::Secondary on_click=move |_| rating(1)>"Again"</Button>
+                            <Button appearance=ButtonAppearance::Secondary on_click=move |_| rating(2)>"Hard"</Button>
+                            <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(3)>"Good"</Button>
+                            <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(4)>"Easy"</Button>
+                        </div>
+                    }
+                    .into_any()
+                } else {
+                    view! {
+                        <Button appearance=ButtonAppearance::Primary on_click=move |_| revealed.set(true)>
+                            "Show answer"
+                        </Button>
+                    }
+                    .into_any()
+                }
+            }}
+        </div>
+    }
+}
+
+/// The "nothing due" completion state (and a manual re-`StartStudy` affordance).
+fn study_done_view(set_event: WriteSignal<Event>) -> impl IntoView {
+    view! {
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
+            <p style="color: #888;">"Nothing due right now. Nice work!"</p>
+            <Button appearance=ButtonAppearance::Primary on_click=move |_| set_event.set(Event::StartStudy)>
+                "Check again"
+            </Button>
+        </div>
+    }
 }
 
 /// Renders a list of sibling decks, recursing into `children`. Each deck row

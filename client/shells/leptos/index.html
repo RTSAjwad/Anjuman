@@ -99,6 +99,38 @@
       .thaw-deck-row .thaw-badge {
         justify-self: end;
       }
+      /* Study screen: card surface + answer row. */
+      .thaw-study-counts {
+        color: var(--colorNeutralForeground3);
+        font-size: var(--fontSizeBase200);
+      }
+      .thaw-study-card {
+        border: 1px solid var(--colorNeutralStroke2);
+        border-radius: var(--borderRadiusMedium, 4px);
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background-color: var(--colorNeutralBackground1);
+      }
+      .thaw-study-card__state {
+        align-self: flex-start;
+        font-size: var(--fontSizeBase200);
+        color: var(--colorNeutralForeground3);
+        text-transform: capitalize;
+      }
+      .thaw-study-card__front,
+      .thaw-study-card__back {
+        margin: 0;
+      }
+      .thaw-study-card--answer {
+        border-color: var(--colorBrandStroke2);
+      }
+      .thaw-study-answers {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
     </style>
     <!-- The lib and bin targets are both named `leptos_shell`; point trunk at
          the binary entrypoint explicitly. -->
