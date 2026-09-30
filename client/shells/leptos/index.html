@@ -35,17 +35,10 @@
       }
       .thaw-deck-row {
         padding: 0.25rem 0.5rem;
-        cursor: pointer;
-        border-radius: var(--borderRadiusMedium, 4px);
-        transition: background-color var(--durationUltraFast, 50ms) linear;
+        cursor: default;
       }
-      /* thaw-style hover / selected (focus within) row feedback. */
-      .thaw-deck-row:hover {
-        background-color: var(--colorSubtleBackgroundHover);
-      }
-      .thaw-deck-row:focus-within {
-        background-color: var(--colorSubtleBackgroundPressed);
-      }
+      /* No selection behaviour yet, so rows shouldn't look clickable or
+         highlight on hover. Only the expander button is interactive. */
       .thaw-deck-row__title {
         display: flex;
         align-items: center;
