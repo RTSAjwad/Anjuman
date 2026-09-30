@@ -213,9 +213,24 @@ fn deck_item(
                                 });
                             }
                         >
-                            {move || {
-                                if open_items.get().contains(&id) { "▾" } else { "▸" }
-                            }}
+                            <svg
+                                class="thaw-deck-row__chevron"
+                                style=move || {
+                                    if open_items.get().contains(&id) {
+                                        "transform: rotate(90deg)".to_string()
+                                    } else {
+                                        "transform: rotate(0deg)".to_string()
+                                    }
+                                }
+                                fill="currentColor"
+                                aria-hidden="true"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 12 12"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path d="M4.65 2.15a.5.5 0 0 0 0 .7L7.79 6 4.65 9.15a.5.5 0 1 0 .7.7l3.5-3.5a.5.5 0 0 0 0-.7l-3.5-3.5a.5.5 0 0 0-.7 0Z" fill="currentColor"></path>
+                            </svg>
                         </button>
                     }
                     .into_any()

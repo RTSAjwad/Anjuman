@@ -35,7 +35,16 @@
       }
       .thaw-deck-row {
         padding: 0.25rem 0.5rem;
-        cursor: default;
+        cursor: pointer;
+        border-radius: var(--borderRadiusMedium, 4px);
+        transition: background-color var(--durationUltraFast, 50ms) linear;
+      }
+      /* thaw-style hover / selected (focus within) row feedback. */
+      .thaw-deck-row:hover {
+        background-color: var(--colorSubtleBackgroundHover);
+      }
+      .thaw-deck-row:focus-within {
+        background-color: var(--colorSubtleBackgroundPressed);
       }
       .thaw-deck-row__title {
         display: flex;
@@ -45,14 +54,24 @@
       }
       .thaw-deck-row__expander {
         flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         width: 1.25rem;
+        height: 1.25rem;
         padding: 0;
         border: none;
         background: none;
         cursor: pointer;
-        font-size: 0.8rem;
-        line-height: 1;
         color: var(--colorNeutralForeground3);
+        border-radius: var(--borderRadiusSmall, 2px);
+      }
+      .thaw-deck-row__expander:hover {
+        color: var(--colorNeutralForeground3Hover);
+        background-color: var(--colorNeutralBackground1Hover);
+      }
+      .thaw-deck-row__chevron {
+        transition: transform var(--durationNormal, 200ms) var(--curveEasyEaseMax, ease);
       }
       .thaw-deck-row__label {
         overflow: hidden;
