@@ -220,7 +220,13 @@ fn deck_item(
                     }
                     .into_any()
                 } else {
-                    ().into_any()
+                    // Reserve the same width as the expander so a leaf's label
+                    // lines up with a sibling branch's label (hierarchy shows as
+                    // a consistent gap between parent and child, not title drift).
+                    view! {
+                        <span class="thaw-deck-row__expander" aria-hidden="true"></span>
+                    }
+                    .into_any()
                 }}
                 <span class="thaw-deck-row__label">{deck.title}</span>
             </div>
