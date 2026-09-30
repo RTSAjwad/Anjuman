@@ -33,9 +33,14 @@ codegen = [
 [dependencies]
 crux_core = { workspace = true }
 crux_macros = { workspace = true }
+crux_http = { workspace = true }
 facet = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
 boltffi = { workspace = true }
+
+anjuman_contracts = { workspace = true }
 
 # Optional dependencies for the `codegen` binary.
 anyhow = { workspace = true, optional = true }

@@ -31,5 +31,10 @@ fn process_effect(core: &AppCore, effect: &Effect, render: WriteSignal<ViewModel
         Effect::Render(_) => {
             render.update(|view| *view = core.view());
         }
+        // HTTP is a capability the *shell* must perform (fetch, then feed the
+        // response bytes back via `core.resolve`). Not wired here yet — the
+        // core-side plumbing (US-4.1) is tested in `shared`; the Leptos
+        // `crux_http` capability implementation lands with US-4.2 (auth).
+        Effect::Http(_) => {}
     }
 }

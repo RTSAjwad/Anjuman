@@ -718,8 +718,11 @@ injected `HttpResponse`s, never a running server).
 > Leptos shell is thin glue and generally not unit-tested. Criteria are phrased
 > as core behaviours, not UI prose.
 
-- [ ] **US-4.1 — Client plumbing (contracts + capabilities + test harness).**
-      Front-load the API surface before any feature (see story below).
+- [x] **US-4.1 — Client plumbing (contracts + capabilities + test harness).**
+      Front-load the API surface before any feature (see story below). Done:
+      `anjuman_contracts` + `crux_http`/`url` wired into `shared`, `Http` effect
+      variant, health-check flow proving the contract round-trip + two-event
+      HTTP idiom, 7 passing tests.
 - [ ] **US-4.2 — Auth flow** (login → store JWT via `crux_kv` → `GET /me`).
       Everything downstream is authenticated, so this comes first.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
@@ -750,18 +753,18 @@ the client is pinned to the same `anjuman_contracts` DTOs the server serves.
 
 **Acceptance criteria**
 
-- [ ] `anjuman_contracts` is a path dependency of `client/shared` (no `utoipa`
+- [x] `anjuman_contracts` is a path dependency of `client/shared` (no `utoipa`
       `openapi` feature client-side).
-- [ ] `Effect` gains an `Http` (`crux_http`) variant; `crux_kv` and `crux_time`
+- [x] `Effect` gains an `Http` (`crux_http`) variant; `crux_kv` and `crux_time`
       are added where the first features need them (KV for the stored JWT, time
-      for learn-ahead/timers) — or explicit note that they are one-arg changes
-      to add later.
-- [ ] The core deserializes an `anjuman_contracts` DTO end-to-end in a test:
+      for learn-ahead/timers) — **deferred to US-4.2** (auth needs KV; not needed
+      by this plumbing proof).
+- [x] The core deserializes an `anjuman_contracts` DTO end-to-end in a test:
       a canned JSON body → a typed contract struct (proves the shared-type path).
-- [ ] A test demonstrates the two-event HTTP idiom: an event emits
+- [x] A test demonstrates the two-event HTTP idiom: an event emits
       `Effect::Http(...)` with the right verb/URL, and a canned `HttpResponse`
       mutates `model` + requests `Render`.
-- [ ] `cargo test` passes in the client workspace; each criterion has a
+- [x] `cargo test` passes in the client workspace; each criterion has a
       `shared` test named after it.
 
 **Out of scope**
