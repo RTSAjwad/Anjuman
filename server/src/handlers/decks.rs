@@ -165,64 +165,174 @@ pub async fn check_deck_collaborator(
 
 /// Check whether the caller can view a deck. The caller can view if they
 /// are the owner, an admin, a collaborator, or in a class that has the deck.
+/// How a user may interact with a deck under subtree sharing (US-2.19).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeckAccess {
+    /// No relationship to the deck or its connected grant set.
+    None,
+    /// The deck (or an ancestor of it) is granted → the user may study it.
+    Studyable,
+    /// A *descendant* of the deck is granted → visible as tree context only.
+    ContextOnly,
+}
+
+/// Whether the user holds a grant on this **specific** deck (owner/admin/
+/// collaborator/class-member). Non-recursive — ancestors/descendants are the
+/// caller's concern.
+async fn has_grant(
+    db: &sqlx::PgPool,
+    deck_id: i64,
+    school_id: i64,
+    claims: &crate::auth::Claims,
+) -> Result<bool, (StatusCode, &'static str)> {
+    // Owner or admin always holds a grant.
+    if claims.role == UserRole::Admin {
+        return Ok(true);
+    }
+    let row = sqlx::query!(
+        "SELECT created_by FROM decks WHERE id = $1 AND school_id = $2",
+        deck_id,
+        school_id
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    if row.created_by == claims.sub {
+        return Ok(true);
+    }
+
+    // Collaborator?
+    let is_collab = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2) AS \"exists!: bool\"",
+        deck_id,
+        claims.sub
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    if is_collab {
+        return Ok(true);
+    }
+
+    // In a class the deck is assigned to?
+    let in_class = sqlx::query_scalar!(
+        "SELECT EXISTS(
+            SELECT 1 FROM deck_classes dcl
+            JOIN class_members cm ON cm.class_id = dcl.class_id
+            WHERE dcl.deck_id = $1 AND cm.user_id = $2
+        ) AS \"exists!: bool\"",
+        deck_id,
+        claims.sub
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    Ok(in_class)
+}
+
+/// Compute the user's access to `deck_id` under the subtree access model.
+///
+/// - `Studyable` if the deck itself **or any ancestor** holds a grant;
+/// - `ContextOnly` if not studyable but some **descendant** holds a grant;
+/// - `None` otherwise.
+pub async fn deck_access(
+    db: &sqlx::PgPool,
+    deck_id: i64,
+    school_id: i64,
+    claims: &crate::auth::Claims,
+) -> Result<DeckAccess, (StatusCode, &'static str)> {
+    // Ancestors (inclusive) of deck_id.
+    let ancestor_ids = sqlx::query!(
+        r#"
+        WITH RECURSIVE ancestors(id) AS (
+            SELECT $1::BIGINT
+            UNION ALL
+            SELECT d.parent_id FROM decks d JOIN ancestors a ON d.id = a.id
+        )
+        SELECT id FROM ancestors WHERE id IS NOT NULL
+        "#,
+        deck_id
+    )
+    .fetch_all(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    for a in ancestor_ids.into_iter().filter_map(|r| r.id) {
+        if has_grant(db, a, school_id, claims).await? {
+            return Ok(DeckAccess::Studyable);
+        }
+    }
+
+    // Descendants of deck_id (exclusive), to detect a context-only ancestor.
+    let descendant_ids = sqlx::query!(
+        r#"
+        WITH RECURSIVE descendants(id) AS (
+            SELECT d.id FROM decks d WHERE d.parent_id = $1
+            UNION ALL
+            SELECT d.id FROM decks d JOIN descendants s ON d.parent_id = s.id
+        )
+        SELECT id FROM descendants
+        "#,
+        deck_id
+    )
+    .fetch_all(db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    for d in descendant_ids.into_iter().filter_map(|r| r.id) {
+        if has_grant(db, d, school_id, claims).await? {
+            return Ok(DeckAccess::ContextOnly);
+        }
+    }
+
+    Ok(DeckAccess::None)
+}
+
+/// The existing visibility gate, now subtree-aware: a deck is visible if it is
+/// studyable (self or ancestor grant) *or* is a context-only ancestor of a
+/// granted descendant.
 pub async fn check_deck_visible(
     db: &sqlx::PgPool,
     deck_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
-    let row = sqlx::query!(
-        r#"
-        SELECT id, created_by
-        FROM decks
-        WHERE id = $1 AND school_id = $2
-        "#,
+    // 404 for a deck that doesn't exist in this school.
+    let exists = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM decks WHERE id = $1 AND school_id = $2) AS \"exists!: bool\"",
         deck_id,
         school_id
     )
-    .fetch_optional(db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    .ok_or((StatusCode::NOT_FOUND, "Deck not found"))?;
-
-    // Owner or admin always has access.
-    if claims.role == UserRole::Admin || row.created_by == claims.sub {
-        return Ok(());
-    }
-
-    // Check if the user is a collaborator.
-    let is_collab = sqlx::query_scalar!(
-        r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2) AS "exists!: bool""#,
-        deck_id,
-        claims.sub
-    )
     .fetch_one(db)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    if is_collab {
-        return Ok(());
+    if !exists {
+        return Err((StatusCode::NOT_FOUND, "Deck not found"));
     }
 
-    // Check if the user is in a class that has this deck assigned.
-    let in_class = sqlx::query_scalar!(
-        r#"SELECT EXISTS(
-            SELECT 1 FROM deck_classes dcl
-            JOIN class_members cm ON cm.class_id = dcl.class_id
-            WHERE dcl.deck_id = $1 AND cm.user_id = $2
-        ) AS "exists!: bool""#,
-        deck_id,
-        claims.sub
-    )
-    .fetch_one(db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    if in_class {
-        return Ok(());
+    match deck_access(db, deck_id, school_id, claims).await? {
+        DeckAccess::None => Err((StatusCode::FORBIDDEN, "You do not have access to this deck")),
+        DeckAccess::Studyable | DeckAccess::ContextOnly => Ok(()),
     }
+}
 
-    Err((StatusCode::FORBIDDEN, "You do not have access to this deck"))
+/// The study gate: a deck must be *studyable* (self or ancestor grant), not
+/// merely visible as context.
+pub async fn check_deck_studyable(
+    db: &sqlx::PgPool,
+    deck_id: i64,
+    school_id: i64,
+    claims: &crate::auth::Claims,
+) -> Result<(), (StatusCode, &'static str)> {
+    check_deck_visible(db, deck_id, school_id, claims).await?;
+    if deck_access(db, deck_id, school_id, claims).await? == DeckAccess::ContextOnly {
+        return Err((StatusCode::FORBIDDEN, "This deck is shared as context only"));
+    }
+    Ok(())
 }
 
 /// Fetch a deck row and convert to response DTO.
@@ -275,6 +385,9 @@ async fn fetch_deck(
         review_count: None,
         relearning_count: None,
         total_count: None,
+        // Default true; overridden where the caller knows the access level
+        // (e.g. `get_deck` for context-only student views).
+        studyable: true,
     })
 }
 
@@ -981,7 +1094,12 @@ pub async fn get_deck(
 ) -> Result<Json<DeckDetailResponse>, (StatusCode, &'static str)> {
     check_deck_visible(&state.db, deck_id, claims.school_id, &claims).await?;
 
-    let deck = fetch_deck(&state.db, deck_id).await?;
+    let mut deck = fetch_deck(&state.db, deck_id).await?;
+
+    // A student viewing a context-only ancestor gets `studyable = false`
+    // (US-2.19); everyone else stays studyable.
+    deck.studyable = deck_access(&state.db, deck_id, claims.school_id, &claims).await?
+        == DeckAccess::Studyable;
 
     // Owner, admins, and collaborators can see who else is on the deck.
     let is_collab = if claims.role == UserRole::Admin || deck.created_by == claims.sub {
@@ -1109,6 +1227,7 @@ pub async fn list_decks(
                 review_count: None,
                 relearning_count: None,
                 total_count: Some(r.card_count),
+                studyable: true,
             })
             .collect();
         return Ok(Json(decks));
@@ -1162,45 +1281,83 @@ pub async fn list_decks(
                 review_count: None,
                 relearning_count: None,
                 total_count: Some(r.card_count),
+                studyable: true,
             })
             .collect();
         return Ok(Json(decks));
     }
 
-    // Students: see decks assigned to their classes, with study counts.
-    let rows = sqlx::query!(
+    // Students: the decks they're granted, expanded to the connected subtree
+    // (ancestors as read-only context + descendants as inherited grants), with
+    // per-deck `studyable` and study counts (US-2.19).
+
+    // Phase 1 — the decks this student is *directly* granted, via class
+    // membership or collaboration.
+    let granted_ids = sqlx::query!(
         r#"
-        SELECT d.id, d.school_id, d.title, d.description,
-               d.created_by, d.parent_id, d.created_at,
-               u.email as owner_email,
-               u.first_name as owner_first_name,
-               u.last_name as owner_last_name
+        SELECT DISTINCT d.id
         FROM decks d
-        JOIN users u ON u.id = d.created_by
-        JOIN deck_classes dcl ON dcl.deck_id = d.id
-        JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = $1
+        LEFT JOIN deck_classes dcl ON dcl.deck_id = d.id
+        LEFT JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = $1
+        LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id AND dc.user_id = $1
         WHERE d.school_id = $2
-        ORDER BY d.created_at DESC
+          AND (cm.user_id IS NOT NULL OR dc.user_id IS NOT NULL)
         "#,
         claims.sub,
         claims.school_id
     )
     .fetch_all(&state.db)
     .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    .into_iter()
+    .map(|r| r.id)
+    .collect::<Vec<i64>>();
+
+    // Phase 2 — expand to ancestors + descendants of the granted set (connected
+    // subtree), marking each deck `studyable` iff it *or an ancestor* is granted.
+    // Descendants of a grant are studyable; ancestors of a grant are context-only.
+    let visible = sqlx::query!(
+        r#"
+        WITH RECURSIVE
+        granted(id) AS (SELECT UNNEST($1::BIGINT[])),
+        -- Descendants of each grant (inherited study access).
+        descendants(id) AS (
+            SELECT id FROM granted
+            UNION
+            SELECT d.id FROM decks d JOIN descendants s ON d.parent_id = s.id
+        ),
+        -- Ancestors of each grant (read-only context).
+        ancestors(id) AS (
+            SELECT id FROM granted
+            UNION
+            SELECT d.parent_id FROM decks d JOIN ancestors s ON d.id = s.id
+                WHERE d.parent_id IS NOT NULL
+        ),
+        expanded AS (SELECT id FROM descendants UNION SELECT id FROM ancestors)
+        SELECT d.id, d.school_id, d.title, d.description, d.created_by, d.parent_id, d.created_at,
+               u.email as owner_email, u.first_name as owner_first_name, u.last_name as owner_last_name,
+               (d.id IN (SELECT id FROM descendants)) AS "studyable!: bool"
+        FROM decks d
+        JOIN users u ON u.id = d.created_by
+        WHERE d.id IN (SELECT id FROM expanded)
+        ORDER BY d.created_at DESC
+        "#,
+        &granted_ids
+    )
+    .fetch_all(&state.db)
+    .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     let mut decks: Vec<DeckResponse> = Vec::new();
-    for r in rows {
+    for r in visible {
         let deck_id = r.id;
+        let studyable = r.studyable;
 
-        // Limit-aware per-state counts for this student across the deck's
-        // subtree. Shares logic with the study flow and GET /decks/counts.
         let counts =
             crate::handlers::study::deck_counts_for_student(&state.db, claims.sub, deck_id)
                 .await
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-        // Physical card count in the subtree (not limit-adjusted).
         let total = sqlx::query!(
             r#"
             SELECT COUNT(*) as "total!: i64"
@@ -1242,6 +1399,7 @@ pub async fn list_decks(
             review_count: Some(counts.review_count),
             relearning_count: Some(counts.relearning_count),
             total_count: Some(total.total),
+            studyable,
         });
     }
 
@@ -1265,14 +1423,26 @@ pub async fn deck_counts(
     let mut result = Vec::new();
 
     if claims.role == UserRole::Student {
-        // Students: decks through their class memberships.
+        // Students: decks they're granted (class membership or collaboration),
+        // expanded to their descendants (subtree grant, US-2.19). Counts are
+        // returned for studyable decks only, not read-only ancestor context.
         let rows = sqlx::query!(
             r#"
-            SELECT DISTINCT d.id
-            FROM decks d
-            JOIN deck_classes dcl ON dcl.deck_id = d.id
-            JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = $1
-            WHERE d.school_id = $2
+            WITH RECURSIVE
+            granted(id) AS (
+                SELECT d.id
+                FROM decks d
+                LEFT JOIN deck_classes dcl ON dcl.deck_id = d.id
+                LEFT JOIN class_members cm ON cm.class_id = dcl.class_id AND cm.user_id = $1
+                LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id AND dc.user_id = $1
+                WHERE d.school_id = $2 AND (cm.user_id IS NOT NULL OR dc.user_id IS NOT NULL)
+            ),
+            subtree(id) AS (
+                SELECT id FROM granted
+                UNION
+                SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
+            )
+            SELECT DISTINCT id FROM subtree
             "#,
             claims.sub,
             claims.school_id
@@ -1282,7 +1452,7 @@ pub async fn deck_counts(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
         for row in rows {
-            let deck_id = row.id;
+            let Some(deck_id) = row.id else { continue };
             if let Some(filter) = params.deck_id {
                 if deck_id != filter {
                     continue;

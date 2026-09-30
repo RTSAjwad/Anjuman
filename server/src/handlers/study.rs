@@ -1242,8 +1242,9 @@ async fn deck_advance(
     deck_id: i64,
     review: Option<StudyAdvanceBody>,
 ) -> Result<Json<StudyAdvance>, (StatusCode, &'static str)> {
-    // Verify access via the same visibility check used for viewing decks.
-    decks::check_deck_visible(db, deck_id, claims.school_id, claims).await?;
+    // Verify the deck is *studyable* (self or ancestor grant), not merely
+    // visible as tree context (US-2.19).
+    decks::check_deck_studyable(db, deck_id, claims.school_id, claims).await?;
 
     let deck = sqlx::query!(
         "SELECT id, title FROM decks WHERE id = $1 AND school_id = $2",

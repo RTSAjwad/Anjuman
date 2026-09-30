@@ -620,6 +620,7 @@ mod tests {
             review_count: Some(5),
             relearning_count: Some(0),
             total_count: Some(9),
+            studyable: true,
         }
     }
 

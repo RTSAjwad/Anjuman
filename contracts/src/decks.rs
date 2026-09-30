@@ -152,6 +152,17 @@ pub struct DeckResponse {
     pub relearning_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_count: Option<i64>,
+    /// Whether the requesting user may *study* this deck (vs. view it only as
+    /// tree context). For students under subtree sharing (US-2.19), an ancestor
+    /// of a granted deck is visible but not studyable. Owners/admins/collabs are
+    /// always studyable. Defaults to true for backwards compatibility (older
+    /// clients/fields omit it).
+    #[serde(default = "default_studyable")]
+    pub studyable: bool,
+}
+
+fn default_studyable() -> bool {
+    true
 }
 
 /// A collaborator on a shared deck.

@@ -72,9 +72,10 @@ matrix's "Summary of the biggest gaps" is the working list:
 - [ ] **Custom scheduling (JS) — descoped (collection-wide)** — text-area JS
       hook, collection-wide, "use at your own risk"; deferred with the other
       collection-wide options (stage 7 note below).
-- [ ] **Deck sharing: subtree access model** → US-2.19 (drafted; see below) —
-      a grant on a deck covers its subtree, ancestors are read-only context,
-      and the student's list stays a tree.
+- [x] **Deck sharing: subtree access model** → US-2.19 (done) — a grant on a
+      deck covers its subtree, ancestors are read-only context, and the
+      student's list stays a tree. Added `DeckResponse.studyable` + recursive
+      access + `server/tests/deck_sharing.rs`.
 - [x] **Lapses** — leech threshold/action + empty relearning steps. Done
       (US-2.2–US-2.4). Minimum interval is SM-2 — out of scope.
 - [x] **US-2.2 — Leech threshold**
@@ -582,21 +583,21 @@ single-user and trivially total):
 
 **Acceptance criteria**
 
-- [ ] `check_deck_visible` grants access when the deck **or any ancestor** is
+- [x] `check_deck_visible` grants access when the deck **or any ancestor** is
       shared to the user (a student granted `Cell Biology` can study it and its
       descendants; a student granted `Biology 101` can study the whole subtree).
-- [ ] `list_decks` (student branch) returns, for a parent/child grant, the
+- [x] `list_decks` (student branch) returns, for a parent/child grant, the
       whole connected subtree — including **context-only ancestor rows** for a
       child grant — so the tree renders fully.
-- [ ] Study (`GET`/`POST /decks/{id}/study`) honours the subtree rule: studyable
+- [x] Study (`GET`/`POST /decks/{id}/study`) honours the subtree rule: studyable
       iff the deck or an ancestor is granted; a context-only ancestor returns a
       rejection (not its own cards).
-- [ ] Context-only ancestors are distinguished from studyable decks in the
-      response (e.g. a `studyable`/`granted` flag) so the client can disable
-      "study" on them.
-- [ ] `GET /decks/counts` and card/note listing share the same subtree rule.
-- [ ] Each criterion has a `server/tests/` test named after it (new
-      `server/tests/deck_sharing.rs`, or extended existing deck tests).
+- [x] Context-only ancestors are distinguished from studyable decks in the
+      response (a `studyable` flag on `DeckResponse`, default true).
+- [x] `GET /decks/counts` and card/note listing share the same subtree rule
+      (counts expand to descendants of a grant).
+- [x] Each criterion has a `server/tests/` test named after it
+      (`server/tests/deck_sharing.rs`).
 
 **Out of scope / related**
 
