@@ -120,11 +120,18 @@ boundary model and why these two paths differ.
 - The **single source of truth** for the request/response types crossing the
   network between the core and the server. Lives in the sibling `contracts/`
   folder (a path dependency of both `server` and `client/shared`).
-- Derived with **`serde`** (`Serialize`/`Deserialize`) — for the JSON network
-  wire — and, where relevant, `Facet` so the same structs can be type-generated
-  for shells.
+- Derived with **`serde`** (`Serialize`/`Deserialize`) only. It is deliberately
+  **not** `Facet`-derived: keeping the wire DTOs serde-only avoids pulling `facet`
+  (+ its `chrono`/`std` features) into the server (and its `openapi` feature
+  stays the only gated dependency). Contract types therefore never appear *as
+  fields* on the `ViewModel`/`Event`/`Effect` FFI enums.
+- Fielding a wire type on the `ViewModel` instead goes through a **core-local
+  view type** in `shared/src/app.rs` (e.g. `DeckSummary` ≅ `DeckResponse`,
+  `StudyCardView`/`StudyCountsView` ≅ `StudyCard`/`StudyCounts`). The view type
+  derives `Facet`/`PartialEq`/`Eq` and is built from the DTO in `Anjuman::view`.
 - Consumed by the server (for handlers) and by `shared` (for the HTTP capability
-  payloads).
+  payloads and the model — where the DTO *is* used directly, since `Model` is
+  serde-only and not `Facet`).
 
 ## 4. Boundaries
 
@@ -284,6 +291,15 @@ remain **separate Cargo workspaces**, not one top-level workspace:
 - Single shared contract crate (`contracts/`) as the type source of truth.
 - **JSON over the wire** for the core↔server boundary; wire-format optimization
   (`rkyv`, protobuf, …) deferred as a future TODO.
+- **Contracts stay serde-only; the `ViewModel` uses core-local view types.** A
+  wire DTO is never a `Facet` field of an FFI enum. `shared` maps DTO → view type
+  (e.g. `DeckSummary` for `DeckResponse`, `StudyCardView`/`StudyCountsView` for
+  `StudyCard`/`StudyCounts`) so `facet` stays out of `contracts`/the server. `Model`
+  (serde-only) may hold the DTO directly.
+- **Study loop is single-card + stateless** (US-4.5). `Model.current_card` holds
+  one card; answering POSTs and replaces it with the response's `next_card`
+  (`None` ⇒ "nothing due"). No client-side queue — mirrors the server's
+  sessionless contract, so core state never drifts from server state.
 - Client workspace layout (workspace + `shared` + `shells/`).
 
 ### Open questions
