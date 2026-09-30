@@ -728,7 +728,8 @@ injected `HttpResponse`s, never a running server).
       below). Done: contracts derives + auth core + 7 tests + Leptos
       `crux_http`/`crux_kv` capabilities + login screen.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
-      dependency order). Decks list is US-4.3 (see story below).
+      dependency order). Decks list is US-4.3 (done — see story below); notes,
+      cards, study remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -870,17 +871,22 @@ today. The client needs the mirror direction (same as US-4.2's auth fix). Add
 
 **Acceptance criteria**
 
-- [ ] `Model` gains a `decks` list (and an error flag) gated behind auth.
-- [ ] `Event::DecksRequested` (fired after a successful login/restore) emits
+- [x] `Model` gains a `decks` list (and an error flag) gated behind auth.
+- [x] `Event::DecksRequested` (fired after a successful login/restore) emits
       `GET /decks` with the `Authorization: Bearer <token>` header.
-- [ ] A canned `Vec<DeckResponse>` (success) populates `model.decks` and the
+- [x] A canned `Vec<DeckResponse>` (success) populates `model.decks` and the
       `ViewModel` exposes each deck's title + counts (`new`/`learning`/`review`).
-- [ ] A canned `DeckCountsResponse` (success) populates the per-deck counts used
+- [x] A canned `DeckCountsResponse` (success) populates the per-deck counts used
       to render the due badges.
-- [ ] A rejection (401/500) sets an error in the `ViewModel` without crashing.
-- [ ] The contracts prerequisite is done: `DeckResponse`/`DeckCounts`/
+- [x] A rejection (401/500) sets an error in the `ViewModel` without crashing.
+- [x] The contracts prerequisite is done: `DeckResponse`/`DeckCounts`/
       `DeckCountsResponse: Deserialize` (server build + OpenAPI unchanged).
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+  **Implemented**: `Deserialize` on the deck DTOs; `decks`/`decks_error` model
+  state, `DecksRequested`/`DecksResult`/`DecksCountsResult` events (chained
+  after login/`/me` success, cleared on logout), `ViewModel.decks` as
+  `Vec<DeckSummary>`; 6 new tests (13 total in `shared`).
 
 **Shell contract**
 

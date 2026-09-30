@@ -27,7 +27,7 @@ Legend:
 | Screen / flow | Status | Notes |
 |---|---|---|
 | Auth (login → store JWT → `/me`) | ✅ | The prerequisite for everything else; US-4.2. |
-| Decks (list/detail) | ❌ | Consumes `GET /decks`, `/decks/counts`. |
+| Decks (list/detail) | 🟡 | US-4.3 core done (list + counts); shell rendering pending the shell agent. Detail is a later story. |
 | Notes (browser/edit) | ❌ | Consumes `GET /notes`, note-type/template UI later. |
 | Cards / browser | ❌ | Consumes `GET /cards`; flag/suspend/bury actions. |
 | Study session | ❌ | Consumes `GET/POST /decks/{id}/study`; the single-card loop. |

@@ -114,7 +114,7 @@ pub struct AddDeckToClass {
 }
 
 /// A deck as returned to clients.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeckResponse {
     pub id: i64,
@@ -191,7 +191,7 @@ pub struct DeckCountsQuery {
 }
 
 /// Per-state card counts for a deck.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeckCounts {
     pub deck_id: i64,
@@ -203,7 +203,7 @@ pub struct DeckCounts {
 }
 
 /// Response for `GET /decks/counts`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeckCountsResponse {
     pub decks: Vec<DeckCounts>,

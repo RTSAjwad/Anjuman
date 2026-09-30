@@ -14,6 +14,7 @@ use facet::Facet;
 use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
+use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse};
 
 /// The base URL of the Anjuman server.
 const API_URL: &str = "http://localhost:3000";
@@ -33,6 +34,10 @@ pub struct Model {
     /// Transient token carried from `RestoreSession` → `/me` → `MeResult` (the
     /// token is known at restore time but the user comes back from `/me`).
     pub pending_token: Option<String>,
+    /// The signed-in user's decks (from `GET /decks`).
+    pub decks: Vec<DeckResponse>,
+    /// A human-readable error from the last decks fetch, if any.
+    pub decks_error: Option<String>,
 }
 
 /// Authentication state.
@@ -63,8 +68,18 @@ pub enum Event {
     RestoreSession,
     /// Sign out (clear the stored token + drop session state).
     Logout,
+    /// Fetch the signed-in user's decks (fired after a successful login/restore).
+    DecksRequested,
 
     // --- Core-local completion events (never cross the FFI boundary) ---
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DecksResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<DeckResponse>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DecksCountsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckCountsResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -113,6 +128,19 @@ pub struct ViewModel {
     pub display_name: String,
     pub busy: bool,
     pub error: Option<String>,
+    /// Decks to render (title + per-state counts).
+    pub decks: Vec<DeckSummary>,
+}
+
+/// A deck as shown in the list view (title + due counts).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct DeckSummary {
+    pub id: i64,
+    pub title: String,
+    pub new_count: i64,
+    pub learning_count: i64,
+    pub review_count: i64,
+    pub total_count: i64,
 }
 
 #[derive(Default)]
@@ -150,11 +178,12 @@ impl crux_core::App for Anjuman {
                 model.busy = false;
                 model.error = None;
 
-                // Persist the token so the session survives a reload.
+                // Persist the token so the session survives a reload, then fetch
+                // the decks for the freshly-authenticated user.
                 let store = crux_kv::KeyValue::set(TOKEN_KEY, login.token.into_bytes())
                     .then_send(Event::TokenStored);
 
-                render::render().and(store)
+                render::render().and(store).and(Command::event(Event::DecksRequested))
             }
 
             Event::LoginResult(Err(e)) => {
@@ -196,7 +225,7 @@ impl crux_core::App for Anjuman {
                 let token = model.pending_token.take().unwrap_or_default();
                 model.auth = Auth::Authenticated { token, user };
                 model.busy = false;
-                render::render()
+                render::render().and(Command::event(Event::DecksRequested))
             }
 
             Event::MeResult(Err(_)) => {
@@ -212,8 +241,54 @@ impl crux_core::App for Anjuman {
                 model.auth = Auth::Unauthenticated;
                 model.busy = false;
                 model.error = None;
+                model.decks.clear();
+                model.decks_error = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
+            }
+
+            Event::DecksRequested => {
+                model.decks_error = None;
+                // Needs the current token; only reachable when authenticated.
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                Http::get(format!("{API_URL}/decks"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DecksResult)
+            }
+
+            Event::DecksResult(Ok(mut response)) => {
+                model.decks = response.take_body().expect("decks response has a body");
+                model.decks_error = None;
+                render::render()
+            }
+
+            Event::DecksResult(Err(e)) => {
+                model.decks_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::DecksCountsResult(Ok(mut response)) => {
+                let counts = response.take_body().expect("counts response has a body");
+                // Merge per-deck counts into the already-loaded deck list.
+                for c in counts.decks {
+                    if let Some(deck) = model.decks.iter_mut().find(|d| d.id == c.deck_id) {
+                        deck.new_count = Some(c.new_count);
+                        deck.learning_count = Some(c.learning_count);
+                        deck.review_count = Some(c.review_count);
+                        deck.total_count = Some(c.total_count);
+                    }
+                }
+                render::render()
+            }
+
+            Event::DecksCountsResult(Err(e)) => {
+                model.decks_error = Some(e.to_string());
+                render::render()
             }
 
             // Completion events whose only purpose was to run after the KV write
@@ -223,6 +298,19 @@ impl crux_core::App for Anjuman {
     }
 
     fn view(&self, model: &Model) -> ViewModel {
+        let decks = model
+            .decks
+            .iter()
+            .map(|d| DeckSummary {
+                id: d.id,
+                title: d.title.clone(),
+                new_count: d.new_count.unwrap_or(0),
+                learning_count: d.learning_count.unwrap_or(0),
+                review_count: d.review_count.unwrap_or(0),
+                total_count: d.total_count.unwrap_or(0),
+            })
+            .collect();
+
         match &model.auth {
             Auth::Authenticated { user, .. } => ViewModel {
                 email: user.email.clone(),
@@ -230,6 +318,7 @@ impl crux_core::App for Anjuman {
                 display_name: format!("{} {}", user.first_name, user.last_name),
                 busy: model.busy,
                 error: model.error.clone(),
+                decks,
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -237,6 +326,7 @@ impl crux_core::App for Anjuman {
                 display_name: String::new(),
                 busy: model.busy,
                 error: model.error.clone(),
+                decks,
             },
         }
     }
@@ -444,5 +534,152 @@ mod tests {
                     if matches!(op.operation, crux_kv::protocol::KeyValueOperation::Delete { ref key } if key == TOKEN_KEY))),
             "expected a KeyValue Delete effect for the token"
         );
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.3 — decks list
+    // --------------------------------------------------------------------
+
+    use anjuman_contracts::decks::DeckCounts;
+    use chrono::Utc;
+
+    fn deck(id: i64, title: &str) -> DeckResponse {
+        DeckResponse {
+            id,
+            school_id: 1,
+            title: title.to_string(),
+            description: None,
+            created_by: 1,
+            owner_email: "o@b.c".to_string(),
+            owner_first_name: "O".to_string(),
+            owner_last_name: "O".to_string(),
+            parent_id: None,
+            created_at: Utc::now(),
+            new_per_day_mode: None,
+            review_per_day_mode: None,
+            new_per_day_override: None,
+            review_per_day_override: None,
+            new_per_day_today_date: None,
+            review_per_day_today_date: None,
+            new_count: Some(3),
+            learning_count: Some(1),
+            review_count: Some(5),
+            relearning_count: Some(0),
+            total_count: Some(9),
+        }
+    }
+
+    fn authenticated_model() -> Model {
+        Model {
+            auth: Auth::Authenticated {
+                token: "jwt-token".to_string(),
+                user: UserResponse {
+                    id: 1,
+                    email: "a@b.c".to_string(),
+                    first_name: "Ada".to_string(),
+                    last_name: "Lovelace".to_string(),
+                    role: UserRole::Student,
+                    school_id: 1,
+                },
+            },
+            ..Model::default()
+        }
+    }
+
+    /// `DecksRequested` emits a `GET /decks` with the bearer header.
+    #[test]
+    fn decks_requested_emits_get_decks_with_bearer() {
+        let mut model = authenticated_model();
+        let effects = update(Event::DecksRequested, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(req.operation.url.as_str(), "http://localhost:3000/decks");
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DecksRequested` while unauthenticated is a no-op render (no request).
+    #[test]
+    fn decks_requested_unauthenticated_is_noop() {
+        let mut model = Model::default();
+        let effects = update(Event::DecksRequested, &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// A canned deck list populates the model and is exposed in the view.
+    #[test]
+    fn decks_result_populates_model_and_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(vec![deck(1, "Spanish"), deck(2, "Maths")]).build();
+        let _ = update(Event::DecksResult(Ok(response)), &mut model);
+
+        assert_eq!(model.decks.len(), 2);
+        assert_eq!(model.decks[0].title, "Spanish");
+
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.decks.len(), 2);
+        let spanish = &vm.decks[0];
+        assert_eq!(spanish.title, "Spanish");
+        assert_eq!(spanish.new_count, 3);
+        assert_eq!(spanish.review_count, 5);
+        assert_eq!(spanish.total_count, 9);
+    }
+
+    /// A canned counts response merges per-deck counts into the loaded list.
+    #[test]
+    fn counts_result_merges_into_loaded_decks() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+
+        let counts = DeckCountsResponse {
+            decks: vec![DeckCounts {
+                deck_id: 1,
+                new_count: 12,
+                learning_count: 4,
+                review_count: 20,
+                relearning_count: 2,
+                total_count: 38,
+            }],
+        };
+        let response = ResponseBuilder::ok().body(counts).build();
+        let _ = update(Event::DecksCountsResult(Ok(response)), &mut model);
+
+        assert_eq!(model.decks[0].new_count, Some(12));
+        assert_eq!(model.decks[0].review_count, Some(20));
+
+        // And the view reflects the merged counts.
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.decks[0].new_count, 12);
+        assert_eq!(vm.decks[0].total_count, 38);
+    }
+
+    /// A decks rejection surfaces an error without crashing.
+    #[test]
+    fn decks_rejection_sets_error() {
+        let mut model = authenticated_model();
+        let err = crux_http::testing::rejection::<Vec<DeckResponse>>(500, "boom").unwrap_err();
+        let effects = update(Event::DecksResult(Err(err)), &mut model);
+
+        assert!(model.decks_error.is_some());
+        assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
+    }
+
+    /// Logout clears the deck list.
+    #[test]
+    fn logout_clears_decks() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+        let _ = update(Event::Logout, &mut model);
+        assert!(model.decks.is_empty());
     }
 }

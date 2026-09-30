@@ -51,3 +51,4 @@ pretty_env_logger = { workspace = true, optional = true }
 
 [dev-dependencies]
 crux_core = { workspace = true, features = ["testing"] }
+chrono = "0.4"
