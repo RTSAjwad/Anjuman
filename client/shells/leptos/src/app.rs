@@ -270,11 +270,36 @@ fn study_screen(
             <div style="display: flex; flex-direction: column; gap: 1rem;">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                     <h2 style="margin: 0;">{deck.title}</h2>
-                    <span class="thaw-study-counts">
-                        "New " {counts.new_count}
-                        " · Learn " {counts.learning_count}
-                        " · Review " {counts.review_count}
-                    </span>
+                    <div class="thaw-study-counts">
+                        <Badge
+                            appearance=BadgeAppearance::Tint
+                            color=BadgeColor::Brand
+                            size=BadgeSize::Small
+                        >
+                            {counts.new_count.to_string()}
+                        </Badge>
+                        <Badge
+                            appearance=BadgeAppearance::Tint
+                            color=BadgeColor::Danger
+                            size=BadgeSize::Small
+                        >
+                            {counts.learning_count.to_string()}
+                        </Badge>
+                        <Badge
+                            appearance=BadgeAppearance::Tint
+                            color=BadgeColor::Success
+                            size=BadgeSize::Small
+                        >
+                            {counts.review_count.to_string()}
+                        </Badge>
+                        <Badge
+                            appearance=BadgeAppearance::Tint
+                            color=BadgeColor::Warning
+                            size=BadgeSize::Small
+                        >
+                            {counts.relearning_count.to_string()}
+                        </Badge>
+                    </div>
                 </div>
 
                 {study_error.map(|err| view! {
@@ -323,8 +348,8 @@ fn study_card_view(
                             <p class="thaw-study-card__back">{card.back.clone()}</p>
                         </div>
                         <div class="thaw-study-answers">
-                            <Button appearance=ButtonAppearance::Secondary on_click=move |_| rating(1)>"Again"</Button>
-                            <Button appearance=ButtonAppearance::Secondary on_click=move |_| rating(2)>"Hard"</Button>
+                            <Button class="thaw-study-answers__again" appearance=ButtonAppearance::Primary on_click=move |_| rating(1)>"Again"</Button>
+                            <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(2)>"Hard"</Button>
                             <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(3)>"Good"</Button>
                             <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(4)>"Easy"</Button>
                         </div>
