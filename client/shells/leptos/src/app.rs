@@ -146,7 +146,9 @@ pub fn RootComponent() -> impl IntoView {
                                                 </BreadcrumbItem>
                                             </Breadcrumb>
                                         </div>
-                                        <DeckList vm=vm.clone() set_event=set_event />
+                                        <div class="app-content__pad">
+                                            <DeckList vm=vm.clone() set_event=set_event />
+                                        </div>
                                     }
                                     .into_any()
                                 }}
