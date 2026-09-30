@@ -876,6 +876,9 @@ today. The client needs the mirror direction (same as US-4.2's auth fix). Add
       `GET /decks` with the `Authorization: Bearer <token>` header.
 - [x] A canned `Vec<DeckResponse>` (success) populates `model.decks` and the
       `ViewModel` exposes each deck's title + counts (`new`/`learning`/`review`).
+- [x] `ViewModel.decks` is a **nested tree** (`DeckSummary.children`), built by
+      the core from `parent_id`; orphans (`parent_id` pointing at a missing/
+      absent deck) surface at the root in input order (amended).
 - [x] A canned `DeckCountsResponse` (success) populates the per-deck counts used
       to render the due badges.
 - [x] A rejection (401/500) sets an error in the `ViewModel` without crashing.
@@ -885,13 +888,16 @@ today. The client needs the mirror direction (same as US-4.2's auth fix). Add
 
   **Implemented**: `Deserialize` on the deck DTOs; `decks`/`decks_error` model
   state, `DecksRequested`/`DecksResult`/`DecksCountsResult` events (chained
-  after login/`/me` success, cleared on logout), `ViewModel.decks` as
-  `Vec<DeckSummary>`; 6 new tests (13 total in `shared`).
+  after login/`/me` success, cleared on logout), `ViewModel.decks` as a nested
+  `Vec<DeckSummary>` (with `children`), tree built by the core via
+  `build_deck_tree`; 7 deck tests (14 total in `shared`).
 
 **Shell contract**
 
 - [ ] After sign-in, forward `Event::DecksRequested`.
-- [ ] Render the decks list (title + due counts) from the `ViewModel`.
+- [ ] Render the decks list (title + due counts) from `ViewModel.decks`,
+      **recursing into `DeckSummary.children`** (nested subdecks) — the core
+      provides the tree; the shell only renders it.
 - [ ] Render an error state and an empty state (no decks yet).
 
 > **Verified in Leptos now; other shells check the same list off later.**

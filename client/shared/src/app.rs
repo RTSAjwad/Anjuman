@@ -138,7 +138,10 @@ pub struct ViewModel {
     pub decks_error: Option<String>,
 }
 
-/// A deck as shown in the list view (title + due counts).
+/// A deck as shown in the list view (title + due counts), with subdecks nested
+/// under their parent. The **core** builds this tree (the shell only renders
+/// `children` recursively); orphans (`parent_id` pointing at a missing/absent
+/// deck) are surfaced at the root in input order.
 #[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
 pub struct DeckSummary {
     pub id: i64,
@@ -147,6 +150,56 @@ pub struct DeckSummary {
     pub learning_count: i64,
     pub review_count: i64,
     pub total_count: i64,
+    /// Subdecks of this deck, in input order.
+    pub children: Vec<DeckSummary>,
+}
+
+/// Build the nested deck tree from the flat `GET /decks` response.
+///
+/// Children are attached to their parent by `parent_id` (decks whose
+/// `parent_id` is `None` or points at a deck not in the list become roots), and
+/// both roots and siblings keep the order of the input list.
+fn build_deck_tree(decks: &[DeckResponse]) -> Vec<DeckSummary> {
+    // Phase 1: one `DeckSummary` per deck (children empty initially), keyed by
+    // id. Keep them in a map so we can attach children without moving parents
+    // out from under their own children.
+    let mut by_id: std::collections::HashMap<i64, DeckSummary> = decks
+        .iter()
+        .map(|d| {
+            (
+                d.id,
+                DeckSummary {
+                    id: d.id,
+                    title: d.title.clone(),
+                    new_count: d.new_count.unwrap_or(0),
+                    learning_count: d.learning_count.unwrap_or(0),
+                    review_count: d.review_count.unwrap_or(0),
+                    total_count: d.total_count.unwrap_or(0),
+                    children: Vec::new(),
+                },
+            )
+        })
+        .collect();
+
+    // Phase 2: for each input deck (in order), move it into its parent's
+    // `children` (or keep it as a root). We take-and-reinsert so a deck can be
+    // both a child and a parent of deeper decks.
+    let mut roots: Vec<i64> = Vec::new();
+    for d in decks {
+        match d.parent_id {
+            Some(pid) if by_id.contains_key(&pid) => {
+                if let Some(node) = by_id.remove(&d.id) {
+                    by_id.get_mut(&pid).unwrap().children.push(node);
+                }
+            }
+            _ => roots.push(d.id),
+        }
+    }
+
+    roots
+        .into_iter()
+        .filter_map(|id| by_id.remove(&id))
+        .collect()
 }
 
 #[derive(Default)]
@@ -304,18 +357,7 @@ impl crux_core::App for Anjuman {
     }
 
     fn view(&self, model: &Model) -> ViewModel {
-        let decks = model
-            .decks
-            .iter()
-            .map(|d| DeckSummary {
-                id: d.id,
-                title: d.title.clone(),
-                new_count: d.new_count.unwrap_or(0),
-                learning_count: d.learning_count.unwrap_or(0),
-                review_count: d.review_count.unwrap_or(0),
-                total_count: d.total_count.unwrap_or(0),
-            })
-            .collect();
+        let decks = build_deck_tree(&model.decks);
 
         match &model.auth {
             Auth::Authenticated { user, .. } => ViewModel {
@@ -552,6 +594,10 @@ mod tests {
     use chrono::Utc;
 
     fn deck(id: i64, title: &str) -> DeckResponse {
+        deck_with_parent(id, title, None)
+    }
+
+    fn deck_with_parent(id: i64, title: &str, parent_id: Option<i64>) -> DeckResponse {
         DeckResponse {
             id,
             school_id: 1,
@@ -561,7 +607,7 @@ mod tests {
             owner_email: "o@b.c".to_string(),
             owner_first_name: "O".to_string(),
             owner_last_name: "O".to_string(),
-            parent_id: None,
+            parent_id,
             created_at: Utc::now(),
             new_per_day_mode: None,
             review_per_day_mode: None,
@@ -641,6 +687,34 @@ mod tests {
         assert_eq!(spanish.new_count, 3);
         assert_eq!(spanish.review_count, 5);
         assert_eq!(spanish.total_count, 9);
+    }
+
+    /// Nested decks are exposed as a tree (children under their parent); an
+    /// orphan whose parent is absent surfaces at the root.
+    #[test]
+    fn decks_result_builds_nested_tree() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(vec![
+                deck(1, "Spanish"),
+                deck_with_parent(2, "Spanish::Verbs", Some(1)),
+                deck(3, "Maths"),
+                deck_with_parent(9, "Orphan", Some(99)), // parent 99 not in list
+            ])
+            .build();
+        let _ = update(Event::DecksResult(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+
+        // Roots are the two parent decks plus the orphan, in input order.
+        assert_eq!(vm.decks.len(), 3);
+        assert_eq!(vm.decks[0].title, "Spanish");
+        assert_eq!(vm.decks[1].title, "Maths");
+        assert_eq!(vm.decks[2].title, "Orphan");
+
+        // Spanish has its subdeck nested.
+        assert_eq!(vm.decks[0].children.len(), 1);
+        assert_eq!(vm.decks[0].children[0].title, "Spanish::Verbs");
     }
 
     /// A canned counts response merges per-deck counts into the loaded list.
