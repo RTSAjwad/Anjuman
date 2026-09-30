@@ -333,6 +333,9 @@ fn study_card_view(
     let rating = move |r: i32| {
         set_event.set(Event::Answer { rating: r });
     };
+    // Predicted intervals (rating -> seconds), if the server returned them.
+    let intervals = card.predicted_interval.unwrap_or_default();
+    let interval_for = move |r: i32| intervals.get(&r).copied();
 
     view! {
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
@@ -348,10 +351,16 @@ fn study_card_view(
                             <p class="thaw-study-card__back">{card.back.clone()}</p>
                         </div>
                         <div class="thaw-study-answers">
-                            <Button class="thaw-study-answers__again" appearance=ButtonAppearance::Primary on_click=move |_| rating(1)>"Again"</Button>
-                            <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(2)>"Hard"</Button>
-                            <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(3)>"Good"</Button>
-                            <Button appearance=ButtonAppearance::Primary on_click=move |_| rating(4)>"Easy"</Button>
+                            {answer_button(
+                                rating.clone(),
+                                interval_for.clone(),
+                                "thaw-study-answers__again",
+                                1,
+                                "Again",
+                            )}
+                            {answer_button(rating.clone(), interval_for.clone(), "", 2, "Hard")}
+                            {answer_button(rating.clone(), interval_for.clone(), "", 3, "Good")}
+                            {answer_button(rating.clone(), interval_for.clone(), "", 4, "Easy")}
                         </div>
                     }
                     .into_any()
@@ -365,6 +374,54 @@ fn study_card_view(
                 }
             }}
         </div>
+    }
+}
+
+/// A single answer button (label + predicted interval underneath).
+fn answer_button<R, I>(
+    rating: R,
+    interval_for: I,
+    class: &'static str,
+    n: i32,
+    label: &'static str,
+) -> impl IntoView
+where
+    R: Fn(i32) + Copy + Send + Sync + 'static,
+    I: Fn(i32) -> Option<i64> + Clone,
+{
+    let interval = interval_for(n).map(format_interval).unwrap_or_default();
+
+    view! {
+        <div class="thaw-study-answer">
+            <Button class=class appearance=ButtonAppearance::Primary on_click=move |_| rating(n)>
+                {label}
+            </Button>
+            <span class="thaw-study-answer__interval">{interval}</span>
+        </div>
+    }
+}
+
+/// Format an interval in seconds using Anki's interval-unit notation:
+/// `<1m` → `60s` style, minutes, hours, days, months, years.
+fn format_interval(seconds: i64) -> String {
+    const MINUTE: i64 = 60;
+    const HOUR: i64 = 60 * MINUTE;
+    const DAY: i64 = 24 * HOUR;
+    const MONTH: i64 = 30 * DAY;
+    const YEAR: i64 = 365 * DAY;
+
+    if seconds < MINUTE {
+        format!("{seconds}s")
+    } else if seconds < HOUR {
+        format!("{}m", seconds / MINUTE)
+    } else if seconds < DAY {
+        format!("{}h", seconds / HOUR)
+    } else if seconds < MONTH {
+        format!("{}d", seconds / DAY)
+    } else if seconds < YEAR {
+        format!("{}mo", seconds / MONTH)
+    } else {
+        format!("{}y", seconds / YEAR)
     }
 }
 
