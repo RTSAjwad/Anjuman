@@ -184,8 +184,9 @@ fn deck_item(deck: DeckSummary, depth: usize) -> impl IntoView {
     let children = deck.children;
     // Indent the title only (via inline style) so the count columns stay on a
     // shared right edge; thaw would otherwise pad the whole row and shift the
-    // badges. 16px per level, in step with thaw's default chevron width.
-    let indent = format!("padding-left: {}px", depth * 16);
+    // badges. One thaw spacing step (`--spacingHorizontalXXL`, 24px) per level,
+    // matching thaw's own indent scale.
+    let indent = format!("padding-left: calc(var(--spacingHorizontalXXL, 24px) * {depth})");
 
     view! {
         <TreeItem item_type=item_type value=value>
