@@ -110,6 +110,15 @@ test DB must exist (`createdb anjuman_test`). See `server/tests/common/mod.rs`.
 - **OpenAPI** — generated from `anjuman_contracts` via `utoipa`; never
   hand-edit a spec file.
 - Generated code is gitignored (`shells/*/generated/`, `shells/leptos/dist/`).
+- **Commit messages are Conventional Commits scoped by layer.** Subject form:
+  `type(scope): summary`, where `type` is `feat`/`fix`/`docs`/`refactor`/`test`
+  (or similar) and `scope` is the layer the change belongs to:
+  `core` (client shared), `server`, `contracts`, `db` (migrations/seed), or
+  `shell/<name>` (`shell/leptos`, later `shell/swiftui`, …). Include the story
+  id when relevant — e.g. `feat(core): US-4.5 study loop`. A commit that spans
+  layers is split, or given its dominant scope with the cross-cutting note in
+  the body. **Reserve Git tags for release markers** (e.g. `v0.1.0`), not for
+  labelling layer scope.
 
 ## 6. Definitions of done (for agents)
 

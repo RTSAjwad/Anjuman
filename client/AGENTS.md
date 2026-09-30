@@ -189,6 +189,10 @@ See `ARCHITECTURE.md` §8 for the full settled-vs-open list.
 - Centralize crate versions in the root `Cargo.toml` `[workspace.dependencies]`.
 - Generated code is gitignored (`shells/*/generated/`, `shells/leptos/dist/`).
 - No global `cargo`/`rustc` — always `nix develop` first.
+- **Commit scopes for this workspace:** use Conventional Commits scoped by layer
+  — `feat(core): …`, `fix(server): …`, `docs(contracts): …`, `feat(db): …`, and
+  **`feat(shell/leptos): …`** (or `shell/swiftui`, …). See the root `AGENTS.md`
+  §5 for the full convention.
 
 ### Stories target the core; shells are tracked, not duplicated
 
