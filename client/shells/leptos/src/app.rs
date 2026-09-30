@@ -15,7 +15,7 @@ use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Button, ButtonAppearance, Card, ConfigProvider,
-    Input, Tree, TreeItem, TreeItemLayout, TreeItemType,
+    Input,
 };
 
 use crate::core_link;
@@ -144,91 +144,114 @@ fn deck_list(vm: ViewModel) -> impl IntoView {
     // builds the tree (`DeckSummary.children`); the shell only renders it and
     // holds which nodes are expanded (transient UI state — see the divergence
     // note in SCREENS_SUPPORT.md). Collapsed by default.
+    //
+    // We render the tree with plain elements rather than thaw's `Tree`/
+    // `TreeItem`: thaw indents the whole row (badges included) by depth and
+    // mounts its stylesheet at runtime, which made the due-count columns drift
+    // between parent/child rows. A hand-rolled grid keeps the badge columns
+    // perfectly aligned regardless of depth.
     let decks = vm.decks;
     let open_items = RwSignal::new(HashSet::new());
     view! {
         <Card>
-            <div class="thaw-deck-header">
+            <div class="thaw-deck-header" role="row">
                 <span class="thaw-deck-col">"Deck"</span>
                 <span class="thaw-deck-col">"New"</span>
                 <span class="thaw-deck-col">"Learning"</span>
                 <span class="thaw-deck-col">"Review"</span>
             </div>
-            <Tree open_items=open_items size=thaw::TreeSize::Medium>
-                {deck_subtree(decks, 0)}
-            </Tree>
+            <div class="thaw-deck-tree" role="tree">
+                {deck_subtree(decks, 0, open_items)}
+            </div>
         </Card>
     }
     .into_any()
 }
 
-/// Renders a list of sibling decks as tree items (recursing into `children`).
-/// Each item's layout shows the title on the left and the New/Learning/Review
-/// counts as coloured badges on the right (Anki palette: new = blue, learning =
-/// red, review/due = green).
-fn deck_subtree(decks: Vec<DeckSummary>, depth: usize) -> impl IntoView {
+/// Renders a list of sibling decks, recursing into `children`. Each deck row
+/// shows an expander (if it has subdecks), an indented title, and three due
+/// counts (new = blue, learning = red, review = green) as coloured badges.
+fn deck_subtree(
+    decks: Vec<DeckSummary>,
+    depth: usize,
+    open_items: RwSignal<HashSet<i64>>,
+) -> impl IntoView {
     decks
         .into_iter()
-        .map(|deck| deck_item(deck, depth))
+        .map(|deck| deck_item(deck, depth, open_items))
         .collect_view()
 }
 
-/// Renders a single deck (and its subdecks, if any) as a thaw `TreeItem`.
-fn deck_item(deck: DeckSummary, depth: usize) -> impl IntoView {
-    let item_type = if deck.children.is_empty() {
-        TreeItemType::Leaf
-    } else {
-        TreeItemType::Branch
-    };
-    let value = deck.id.to_string();
+/// Renders a single deck row (and, when expanded, its subdecks).
+fn deck_item(
+    deck: DeckSummary,
+    depth: usize,
+    open_items: RwSignal<HashSet<i64>>,
+) -> impl IntoView {
+    let id = deck.id;
+    let has_children = !deck.children.is_empty();
     let children = deck.children;
-    // Indent the title only (via inline style) so the count columns stay on a
-    // shared right edge; thaw would otherwise pad the whole row and shift the
-    // badges. One thaw spacing step (`--spacingHorizontalXXL`, 24px) per level,
-    // matching thaw's own indent scale.
+    // Indent the whole title cell (expander + label) by one step per level.
     let indent = format!("padding-left: calc(var(--spacingHorizontalXXL, 24px) * {depth})");
 
     view! {
-        <TreeItem item_type=item_type value=value>
-            <TreeItemLayout>
-                <div class="thaw-deck-row">
-                    <span class="thaw-deck-row__title" style=indent>{deck.title}</span>
-                    <Badge
-                        appearance=BadgeAppearance::Tint
-                        color=BadgeColor::Informative
-                        size=BadgeSize::Small
-                    >
-                        {deck.new_count.to_string()}
-                    </Badge>
-                    <Badge
-                        appearance=BadgeAppearance::Tint
-                        color=BadgeColor::Danger
-                        size=BadgeSize::Small
-                    >
-                        {deck.learning_count.to_string()}
-                    </Badge>
-                    <Badge
-                        appearance=BadgeAppearance::Tint
-                        color=BadgeColor::Success
-                        size=BadgeSize::Small
-                    >
-                        {deck.review_count.to_string()}
-                    </Badge>
-                </div>
-            </TreeItemLayout>
-            {if !children.is_empty() {
-                // Nested `Tree` (not raw `TreeItem`s) — thaw's `Tree` detects it's
-                // inside a `TreeItem` and renders a `Subtree`, which both increments
-                // the indent level and wraps the children in a `CollapseTransition`
-                // bound to this item's `open` state (so the chevron actually
-                // collapses/expands them).
-                view! {
-                    <Tree>{deck_subtree(children, depth + 1)}</Tree>
-                }
-                .into_any()
+        <div class="thaw-deck-row" role="treeitem">
+            <div class="thaw-deck-row__title" style=indent>
+                {if has_children {
+                    let open_items = open_items;
+                    view! {
+                        <button
+                            class="thaw-deck-row__expander"
+                            aria-label="toggle subdecks"
+                            on:click=move |_| {
+                                open_items.update(|set| {
+                                    if set.contains(&id) {
+                                        set.remove(&id);
+                                    } else {
+                                        set.insert(id);
+                                    }
+                                });
+                            }
+                        >
+                            {move || {
+                                if open_items.get().contains(&id) { "▾" } else { "▸" }
+                            }}
+                        </button>
+                    }
+                    .into_any()
+                } else {
+                    ().into_any()
+                }}
+                <span class="thaw-deck-row__label">{deck.title}</span>
+            </div>
+            <Badge
+                appearance=BadgeAppearance::Tint
+                color=BadgeColor::Informative
+                size=BadgeSize::Small
+            >
+                {deck.new_count.to_string()}
+            </Badge>
+            <Badge
+                appearance=BadgeAppearance::Tint
+                color=BadgeColor::Danger
+                size=BadgeSize::Small
+            >
+                {deck.learning_count.to_string()}
+            </Badge>
+            <Badge
+                appearance=BadgeAppearance::Tint
+                color=BadgeColor::Success
+                size=BadgeSize::Small
+            >
+                {deck.review_count.to_string()}
+            </Badge>
+        </div>
+        {move || {
+            if has_children && open_items.get().contains(&id) {
+                deck_subtree(children.clone(), depth + 1, open_items).into_any()
             } else {
                 ().into_any()
-            }}
-        </TreeItem>
+            }
+        }}
     }
 }

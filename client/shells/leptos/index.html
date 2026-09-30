@@ -7,9 +7,8 @@
     <link rel="stylesheet" href="https://unpkg.com/sanitize.css" />
     <!-- Shell-local styling for the deck list. The header row and each deck row
          share the same grid template, so the due-count badges line up in columns
-         under New / Learning / Review. thaw's Tree indents the whole item row by
-         default; we neutralize that (padding-left: 0) and indent only the title
-         via an inline style, so the count columns stay on a shared right edge. -->
+         under New / Learning / Review regardless of nesting depth (only the title
+         is indented, via an inline style). -->
     <style>
       .thaw-deck-header,
       .thaw-deck-row {
@@ -20,11 +19,7 @@
         width: 100%;
       }
       .thaw-deck-header {
-        /* Offset by the branch chevron (--spacingHorizontalXXL, 24px) plus thaw's
-           `__main` side padding (--spacingHorizontalXXS, 2px), so the header's
-           columns start at the same x as the deck-row grids below. */
-        padding: 0.25rem 0.5rem 0.5rem
-          calc(var(--spacingHorizontalXXL, 24px) + var(--spacingHorizontalXXS, 2px));
+        padding: 0.25rem 0.5rem 0.5rem;
         font-weight: 600;
         color: var(--colorNeutralForeground3);
       }
@@ -34,20 +29,32 @@
       .thaw-deck-col:first-child {
         justify-self: start;
       }
-      /* Neutralize thaw's row-level indentation (title indent is ours, inline),
-         so the count columns stay on a shared right edge. `!important` is
-         required because thaw mounts its styles into <head> at runtime
-         (after this static block); with equal specificity thaw's later rule
-         would win and keep indenting the whole row (badges included).
-         Leaves get the chevron width as left padding so their badge grid
-         starts at the same x as a branch's (chevron + `__main` pad). */
-      .thaw-tree-item-layout {
-        padding-left: 0 !important;
+      .thaw-deck-tree {
+        display: flex;
+        flex-direction: column;
       }
-      .thaw-tree-item--leaf .thaw-tree-item-layout {
-        padding-left: var(--spacingHorizontalXXL, 24px) !important;
+      .thaw-deck-row {
+        padding: 0.25rem 0.5rem;
+        cursor: default;
       }
       .thaw-deck-row__title {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        min-width: 0;
+      }
+      .thaw-deck-row__expander {
+        flex: 0 0 auto;
+        width: 1.25rem;
+        padding: 0;
+        border: none;
+        background: none;
+        cursor: pointer;
+        font-size: 0.8rem;
+        line-height: 1;
+        color: var(--colorNeutralForeground3);
+      }
+      .thaw-deck-row__label {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
