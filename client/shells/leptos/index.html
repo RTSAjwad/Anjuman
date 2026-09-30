@@ -34,15 +34,18 @@
       .thaw-deck-col:first-child {
         justify-self: start;
       }
-      /* Neutralize thaw's row-level indentation; title indent is ours (inline),
-         so the count columns stay on a shared right edge. Leaves get the chevron
-         width as left padding so their badge grid starts at the same x as a
-         branch's (chevron + `__main` pad). */
+      /* Neutralize thaw's row-level indentation (title indent is ours, inline),
+         so the count columns stay on a shared right edge. `!important` is
+         required because thaw mounts its styles into <head> at runtime
+         (after this static block); with equal specificity thaw's later rule
+         would win and keep indenting the whole row (badges included).
+         Leaves get the chevron width as left padding so their badge grid
+         starts at the same x as a branch's (chevron + `__main` pad). */
       .thaw-tree-item-layout {
-        padding-left: 0;
+        padding-left: 0 !important;
       }
       .thaw-tree-item--leaf .thaw-tree-item-layout {
-        padding-left: var(--spacingHorizontalXXL, 24px);
+        padding-left: var(--spacingHorizontalXXL, 24px) !important;
       }
       .thaw-deck-row__title {
         overflow: hidden;
