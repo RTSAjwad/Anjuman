@@ -724,7 +724,8 @@ injected `HttpResponse`s, never a running server).
       variant, health-check flow proving the contract round-trip + two-event
       HTTP idiom, 7 passing tests.
 - [ ] **US-4.2 — Auth flow** (login → store JWT via `crux_kv` → `GET /me`).
-      Everything downstream is authenticated, so this comes first.
+      Everything downstream is authenticated, so this comes first (see story
+      below).
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
       dependency order).
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
@@ -773,6 +774,63 @@ the client is pinned to the same `anjuman_contracts` DTOs the server serves.
   plumbing. Actual screens/features follow in their own stories.
 - Non-Rust shell bindings (`boltffi`/`codegen`) — regenerated as the model
   grows in a later story, not blocked here.
+
+### US-4.2 — Auth flow (login → store JWT → load `/me`)
+
+**As** a user,
+**I want** to log in with my email and password and have my session restored on
+subsequent visits,
+**so that** every authenticated action is backed by a stored JWT without me
+re-entering credentials each time.
+
+**Background**
+
+The server exposes `POST /auth/login` (body `LoginRequest`, returns
+`LoginResponse { token, user }`) and `GET /me` (Bearer-authenticated, returns
+`UserResponse`). This story wires the core to both, stores the JWT via
+`crux_kv` (which the shell persists to `localStorage`), and restores the
+session on startup. It is the first *real* feature after US-4.1's plumbing, and
+everything downstream (decks, study) depends on the stored token + the
+`Authorization: Bearer <token>` header convention it establishes.
+
+**Prerequisite (contracts)** — `LoginRequest`/`LoginResponse`/`UserResponse` are
+server-oriented today (`LoginResponse`/`UserResponse` serialize but do **not**
+deserialize; `LoginRequest` deserializes but does **not** serialize). The client
+needs the mirror direction. Add the missing `Serialize`/`Deserialize` derives so
+both ends round-trip the same DTOs.
+
+**Acceptance criteria**
+
+- [ ] `Model` carries an auth state: `Unauthenticated` vs `Authenticated { token,
+      user }` (or equivalent).
+- [ ] `Event::LoginSubmit { email, password }` emits an `Http` POST to
+      `/auth/login` with a JSON `LoginRequest` body (assert method/URL/body).
+- [ ] A canned `LoginResponse` resolves to storing `token` + `user` in the model
+      and emitting a KV `set` effect for the token (so the session survives
+      reload).
+- [ ] A canned login **rejection** (401) leaves the model unauthenticated and
+      surfaces the error (no token stored).
+- [ ] `Event::RestoreSession` reads the token from KV (`get`), and when present
+      emits `GET /me` with `Authorization: Bearer <token>` (assert header).
+- [ ] `GET /me` success stores the `UserResponse`; `/me` 401 clears the stored
+      token (session expired) and returns to `Unauthenticated`.
+- [ ] The contracts prerequisite is done: `LoginRequest: Serialize`,
+      `LoginResponse`/`UserResponse: Deserialize` (server build + OpenAPI
+      unchanged otherwise).
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell (acceptance, not core-tested)**
+
+- [ ] The Leptos shell implements the `crux_http` capability (perform the fetch
+      and feed the bytes back via `resolve`) and the `crux_kv` capability
+      (localStorage) — replacing US-4.1's `Effect::Http(_)` stub. A minimal login
+      screen drives `LoginSubmit`/`RestoreSession`.
+
+**Out of scope**
+
+- Registration, token refresh/rotation, logout (a later story), role-based
+  routing, and any protected screen beyond `/me` (decks/study are their own
+  stories).
 
 ---
 
