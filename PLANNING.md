@@ -81,9 +81,46 @@ tests are the compiled version of those criteria.
   test in `client/shared`, asserting on `caps.effects()` (the side-effect-free
   Elm-style idiom; `AppTester` is deprecated — see `client/AGENTS.md`).
 
+### Client (Crux) test idiom
+
+The client core is pure and side-effect-free, so **no server, network, or UI is
+run during a client test**. A criterion is asserted by driving `update` directly
+and inspecting the returned `Command` (its `effects()`) and the resulting
+`Model`/`ViewModel`. This mirrors the existing counter tests in
+`client/shared/src/app.rs`.
+
+An HTTP round-trip is **two events**, and therefore two assertions:
+
+1. The initiating event (e.g. `Event::LoadDecks`) emits an `Effect::Http`
+   capability carrying the correct method/URL/headers — assert on
+   `caps.effects()`.
+2. The completion event (e.g. `Event::DecksReceived(Response)`) is fed a **canned**
+   `HttpResponse` (success or error) as input; its `update` mutates `model` and
+   yields a `Render` effect — assert on the resulting `Model`/`ViewModel`.
+
+The wire payloads are `anjuman_contracts` DTOs, deserialized in the core (the
+shell forwards bytes opaquely — see `client/ARCHITECTURE.md` §5).
+
 A story is **done only when** every acceptance criterion has a passing test. The
 converse applies too: **no untested acceptance criteria** — if a criterion isn't
 worth testing, tighten or drop it.
+
+### Core vs. shell test split
+
+The client has two layers with very different testability:
+
+- **The core (`client/shared/`)** owns all logic, state transitions, HTTP
+  parsing, and capability sequencing. **Acceptance criteria belong here** and
+  are tested as pure `update` tests (see the idiom above).
+- **The shell (`client/shells/leptos/`)** only renders `ViewModel`, emits
+  `Event`, and executes `Effect`s. It is kept deliberately thin and is generally
+  **not unit-tested** (declarative UI; correctness is enforced by types). Reserve
+  shell-side tests for genuinely tricky glue (e.g. the `core_link` effect loop) —
+  do not gold-plate this layer.
+
+Acceptance criteria should therefore be phrased as **core behaviours** ("on
+`LoginSuccess`, `model.auth_token` is stored and an `Http` effect for `/me` is
+emitted"), not UI prose ("the user sees a login form").
 
 Rules carried over from `AGENTS.md` "Definitions of done":
 

@@ -708,22 +708,68 @@ implication.
 ## 4. Frontend — implement the client   `[ ]`
 
 Replace the counter-demo core with the real domain, consuming
-`anjuman_contracts` and the server API.
+`anjuman_contracts` and the server API. Follows the same discipline as stages
+2–3: a story derives from `client/SCREENS_SUPPORT.md` (the feature matrix), and
+every acceptance criterion maps to a `CruxCore::update` test in `client/shared`
+(see `PLANNING.md` §3 for the client test idiom — assert on `caps.effects()` and
+injected `HttpResponse`s, never a running server).
 
-- [ ] Add `anjuman_contracts` as a path dependency of the client `shared` crate
-      (and decide whether `utoipa`'s `openapi` feature is needed client-side —
-      it should **not** be).
-- [ ] Model the client domain in `client/shared/src/app.rs`:
-      - [ ] `Model` (auth state, decks, notes, cards, study session, classes).
-      - [ ] `Event`, `ViewModel`, `Effect` (add `crux_http` + `crux_kv` +
-            `crux_time` capabilities — the core is currently `Render`-only).
-      - [ ] Consume `anjuman_contracts` DTOs for HTTP payloads.
-- [ ] Implement the auth flow (login → store JWT → `/me`).
-- [ ] Implement stable screens first: decks, notes, cards, study — then fold in
-      deck-options/preferences UI once tasks 2 & 3 land.
+> **Core vs. shell.** Acceptance criteria live in and test the **core**; the
+> Leptos shell is thin glue and generally not unit-tested. Criteria are phrased
+> as core behaviours, not UI prose.
+
+- [ ] **US-4.1 — Client plumbing (contracts + capabilities + test harness).**
+      Front-load the API surface before any feature (see story below).
+- [ ] **US-4.2 — Auth flow** (login → store JWT via `crux_kv` → `GET /me`).
+      Everything downstream is authenticated, so this comes first.
+- [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
+      dependency order).
+- [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
+      playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
+      popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
+      (see `client/SCREENS_SUPPORT.md`). Each gets its own story.
+- [ ] **Deck-options/preferences UI** — the settings screens that CRUD
+      `deck-options` and `/preferences`.
 - [ ] Keep the FFI `Bridge`/`codegen` surface working as the model grows;
       regenerate bindings.
-- [ ] `cargo build`/`cargo test` + `trunk serve` succeed.
+
+### US-4.1 — Client plumbing (contracts + capabilities + test harness)
+
+**As** a developer building the real client,
+**I want** the client core wired to `anjuman_contracts` and the HTTP/KV/time
+capabilities with a working test harness,
+**so that** subsequent feature stories have the shared wire types and the
+`update`+`effects()` test idiom established up front.
+
+**Background**
+
+Today `client/shared` is the counter demo: a `Render`-only `Effect` enum, no
+`anjuman_contracts` dependency, no HTTP/KV/time capabilities, and only the
+counter tests. This story front-loads the API surface (per `PLANNING.md` §4) so
+the client is pinned to the same `anjuman_contracts` DTOs the server serves.
+
+**Acceptance criteria**
+
+- [ ] `anjuman_contracts` is a path dependency of `client/shared` (no `utoipa`
+      `openapi` feature client-side).
+- [ ] `Effect` gains an `Http` (`crux_http`) variant; `crux_kv` and `crux_time`
+      are added where the first features need them (KV for the stored JWT, time
+      for learn-ahead/timers) — or explicit note that they are one-arg changes
+      to add later.
+- [ ] The core deserializes an `anjuman_contracts` DTO end-to-end in a test:
+      a canned JSON body → a typed contract struct (proves the shared-type path).
+- [ ] A test demonstrates the two-event HTTP idiom: an event emits
+      `Effect::Http(...)` with the right verb/URL, and a canned `HttpResponse`
+      mutates `model` + requests `Render`.
+- [ ] `cargo test` passes in the client workspace; each criterion has a
+      `shared` test named after it.
+
+**Out of scope**
+
+- Any real feature behaviour (auth, decks, study) — this story only proves the
+  plumbing. Actual screens/features follow in their own stories.
+- Non-Rust shell bindings (`boltffi`/`codegen`) — regenerated as the model
+  grows in a later story, not blocked here.
 
 ---
 

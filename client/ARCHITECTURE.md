@@ -4,8 +4,10 @@ An architecture overview for a Crux-based cross-platform application, written
 in Rust end to end, with first-class native shells on five platforms and a
 Rust web server.
 
-> **Status:** planning / living document. No implementation exists yet. This
-> document records settled decisions and open questions.
+> **Status:** living document. The Crux core + Leptos shell are implemented (a
+> counter demo); the real domain (auth, decks, study) is stage-4 work. The
+> server and `anjuman_contracts` now live in this monorepo (sibling folders) as
+> separate Cargo workspaces linked by path dependencies.
 
 ---
 
@@ -106,16 +108,18 @@ Libadwaita) are *not* bound by that constraint: they drive the typed
 no `Bridge`, and the real `Event`/`Effect`/`ViewModel` types. See §4 for the
 boundary model and why these two paths differ.
 
-### 3.4 The server (Axum) — separate repository
+### 3.4 The server (Axum)
 
-- Stays a **separate repo**; not a member of this monorepo.
+- Lives in the **sibling `server/` folder** of this monorepo — a separate Cargo
+  workspace, not a member of *this* (client) workspace, linked to the core via the
+  path dependency on `anjuman_contracts`.
 - Rust + Axum, exposing the HTTP API the core's HTTP capability calls.
-- Currently the only consumer of the core's network traffic.
 
 ### 3.5 The contract crate (`anjuman_contracts`)
 
 - The **single source of truth** for the request/response types crossing the
-  network between the core and the server.
+  network between the core and the server. Lives in the sibling `contracts/`
+  folder (a path dependency of both `server` and `client/shared`).
 - Derived with **`serde`** (`Serialize`/`Deserialize`) — for the JSON network
   wire — and, where relevant, `Facet` so the same structs can be type-generated
   for shells.
@@ -225,12 +229,13 @@ The network bytes and the FFI bytes are independent; the *typed structs* in
 
 ## 6. Repository layout
 
-This client monorepo is planned as a Cargo workspace plus sibling directories
-for native shells. The server and (initially) the contract crate live outside
-this repo.
+This monorepo contains **three independent Cargo workspaces** (deliberately
+separate — see the root `AGENTS.md`) linked by path dependencies:
 
 ```
-anjuman-crux/               # client monorepo
+contracts/                 # anjuman_contracts — shared wire DTOs (its own workspace)
+server/                    # anjuman_server — Axum backend (its own workspace)
+client/                    # this workspace
 ├── Cargo.toml              # [workspace] + [workspace.dependencies] (central pinning)
 ├── .gitignore
 ├── ARCHITECTURE.md         # this document
@@ -248,18 +253,23 @@ anjuman-crux/               # client monorepo
 ```
 
 Centralizing shared crate versions in `[workspace.dependencies]` avoids drift
-across the multiple Rust crates.
+across the multiple Rust crates. `client/shared` consumes `contracts/` via
+`path = "../../contracts"`.
 
-## 7. Why the server is *not* in the monorepo
+## 7. Why the client is a *separate workspace* from the server
+
+Even though the server, contracts, and client now share one git repository, they
+remain **separate Cargo workspaces**, not one top-level workspace:
 
 - **No shared binary code.** The client and server share only the wire contract
-  (which lives in `anjuman_contracts`), not compiled code. A monorepo's main
-  benefit — single build, atomic cross-crate refactors — buys little here.
+  (`anjuman_contracts`), not compiled code.
 - **Different release cadence.** The server deploys continuously; clients ship
   via App Store / Play Store / desktop installers on unrelated schedules.
-- **Different dependency graphs and team/permission boundaries.**
+- **Different dependency graphs / feature flags.** The client needs a WASM,
+  size-optimized release profile and `facets`/`boltffi`; the server a standard
+  throughput profile and a Postgres pool.
 - **Unrelated toolchains.** FFI/typegen, `trunk`, Xcode, and Kotlin tooling have
-  no place in a repo that also runs a web server.
+  no place in a workspace that also builds a web server.
 
 ## 8. Distribution of decisions — settled vs. open
 
@@ -269,19 +279,19 @@ across the multiple Rust crates.
 - **Two access paths**: typed `Core<Anjuman>` API for Rust shells (Leptos,
   Libadwaita); `Bridge` + `BoltFFI` bindings + `Facet` typegen for non-Rust
   shells (Swift/Kotlin/C#). Rust shells do *not* serialize through the FFI.
-- Server stays in its own repository.
-- Single shared contract crate as the type source of truth.
+- Server + contracts live in this git repo as **sibling folders**, but each is a
+  **separate Cargo workspace** (see §7).
+- Single shared contract crate (`contracts/`) as the type source of truth.
 - **JSON over the wire** for the core↔server boundary; wire-format optimization
   (`rkyv`, protobuf, …) deferred as a future TODO.
-- Client monorepo layout (workspace + `shared` + `shells/`).
+- Client workspace layout (workspace + `shared` + `shells/`).
 
 ### Open questions
 
-1. **Contract crate location.** Separate repo/registry, or a temporary workspace
-   member under this repo until the server's position solidifies.
-2. **First capability set.** Whether v1 needs HTTP + key-value + time, or just
-   `Render`, to prove the capability/shell-impl pattern.
-3. **Streaming/large payloads.** If large or streaming data is needed, decide
+1. **First capability set.** HTTP is required for stage 4; decide whether
+   key-value + time are needed for the first features (auth token storage needs
+   KV; learn-ahead/timebox are client-side but time-aware).
+2. **Streaming/large payloads.** If large or streaming data is needed, decide
    between Server-Sent Events / chunked responses vs. single-message responses
    (the `counter-http` example demonstrates both HTTP and SSE effects).
 

@@ -1,0 +1,67 @@
+# Anjuman Client — Screens & Client-side Behaviour Matrix
+
+The client analog of `server/DECK_OPTIONS_SUPPORT.md` / `server/PREFERENCES_SUPPORT.md`.
+It catalogues what the **client** owns — screens, flows, and the behaviours that
+stages 2–3 marked "client-side (stage 4)" — so each can become a `US-4.x` story
+in `ROADMAP.md` stage 4. The *ordering* and *status* live in `ROADMAP.md`; this
+document records the *what* and *why*.
+
+Legend:
+
+- ✅ implemented
+- 🟡 partial
+- ❌ not yet implemented (a real client-side gap)
+- ⚪ not applicable / deferred to a later stage
+
+## Scope: core vs. shell
+
+- **Core (`client/shared/`)** owns all logic and is where acceptance criteria are
+  tested (`CruxCore::update` + `caps.effects()`). It consumes `anjuman_contracts`
+  DTOs over `crux_http` (JSON), stores the JWT via `crux_kv`, and reads time via
+  `crux_time`.
+- **Shell (`client/shells/leptos/`)** renders the `ViewModel`, emits `Event`, and
+  executes `Effect`s. Kept thin; generally not unit-tested.
+
+## Screens & flows (stable screens first)
+
+| Screen / flow | Status | Notes |
+|---|---|---|
+| Auth (login → store JWT → `/me`) | ❌ | The prerequisite for everything else; US-4.2. |
+| Decks (list/detail) | ❌ | Consumes `GET /decks`, `/decks/counts`. |
+| Notes (browser/edit) | ❌ | Consumes `GET /notes`, note-type/template UI later. |
+| Cards / browser | ❌ | Consumes `GET /cards`; flag/suspend/bury actions. |
+| Study session | ❌ | Consumes `GET/POST /decks/{id}/study`; the single-card loop. |
+| Deck options / preferences settings | ❌ | CRUD `deck-options` + `/preferences` in UI. |
+| Classes / dashboard (teacher) | ❌ | Consumer of `/classes`, `/dashboard`; lower priority. |
+| Tagging / search | ❌ | Deferred to stage 6 (search) — no client work now. |
+
+## Client-side behaviours deferred from stages 2–3
+
+These were persisted server-side (or descoped) with a "behaviour client-side
+(stage 4)" note. Each becomes its own story once the stable screens land:
+
+| Behaviour | Source | Server state (already done) | Client work (stage 4) |
+|---|---|---|---|
+| On-screen timer | US-2.14 | `show_on_screen_timer`, `stop_timer_on_answer` booleans | Render the running timer; stop on answer. |
+| Audio playback | US-2.14 | `dont_play_audio_automatically`, `skip_question_when_replaying_answer` | Play/stop audio; Replay action honours the toggles. |
+| Auto-advance | US-2.14 | `auto_advance_*` (seconds + question/answer actions) | Count down and apply the configured action. |
+| Maximum answer seconds | US-2.15 | `maximum_answer_seconds` (server clamps) | Run the stopwatch and send `response_time_ms`. |
+| Timebox popup | US-3.2 | `timebox_time_limit` (persisted, persistence-only) | Periodically show "N cards this timebox". |
+| Leech "Tag Only" popup | US-2.3 | `leech_action` enum (`TagOnly` is a no-op server-side) | Show the leech pop-up (tagging itself is stage 6). |
+| Theme / answer keys / form-factor prefs | stage 3 matrix | n/a (client-owned) | Client-local settings (see `PREFERENCES_SUPPORT.md`). |
+
+## Client-side divergences to preserve (from stages 2–3)
+
+- **Random display orders are deterministic per student-day** (not per-session),
+  because the server is stateless — recorded in `DECK_OPTIONS_SUPPORT.md`; the
+  client must not assume per-session shuffling.
+- **`Mix` new/review order was descoped** to "show after" (server), documented as
+  a divergence; a faithful `Mix` would need session state the server doesn't hold.
+- **FSRS simulators / Help Me Decide** are descoped to a **post-client stage** —
+  no client work now.
+
+## Deferred entirely (not client, not now)
+
+- Collection-wide scoping questions (stage 7): `new_cards_ignore_review_limit`,
+  `limits_start_from_top`, desired-retention per-deck, custom scheduling (JS).
+- FSRS optimizer (US-2.18b) — deferred past stage 4 and stage 6.

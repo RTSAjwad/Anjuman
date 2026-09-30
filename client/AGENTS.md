@@ -18,13 +18,16 @@ SwiftUI/WinUI/Compose/Libadwaita are planned.
 - `shared/` — the Crux core. `Model`/`Event`/`ViewModel`/`Effect` in
   `src/app.rs`, FFI in `src/ffi.rs`, typegen binary in `src/bin/codegen.rs`.
 - `shells/leptos/` — the web front-end (CSR-only, `trunk`).
+- `SCREENS_SUPPORT.md` — the client feature matrix (screens + deferred
+  client-side behaviours) that stage-4 stories derive from.
 - `flake.nix` — Nix dev shell (in the **repo root**; provisions Rust 1.98 +
   `wasm32` target, `trunk`, `boltffi_cli`, `pnpm`, `gtk4`/`libadwaita`, plus the
   server's `sqlx-cli`/`sqlite`).
 - `shared/boltffi.toml` — BoltFFI native-binding config (apple/android/wasm/csharp).
 
-The Axum server and the `anjuman_contracts` crate live in **separate repos**
-(not here).
+The Axum server and the `anjuman_contracts` crate live in **sibling folders of
+this monorepo** (`../server`, `../contracts`) — path dependencies, not separate
+repos.
 
 ## 2. Build / run / test
 
@@ -53,9 +56,9 @@ cd shared && boltffi generate swift   # native bindings (also: kotlin/csharp/typ
 |---|---|---|
 | `crux_core` | **0.20.0** | https://docs.rs/crux_core/0.20.0/crux_core/ |
 | `crux_macros` | 0.10.1 | https://docs.rs/crux_macros/0.10.1/ |
-| `crux_http` | 0.20.0 (planned, not yet a dependency) | https://docs.rs/crux_http/0.20.0/crux_http/ |
-| `crux_kv` | 0.14.0 (planned) | https://docs.rs/crux_kv/0.14.0/ |
-| `crux_time` | 0.18.0 (planned) | https://docs.rs/crux_time/0.18.0/ |
+| `crux_http` | 0.20.0 | https://docs.rs/crux_http/0.20.0/crux_http/ |
+| `crux_kv` | 0.14.0 | https://docs.rs/crux_kv/0.14.0/ |
+| `crux_time` | 0.18.0 | https://docs.rs/crux_time/0.18.0/ |
 
 - Crux book: https://redbadger.github.io/crux/ (note: thin on detail; the
   **examples repo** is the real ground truth).
@@ -123,13 +126,23 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 - Typegen is a **`codegen` binary inside `shared`** (not a separate crate) —
   `shared/src/bin/codegen.rs`, gated by the `codegen` feature.
 
-### HTTP (planned)
+### HTTP
 - `crux_http` is a **separate crate**, not part of `crux_core`.
 - The **shell performs the request** and passes opaque bytes back via
   `core.resolve(...)`; the **core deserializes** the body. Wire format is **JSON**
   (`expect_json`/`body_json`); `rkyv`/protobuf deferred (see ARCHITECTURE §5).
 - Async in the core is expressed via `Command` + `then_send(Event::X)`, not
   `async`/`await` in `update`.
+- An HTTP round-trip is **two events**: `Event::Load<X>` (emits
+  `Effect::Http(request)`) and `Event::<X>Received(HttpResponse)` (fed back in,
+  mutates `model`). Tests assert the emitted `Http` capability and the
+  post-response `Model`/`ViewModel` separately (see `PLANNING.md` §3).
+
+### Testing
+- Test `update` directly (`Command::effects()`), **never** `AppTester`
+  (deprecated 0.17+). Inject **canned** `HttpResponse`s; no live server/network.
+- The counter tests in `shared/src/app.rs` are the canonical pattern; new
+  stories add `#[cfg(test)] mod tests` next to their feature in `shared/`.
 
 ### Leptos / shell
 - CSR-only: the shell is a **single binary target** (`src/main.rs` declares

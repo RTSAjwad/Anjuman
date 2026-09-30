@@ -84,8 +84,9 @@ sending serialized events and reading the serialized view model. BoltFFI
 call this surface, and the `codegen` binary (`shared/src/bin/codegen.rs`)
 generates the `Event`/`ViewModel`/effect payload types each shell needs.
 
-For the Leptos shell, this is done in `shells/leptos/src/core_link.rs`, which
-serializes events into bytes, calls `CoreFfi::update`, and reads the resulting
-`ViewModel` back into a Leptos signal. This is the **same** FFI interface the
-native shells (SwiftUI/Compose/WinUI) will use, so every shell exercises one
-code path.
+For the Leptos shell (the only implemented shell today), this is done in
+`shells/leptos/src/core_link.rs`, which drives the **typed `Core<Anjuman>` API
+directly** (`process_event` / `view`) — no serialization — and reads the resulting
+`ViewModel` into a Leptos signal. This is the Rust-shell path; the *non-Rust*
+shells (SwiftUI/Kotlin/C#) will instead cross the FFI `Bridge` (`CoreFfi`) via
+generated BoltFFI bindings — the same `shared` core, a different access path.
