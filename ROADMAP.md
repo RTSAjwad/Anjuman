@@ -606,6 +606,11 @@ single-user and trivially total):
 - Teacher/admin sharing UX and collaborator nesting (reuse existing
   `share_deck`/`add_deck_to_class`; this story only changes how a grant
   *propagates* to descendants/ancestors).
+- **Non-disclosure of admin meta for context-only ancestors** — `get_deck` of a
+  context-only ancestor returns the deck row (for tree context) but empty
+  `collaborators`/`classes`; a student not directly granted that deck never
+  sees its collaborator emails or class roster (pinned by
+  `deck_sharing::context_only_ancestor_detail_hides_collaborators_and_classes`).
 
 Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
 `/api-docs`).

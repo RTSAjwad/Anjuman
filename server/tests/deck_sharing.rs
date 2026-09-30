@@ -184,6 +184,35 @@ async fn ungranted_student_is_forbidden() {
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
 }
 
+/// A context-only ancestor's *detail* (`get_deck`) returns the row but no
+/// collaborators or class list — administrative meta must not leak to a student
+/// who isn't directly granted that deck (US-2.19).
+#[tokio::test]
+async fn context_only_ancestor_detail_hides_collaborators_and_classes() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, _ttok) = create_user(&app, UserRole::Teacher).await;
+    let (student_id, stok) = create_user(&app, UserRole::Student).await;
+    let (parent, child) = seed_parent_child(&app, teacher_id).await;
+    grant_via_class(&app, teacher_id, student_id, child).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(get(&format!("/decks/{parent}"), &stok))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // The row is visible (tree context)…
+    assert_eq!(json["deck"]["id"].as_i64(), Some(parent));
+    // …but its administrative meta is not exposed to this student.
+    assert_eq!(json["collaborators"].as_array().map(Vec::len), Some(0));
+    assert_eq!(json["classes"].as_array().map(Vec::len), Some(0));
+}
+
 /// `deck_access` is the correct level when queried directly: Studyable for
 /// self/ancestor grant, ContextOnly for a descendant grant.
 #[tokio::test]

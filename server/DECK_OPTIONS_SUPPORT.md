@@ -298,8 +298,9 @@ optional polish, not a correctness requirement.
 - **Deck sharing is subtree-scoped; ancestors are read-only context.** sharing a
   deck (via class or collaborator) recursively grants its descendants; a student
   granted a *child* deck sees its ancestors for tree context but those ancestors
-  are **not studyable** unless separately granted. Anki has no analogue (single
-  user owns everything). See ROADMAP US-2.19.
+  are **not studyable** unless separately granted, and their `get_deck` detail
+  hides `collaborators`/`classes` from a non-owner/non-collaborator. Anki has no
+  analogue (single user owns everything). See ROADMAP US-2.19.
 
 ## Open questions / under-documented Anki behaviour
 

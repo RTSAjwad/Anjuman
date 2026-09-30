@@ -1144,28 +1144,35 @@ pub async fn get_deck(
         vec![]
     };
 
-    // Fetch classes the deck is assigned to.
-    let class_rows = sqlx::query!(
-        r#"
-        SELECT c.id, c.name
-        FROM deck_classes dc
-        JOIN classes c ON c.id = dc.class_id
-        WHERE dc.deck_id = $1
-        ORDER BY c.name
-        "#,
-        deck_id
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    // Fetch classes the deck is assigned to. Gated the same way as the
+    // collaborator list: a student who isn't the owner/admin/collaborator of
+    // *this* deck (e.g. a context-only ancestor under US-2.19) must not see its
+    // class roster.
+    let deck_classes: Vec<ClassInfo> = if is_collab {
+        let class_rows = sqlx::query!(
+            r#"
+            SELECT c.id, c.name
+            FROM deck_classes dc
+            JOIN classes c ON c.id = dc.class_id
+            WHERE dc.deck_id = $1
+            ORDER BY c.name
+            "#,
+            deck_id
+        )
+        .fetch_all(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    let deck_classes: Vec<ClassInfo> = class_rows
-        .into_iter()
-        .map(|r| ClassInfo {
-            id: r.id,
-            name: r.name,
-        })
-        .collect();
+        class_rows
+            .into_iter()
+            .map(|r| ClassInfo {
+                id: r.id,
+                name: r.name,
+            })
+            .collect()
+    } else {
+        vec![]
+    };
 
     Ok(Json(DeckDetailResponse {
         deck,
