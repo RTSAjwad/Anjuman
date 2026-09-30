@@ -62,11 +62,18 @@ pub fn RootComponent() -> impl IntoView {
     Effect::new(move |_| {
         let vm = view.get();
 
-        // Once per newly-opened deck, request the first due card.
-        if let Some(deck) = &vm.selected_deck {
-            if started_for.get_value() != deck.id {
-                started_for.set_value(deck.id);
-                set_event.set(Event::StartStudy);
+        match &vm.selected_deck {
+            Some(deck) => {
+                // Once per newly-opened deck, request the first due card.
+                if started_for.get_value() != deck.id {
+                    started_for.set_value(deck.id);
+                    set_event.set(Event::StartStudy);
+                }
+            }
+            None => {
+                // Deck closed: reset the guard so re-opening the *same* deck
+                // re-fires `StartStudy`.
+                started_for.set_value(0);
             }
         }
 
