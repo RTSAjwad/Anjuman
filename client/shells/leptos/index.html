@@ -220,8 +220,17 @@
         overflow: auto;
         text-align: center;
       }
-      .study-card-view__front .thaw-study-card__front {
-        font-size: var(--fontSizeBase500);
+      .study-card-frame {
+        flex: 1 1 auto;
+        width: 100%;
+        display: flex;
+        min-height: 0;
+      }
+      .study-card-frame__iframe {
+        flex: 1 1 auto;
+        border: 1px solid var(--colorNeutralStroke2);
+        border-radius: var(--borderRadiusMedium, 4px);
+        background: #fff;
       }
       .study-card-view__controls {
         flex: 0 0 auto;

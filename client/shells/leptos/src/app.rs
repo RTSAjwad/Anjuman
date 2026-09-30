@@ -323,8 +323,8 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
     }
 }
 
-/// A single card: the front (then the revealed back) centred in the available
-/// space, with the reveal/answer controls pinned to the bottom.
+/// A single card: the front (then the revealed back) rendered as HTML in a
+/// sandboxed iframe, with the reveal/answer controls pinned to the bottom.
 fn study_card_view(
     card: StudyCardView,
     revealed: RwSignal<bool>,
@@ -337,23 +337,27 @@ fn study_card_view(
     let intervals = card.predicted_interval.unwrap_or_default();
     let interval_for = move |r: i32| intervals.get(&r).copied();
 
+    let front = card.front;
+    let back = card.back;
+    let state = card.state;
+
     view! {
         <div class="study-card-view">
             <div class="study-card-view__front">
-                <span class="thaw-study-card__state">{card.state.clone()}</span>
-                <p class="thaw-study-card__front">{card.front.clone()}</p>
-                {move || {
-                    if revealed.get() {
-                        view! {
-                            <div class="thaw-study-card thaw-study-card--answer">
-                                <p class="thaw-study-card__back">{card.back.clone()}</p>
-                            </div>
+                <span class="thaw-study-card__state">{state}</span>
+                <div class="study-card-frame">
+                    <iframe
+                        class="study-card-frame__iframe"
+                        sandbox=""
+                        srcdoc=move || {
+                            if revealed.get() {
+                                card_html(&back)
+                            } else {
+                                card_html(&front)
+                            }
                         }
-                        .into_any()
-                    } else {
-                        ().into_any()
-                    }
-                }}
+                    ></iframe>
+                </div>
             </div>
 
             <div class="study-card-view__controls">
@@ -386,6 +390,14 @@ fn study_card_view(
             </div>
         </div>
     }
+}
+
+/// Wrap a card-side HTML fragment (the template-rendered front/back) in a
+/// minimal HTML document so it renders standalone in the sandboxed iframe.
+fn card_html(body: &str) -> String {
+    format!(
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\" /></head><body>{body}</body></html>"
+    )
 }
 
 /// A single answer button (label + predicted interval underneath).
