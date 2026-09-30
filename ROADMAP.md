@@ -728,8 +728,8 @@ injected `HttpResponse`s, never a running server).
       below). Done: contracts derives + auth core + 7 tests + Leptos
       `crux_http`/`crux_kv` capabilities + login screen.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
-      dependency order). Decks list is US-4.3 (done — see story below); notes,
-      cards, study remain.
+      dependency order). Decks list is US-4.3 (done); study entry + loop are
+      US-4.4/US-4.5 (drafted, see stories below); notes + cards remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -906,6 +906,95 @@ today. The client needs the mirror direction (same as US-4.2's auth fix). Add
 
 - Create/rename/delete/duplicate/share decks (teacher/admin actions — a later
   story), deck *detail* (drilling into a deck), and study (its own story).
+
+### US-4.4 — Open a deck (study entry)
+
+**As** a signed-in user looking at my decks,
+**I want** to select a deck and land on its study screen,
+**so that** I can start studying that deck's cards.
+
+**Background**
+
+The decks list (US-4.3) already carries each deck's `id`. This story adds the
+navigation seam: an `Event::OpenDeck { deck_id }` sets the *currently selected*
+deck in the model and exposes it in the `ViewModel`, so the shell can switch
+from the list to the study screen. No new fetch is required — the deck is
+already in `model.decks` (the study *cards* are fetched by US-4.5).
+
+**Acceptance criteria**
+
+- [ ] `Event::OpenDeck { deck_id }` records the selected deck (e.g.
+      `model.selected_deck: Option<DeckSummary>` or the `deck_id`) and emits a
+      render.
+- [ ] `ViewModel` exposes the selected deck (id + title) so the shell can show
+      a study screen heading/context.
+- [ ] Opening an unknown `deck_id` (not in the list) is a no-op that does not
+      crash or select a bogus deck.
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] Tapping a deck forwards `Event::OpenDeck { deck_id }`.
+- [ ] When `ViewModel` shows a selected deck, render the study screen (even if
+      empty of cards until US-4.5); otherwise render the deck list.
+
+**Out of scope**
+
+- Fetching/rendering study cards (US-4.5), and any per-deck detail beyond the
+  study entry (collaborators/classes/rename — later stories).
+
+### US-4.5 — Study session (single-card loop)
+
+**As** a student in a deck,
+**I want** to see one card at a time, answer Again/Hard/Good/Easy, and be shown
+the next due card (or "nothing due"),
+**so that** I can review the deck the way Anki does.
+
+**Background**
+
+The server exposes `GET /decks/{id}/study` (returns the first due card + counts)
+and `POST /decks/{id}/study` (body `StudyAdvanceBody { card_id, rating,
+response_time_ms }`, returns the next card + the reviewed card's new state). The
+server is **sessionless**, so the *client* drives the loop: the `Model` holds a
+single `Option<StudyCard>` + counts, and each answer POSTs and replaces the
+current card with `next_card`. This mirrors the server's stateless contract and
+avoids any client-side queue (which would drift from server state).
+
+**Prerequisite (contracts)** — `StudyCard`/`StudyAdvance`/`StudyCounts`/
+`ReviewedCardState` derive `Serialize` but **not** `Deserialize`, and
+`StudyAdvanceBody` derives `Deserialize` but **not** `Serialize`. The client
+needs the mirror direction (same as auth/decks).
+
+**Acceptance criteria**
+
+- [ ] `Model` holds study-session state (`current_card: Option<StudyCard>`,
+      `counts: StudyCounts`, plus the deck being studied).
+- [ ] `Event::StartStudy` emits `GET /decks/{id}/study` with the bearer header;
+      the response's `next_card` becomes `model.current_card` (or `None` →
+      "nothing due").
+- [ ] `Event::Answer { rating }` emits `POST /decks/{id}/study` with a
+      `StudyAdvanceBody` carrying the current card id + rating; the response's
+      `next_card` replaces `current_card`, and `counts` update.
+- [ ] Ratings are constrained to 1–4 (Again/Hard/Good/Easy); an invalid rating
+      is ignored (no request emitted).
+- [ ] When `next_card` is `None`, the `ViewModel` exposes a "finished / nothing
+      due" state (not a panic).
+- [ ] The contracts prerequisite is done: study DTOs round-trip
+      (`Serialize`/`Deserialize` on the response types and `StudyAdvanceBody`).
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] When a deck is selected, forward `Event::StartStudy`.
+- [ ] Render the current card (front; reveal back on demand), plus the four
+      answer buttons (Again/Hard/Good/Easy) forwarding `Event::Answer { rating }`.
+- [ ] Render the counts and the "nothing due" completion state.
+
+**Out of scope**
+
+- Flip/reveal animation, bury/suspend-from-study, flags, predicted-interval
+  labels (`StudyCard.predicted_interval` is already returned; *displaying* it is
+  optional shell polish), and any offline/queueing.
 
 ---
 
