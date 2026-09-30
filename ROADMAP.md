@@ -894,11 +894,11 @@ today. The client needs the mirror direction (same as US-4.2's auth fix). Add
 
 **Shell contract**
 
-- [ ] After sign-in, forward `Event::DecksRequested`.
-- [ ] Render the decks list (title + due counts) from `ViewModel.decks`,
+- [x] After sign-in, forward `Event::DecksRequested`. *(Auto-chained by the core — the shell just renders the result.)*
+- [x] Render the decks list (title + due counts) from `ViewModel.decks`,
       **recursing into `DeckSummary.children`** (nested subdecks) — the core
       provides the tree; the shell only renders it.
-- [ ] Render an error state and an empty state (no decks yet).
+- [x] Render an error state and an empty state (no decks yet).
 
 > **Verified in Leptos now; other shells check the same list off later.**
 

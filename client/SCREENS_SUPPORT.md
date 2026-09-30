@@ -80,6 +80,17 @@ These were persisted server-side (or descoped) with a "behaviour client-side
 
 ## Client-side divergences to preserve (from stages 2–3)
 
+- **Deck-tree collapse state is not persisted (client-only, transient).** Anki
+  remembers each deck's expanded/collapsed state across sessions. Anjuman's
+  Leptos shell currently **collapses all decks by default** on every load and
+  does **not** persist the user's expand/collapse choices. This is a deliberate
+  simplification until a real decision is made. It could later be resolved as:
+  (a) *ignored* — always collapsed (simplest, but loses Anki parity);
+  (b) *client-specific* — persist the open-item set in `localStorage` via the
+  existing KV capability, or a dedicated per-shell setting; or
+  (c) *server-specific* — persist per-user-per-deck open state server-side,
+  synced across shells (heavier, but matches Anki's cross-device behaviour).
+  Until then, this is tracked here, not as a core story.
 - **Random display orders are deterministic per student-day** (not per-session),
   because the server is stateless — recorded in `DECK_OPTIONS_SUPPORT.md`; the
   client must not assume per-session shuffling.

@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Anjuman</title>
     <link rel="stylesheet" href="https://unpkg.com/sanitize.css" />
+    <!-- Shell-local styling for the deck list: the deck row mirrors the header
+         columns so the due-count badges line up under New / Learning / Review. -->
+    <style>
+      .thaw-deck-row {
+        display: grid;
+        grid-template-columns: 1fr 3.5rem 3.5rem 3.5rem;
+        gap: 0.5rem;
+        align-items: center;
+        width: 100%;
+      }
+      .thaw-deck-row__title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .thaw-deck-row .thaw-badge {
+        justify-self: end;
+      }
+    </style>
     <!-- The lib and bin targets are both named `leptos_shell`; point trunk at
          the binary entrypoint explicitly. -->
     <link data-trunk rel="rust" data-bin="leptos_shell" />
