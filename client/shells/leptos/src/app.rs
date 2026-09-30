@@ -10,7 +10,7 @@
 //! `IntoFragment` error).
 
 use leptos::prelude::*;
-use shared::app::{DeckSummary, StudyCardView};
+use shared::app::{DeckSummary, StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
@@ -119,27 +119,33 @@ pub fn RootComponent() -> impl IntoView {
                             <main class="app-content">
                                 {if let Some(deck) = vm.selected_deck.clone() {
                                     let deck_title = deck.title.clone();
+                                    let counts = vm.counts.clone();
                                     view! {
-                                        <Breadcrumb>
-                                            <BreadcrumbItem>
-                                                <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
-                                            </BreadcrumbItem>
-                                            <BreadcrumbDivider />
-                                            <BreadcrumbItem>
-                                                <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">{deck_title}</button>
-                                            </BreadcrumbItem>
-                                        </Breadcrumb>
+                                        <div class="app-header">
+                                            <Breadcrumb>
+                                                <BreadcrumbItem>
+                                                    <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
+                                                </BreadcrumbItem>
+                                                <BreadcrumbDivider />
+                                                <BreadcrumbItem>
+                                                    <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">{deck_title}</button>
+                                                </BreadcrumbItem>
+                                            </Breadcrumb>
+                                            {study_count_badges(counts)}
+                                        </div>
                                         <StudyScreen
-                                            vm=vm.clone() deck=deck revealed=revealed set_event=set_event />
+                                            vm=vm.clone() revealed=revealed set_event=set_event />
                                     }
                                     .into_any()
                                 } else {
                                     view! {
-                                        <Breadcrumb>
-                                            <BreadcrumbItem>
-                                                <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">"Decks"</button>
-                                            </BreadcrumbItem>
-                                        </Breadcrumb>
+                                        <div class="app-header">
+                                            <Breadcrumb>
+                                                <BreadcrumbItem>
+                                                    <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">"Decks"</button>
+                                                </BreadcrumbItem>
+                                            </Breadcrumb>
+                                        </div>
                                         <DeckList vm=vm.clone() set_event=set_event />
                                     }
                                     .into_any()
@@ -248,57 +254,28 @@ fn deck_list(vm: ViewModel, set_event: WriteSignal<Event>) -> impl IntoView {
     .into_any()
 }
 
-/// The study screen: one card at a time, reveal-then-answer, plus due counts,
-/// a "loading" state (while the first fetch is in flight), a "nothing due"
-/// completion state, and the study error surface. Pure rendering of the given
-/// `ViewModel` snapshot — study state (`StartStudy` gating, reveal reset)
-/// lives in `RootComponent`.
+/// The study screen: one card at a time, centred in the available space, with
+/// the reveal/answer controls pinned to the bottom. Due counts live in the
+/// header (see `study_count_badges`); the deck title is in the breadcrumb. Pure
+/// rendering of the `ViewModel` snapshot — study state (`StartStudy` gating,
+/// reveal reset) lives in `RootComponent`.
 #[component]
 fn study_screen(
     vm: ViewModel,
-    deck: DeckSummary,
     revealed: RwSignal<bool>,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     let current = vm.current_card;
-    let counts = vm.counts;
     let study_error = vm.study_error;
     let busy = vm.busy;
 
     view! {
-        <Card>
-            <div style="display: flex; flex-direction: column; gap: 1rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <h2 style="margin: 0;">{deck.title}</h2>
-                    <div class="thaw-study-counts">
-                        <Badge
-                            appearance=BadgeAppearance::Tint
-                            color=BadgeColor::Brand
-                            size=BadgeSize::Small
-                        >
-                            {counts.new_count.to_string()}
-                        </Badge>
-                        <Badge
-                            appearance=BadgeAppearance::Tint
-                            color=BadgeColor::Danger
-                            size=BadgeSize::Small
-                        >
-                            {(counts.learning_count + counts.relearning_count).to_string()}
-                        </Badge>
-                        <Badge
-                            appearance=BadgeAppearance::Tint
-                            color=BadgeColor::Success
-                            size=BadgeSize::Small
-                        >
-                            {counts.review_count.to_string()}
-                        </Badge>
-                    </div>
-                </div>
+        <div class="study-screen">
+            {study_error.map(|err| view! {
+                <p style="color: #c00;">{err}</p>
+            })}
 
-                {study_error.map(|err| view! {
-                    <p style="color: #c00;">{err}</p>
-                })}
-
+            <div class="study-screen__body">
                 {match current {
                     Some(card) => study_card_view(card, revealed, set_event).into_any(),
                     None => {
@@ -313,11 +290,41 @@ fn study_screen(
                     }
                 }}
             </div>
-        </Card>
+        </div>
     }
 }
 
-/// A single card: front, then (on demand) the back + answer buttons.
+/// The study due-count badges shown in the header, next to the breadcrumb.
+fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
+    view! {
+        <div class="thaw-study-counts">
+            <Badge
+                appearance=BadgeAppearance::Tint
+                color=BadgeColor::Brand
+                size=BadgeSize::Small
+            >
+                {counts.new_count.to_string()}
+            </Badge>
+            <Badge
+                appearance=BadgeAppearance::Tint
+                color=BadgeColor::Danger
+                size=BadgeSize::Small
+            >
+                {(counts.learning_count + counts.relearning_count).to_string()}
+            </Badge>
+            <Badge
+                appearance=BadgeAppearance::Tint
+                color=BadgeColor::Success
+                size=BadgeSize::Small
+            >
+                {counts.review_count.to_string()}
+            </Badge>
+        </div>
+    }
+}
+
+/// A single card: the front (then the revealed back) centred in the available
+/// space, with the reveal/answer controls pinned to the bottom.
 fn study_card_view(
     card: StudyCardView,
     revealed: RwSignal<bool>,
@@ -331,41 +338,52 @@ fn study_card_view(
     let interval_for = move |r: i32| intervals.get(&r).copied();
 
     view! {
-        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-            <div class="thaw-study-card">
+        <div class="study-card-view">
+            <div class="study-card-view__front">
                 <span class="thaw-study-card__state">{card.state.clone()}</span>
                 <p class="thaw-study-card__front">{card.front.clone()}</p>
+                {move || {
+                    if revealed.get() {
+                        view! {
+                            <div class="thaw-study-card thaw-study-card--answer">
+                                <p class="thaw-study-card__back">{card.back.clone()}</p>
+                            </div>
+                        }
+                        .into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
             </div>
 
-            {move || {
-                if revealed.get() {
-                    view! {
-                        <div class="thaw-study-card thaw-study-card--answer">
-                            <p class="thaw-study-card__back">{card.back.clone()}</p>
-                        </div>
-                        <div class="thaw-study-answers">
-                            {answer_button(
-                                rating.clone(),
-                                interval_for.clone(),
-                                "thaw-study-answers__again",
-                                1,
-                                "Again",
-                            )}
-                            {answer_button(rating.clone(), interval_for.clone(), "", 2, "Hard")}
-                            {answer_button(rating.clone(), interval_for.clone(), "", 3, "Good")}
-                            {answer_button(rating.clone(), interval_for.clone(), "", 4, "Easy")}
-                        </div>
+            <div class="study-card-view__controls">
+                {move || {
+                    if revealed.get() {
+                        view! {
+                            <div class="thaw-study-answers">
+                                {answer_button(
+                                    rating.clone(),
+                                    interval_for.clone(),
+                                    "thaw-study-answers__again",
+                                    1,
+                                    "Again",
+                                )}
+                                {answer_button(rating.clone(), interval_for.clone(), "", 2, "Hard")}
+                                {answer_button(rating.clone(), interval_for.clone(), "", 3, "Good")}
+                                {answer_button(rating.clone(), interval_for.clone(), "", 4, "Easy")}
+                            </div>
+                        }
+                        .into_any()
+                    } else {
+                        view! {
+                            <Button appearance=ButtonAppearance::Primary on_click=move |_| revealed.set(true)>
+                                "Show answer"
+                            </Button>
+                        }
+                        .into_any()
                     }
-                    .into_any()
-                } else {
-                    view! {
-                        <Button appearance=ButtonAppearance::Primary on_click=move |_| revealed.set(true)>
-                            "Show answer"
-                        </Button>
-                    }
-                    .into_any()
-                }
-            }}
+                }}
+            </div>
         </div>
     }
 }
