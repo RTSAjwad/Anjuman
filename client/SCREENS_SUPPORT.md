@@ -17,8 +17,8 @@ Legend:
 
 - **Core (`client/shared/`)** owns all logic and is where acceptance criteria are
   tested (`CruxCore::update` + `caps.effects()`). It consumes `anjuman_contracts`
-  DTOs over `crux_http` (JSON), stores the JWT via `crux_kv`, and reads time via
-  `crux_time`.
+  DTOs over `crux_http` (JSON) and stores the JWT via `crux_kv`; `crux_time` is
+  not yet a dependency (added when a story needs it).
 - **Shell (`client/shells/leptos/`)** renders the `ViewModel`, emits `Event`, and
   executes `Effect`s. Kept thin; generally not unit-tested.
 

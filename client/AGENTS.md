@@ -171,7 +171,9 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
   **Non-Rust shells** (Swift/Kotlin/C#) use the FFI `Bridge` + BoltFFI + Facet.
 - **JSON over the wire** for core↔server. Wire optimization is an explicit TODO.
 - FFI binding tool is **BoltFFI** (not uniffi).
-- The Axum server and `anjuman_contracts` stay in separate repos.
+- The Axum server and `anjuman_contracts` live in this monorepo as sibling
+  folders (`../server`, `../contracts`) — but each is a **separate Cargo
+  workspace** (see ARCHITECTURE.md §7), linked by path dependencies.
 
 See `ARCHITECTURE.md` §8 for the full settled-vs-open list.
 
