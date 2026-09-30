@@ -728,7 +728,7 @@ injected `HttpResponse`s, never a running server).
       below). Done: contracts derives + auth core + 7 tests + Leptos
       `crux_http`/`crux_kv` capabilities + login screen.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
-      dependency order).
+      dependency order). Decks list is US-4.3 (see story below).
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -846,6 +846,54 @@ both ends round-trip the same DTOs.
 - Registration, token refresh/rotation, role-based routing, and any protected
   screen beyond `/me` (decks/study are their own stories). Logout is **in
   scope** (clears the stored token and returns to `Unauthenticated`).
+
+### US-4.3 — Decks list (read-only)
+
+**As** a signed-in user,
+**I want** to see my decks with their due counts,
+**so that** I know what to study and can see at a glance how many new/learning/
+review cards each deck has.
+
+**Background**
+
+`GET /decks` returns `Vec<DeckResponse>` (each deck with per-student counts when
+listed); `GET /decks/counts` returns `DeckCountsResponse { decks: Vec<DeckCounts> }`.
+Both are `AuthUser`-gated — any role may *view* decks (create/edit is
+teacher/admin, deferred). This is the first stable screen and the template for
+screens that follow (notes, cards, study): fetch a list over an authenticated
+endpoint, deserialize `anjuman_contracts` DTOs, expose them in the `ViewModel`.
+
+**Prerequisite (contracts)** — the deck response DTOs (`DeckResponse`,
+`DeckCounts`, `DeckCountsResponse`) derive `Serialize` but **not** `Deserialize`
+today. The client needs the mirror direction (same as US-4.2's auth fix). Add
+`Deserialize` so the core can read the list/counts responses.
+
+**Acceptance criteria**
+
+- [ ] `Model` gains a `decks` list (and an error flag) gated behind auth.
+- [ ] `Event::DecksRequested` (fired after a successful login/restore) emits
+      `GET /decks` with the `Authorization: Bearer <token>` header.
+- [ ] A canned `Vec<DeckResponse>` (success) populates `model.decks` and the
+      `ViewModel` exposes each deck's title + counts (`new`/`learning`/`review`).
+- [ ] A canned `DeckCountsResponse` (success) populates the per-deck counts used
+      to render the due badges.
+- [ ] A rejection (401/500) sets an error in the `ViewModel` without crashing.
+- [ ] The contracts prerequisite is done: `DeckResponse`/`DeckCounts`/
+      `DeckCountsResponse: Deserialize` (server build + OpenAPI unchanged).
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] After sign-in, forward `Event::DecksRequested`.
+- [ ] Render the decks list (title + due counts) from the `ViewModel`.
+- [ ] Render an error state and an empty state (no decks yet).
+
+> **Verified in Leptos now; other shells check the same list off later.**
+
+**Out of scope**
+
+- Create/rename/delete/duplicate/share decks (teacher/admin actions — a later
+  story), deck *detail* (drilling into a deck), and study (its own story).
 
 ---
 
