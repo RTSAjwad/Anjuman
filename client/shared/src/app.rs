@@ -130,6 +130,8 @@ pub struct ViewModel {
     pub error: Option<String>,
     /// Decks to render (title + per-state counts).
     pub decks: Vec<DeckSummary>,
+    /// A human-readable error from the last decks fetch, if any.
+    pub decks_error: Option<String>,
 }
 
 /// A deck as shown in the list view (title + due counts).
@@ -319,6 +321,7 @@ impl crux_core::App for Anjuman {
                 busy: model.busy,
                 error: model.error.clone(),
                 decks,
+                decks_error: model.decks_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -327,6 +330,7 @@ impl crux_core::App for Anjuman {
                 busy: model.busy,
                 error: model.error.clone(),
                 decks,
+                decks_error: model.decks_error.clone(),
             },
         }
     }
@@ -663,7 +667,8 @@ mod tests {
         assert_eq!(vm.decks[0].total_count, 38);
     }
 
-    /// A decks rejection surfaces an error without crashing.
+    /// A decks rejection surfaces an error (on the model and in the view)
+    /// without crashing.
     #[test]
     fn decks_rejection_sets_error() {
         let mut model = authenticated_model();
@@ -672,6 +677,9 @@ mod tests {
 
         assert!(model.decks_error.is_some());
         assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
+
+        let vm = Anjuman.view(&model);
+        assert!(vm.decks_error.is_some());
     }
 
     /// Logout clears the deck list.
