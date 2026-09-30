@@ -15,8 +15,7 @@ use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Button, ButtonAppearance, Card, ConfigProvider,
-    Input, Table, TableHeader, TableHeaderCell, TableRow, Tree, TreeItem, TreeItemLayout,
-    TreeItemType,
+    Input, Tree, TreeItem, TreeItemLayout, TreeItemType,
 };
 
 use crate::core_link;
@@ -149,18 +148,14 @@ fn deck_list(vm: ViewModel) -> impl IntoView {
     let open_items = RwSignal::new(HashSet::new());
     view! {
         <Card>
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHeaderCell>"Deck"</TableHeaderCell>
-                        <TableHeaderCell>"New"</TableHeaderCell>
-                        <TableHeaderCell>"Learning"</TableHeaderCell>
-                        <TableHeaderCell>"Review"</TableHeaderCell>
-                    </TableRow>
-                </TableHeader>
-            </Table>
+            <div class="thaw-deck-header">
+                <span class="thaw-deck-col">"Deck"</span>
+                <span class="thaw-deck-col">"New"</span>
+                <span class="thaw-deck-col">"Learning"</span>
+                <span class="thaw-deck-col">"Review"</span>
+            </div>
             <Tree open_items=open_items size=thaw::TreeSize::Medium>
-                {deck_subtree(decks)}
+                {deck_subtree(decks, 0)}
             </Tree>
         </Card>
     }
@@ -171,12 +166,15 @@ fn deck_list(vm: ViewModel) -> impl IntoView {
 /// Each item's layout shows the title on the left and the New/Learning/Review
 /// counts as coloured badges on the right (Anki palette: new = blue, learning =
 /// red, review/due = green).
-fn deck_subtree(decks: Vec<DeckSummary>) -> impl IntoView {
-    decks.into_iter().map(deck_item).collect_view()
+fn deck_subtree(decks: Vec<DeckSummary>, depth: usize) -> impl IntoView {
+    decks
+        .into_iter()
+        .map(|deck| deck_item(deck, depth))
+        .collect_view()
 }
 
 /// Renders a single deck (and its subdecks, if any) as a thaw `TreeItem`.
-fn deck_item(deck: DeckSummary) -> impl IntoView {
+fn deck_item(deck: DeckSummary, depth: usize) -> impl IntoView {
     let item_type = if deck.children.is_empty() {
         TreeItemType::Leaf
     } else {
@@ -184,12 +182,16 @@ fn deck_item(deck: DeckSummary) -> impl IntoView {
     };
     let value = deck.id.to_string();
     let children = deck.children;
+    // Indent the title only (via inline style) so the count columns stay on a
+    // shared right edge; thaw would otherwise pad the whole row and shift the
+    // badges. 16px per level, in step with thaw's default chevron width.
+    let indent = format!("padding-left: {}px", depth * 16);
 
     view! {
         <TreeItem item_type=item_type value=value>
             <TreeItemLayout>
                 <div class="thaw-deck-row">
-                    <span class="thaw-deck-row__title">{deck.title}</span>
+                    <span class="thaw-deck-row__title" style=indent>{deck.title}</span>
                     <Badge
                         appearance=BadgeAppearance::Tint
                         color=BadgeColor::Informative
@@ -213,7 +215,19 @@ fn deck_item(deck: DeckSummary) -> impl IntoView {
                     </Badge>
                 </div>
             </TreeItemLayout>
-            {deck_subtree(children)}
+            {if !children.is_empty() {
+                // Nested `Tree` (not raw `TreeItem`s) — thaw's `Tree` detects it's
+                // inside a `TreeItem` and renders a `Subtree`, which both increments
+                // the indent level and wraps the children in a `CollapseTransition`
+                // bound to this item's `open` state (so the chevron actually
+                // collapses/expands them).
+                view! {
+                    <Tree>{deck_subtree(children, depth + 1)}</Tree>
+                }
+                .into_any()
+            } else {
+                ().into_any()
+            }}
         </TreeItem>
     }
 }

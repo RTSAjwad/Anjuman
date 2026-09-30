@@ -5,15 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Anjuman</title>
     <link rel="stylesheet" href="https://unpkg.com/sanitize.css" />
-    <!-- Shell-local styling for the deck list: the deck row mirrors the header
-         columns so the due-count badges line up under New / Learning / Review. -->
+    <!-- Shell-local styling for the deck list. The header row and each deck row
+         share the same grid template, so the due-count badges line up in columns
+         under New / Learning / Review. thaw's Tree indents the whole item row by
+         default; we neutralize that (padding-left: 0) and indent only the title
+         via an inline style, so the count columns stay on a shared right edge. -->
     <style>
+      .thaw-deck-header,
       .thaw-deck-row {
         display: grid;
-        grid-template-columns: 1fr 3.5rem 3.5rem 3.5rem;
+        grid-template-columns: minmax(0, 1fr) 4rem 4rem 4rem;
         gap: 0.5rem;
         align-items: center;
         width: 100%;
+      }
+      .thaw-deck-header {
+        /* Match the chevron width so header columns line up over the badge
+           columns below (title at depth 0 sits after the 24px chevron). */
+        padding: 0.25rem 0.5rem 0.5rem 24px;
+        font-weight: 600;
+        color: var(--colorNeutralForeground3);
+      }
+      .thaw-deck-col {
+        justify-self: end;
+      }
+      .thaw-deck-col:first-child {
+        justify-self: start;
+      }
+      /* Neutralize thaw's row-level indentation; title indent is ours (inline),
+         so the count columns stay on a shared right edge. Leaves get a 24px left
+         pad to match the branch chevron so their badges align with branches. */
+      .thaw-tree-item-layout {
+        padding-left: 0;
+      }
+      .thaw-tree-item--leaf .thaw-tree-item-layout {
+        padding-left: 24px;
       }
       .thaw-deck-row__title {
         overflow: hidden;
