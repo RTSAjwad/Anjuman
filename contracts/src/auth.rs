@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::shared::UserRole;
 
 /// Expected JSON body for the login request.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LoginRequest {
     /// The user's email address (used as the login identifier).
@@ -15,7 +15,7 @@ pub struct LoginRequest {
 }
 
 /// JSON response returned on successful login.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LoginResponse {
     /// The JWT access token. Valid for 24 hours.

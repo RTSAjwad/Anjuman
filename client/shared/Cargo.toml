@@ -34,6 +34,7 @@ codegen = [
 crux_core = { workspace = true }
 crux_macros = { workspace = true }
 crux_http = { workspace = true }
+crux_kv = { workspace = true }
 facet = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

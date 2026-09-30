@@ -26,7 +26,7 @@ Legend:
 
 | Screen / flow | Status | Notes |
 |---|---|---|
-| Auth (login → store JWT → `/me`) | ❌ | The prerequisite for everything else; US-4.2. |
+| Auth (login → store JWT → `/me`) | ✅ | The prerequisite for everything else; US-4.2. |
 | Decks (list/detail) | ❌ | Consumes `GET /decks`, `/decks/counts`. |
 | Notes (browser/edit) | ❌ | Consumes `GET /notes`, note-type/template UI later. |
 | Cards / browser | ❌ | Consumes `GET /cards`; flag/suspend/bury actions. |
@@ -46,7 +46,7 @@ tracked here only.
 
 | Screen / behaviour | Leptos (now) | SwiftUI | WinUI | Compose | Libadwaita |
 |---|---|---|---|---|---|
-| Auth (login / restore session / `/me`) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Auth (login / restore session / `/me`) | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Decks | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Notes | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Cards / browser | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |

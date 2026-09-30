@@ -723,9 +723,10 @@ injected `HttpResponse`s, never a running server).
       `anjuman_contracts` + `crux_http`/`url` wired into `shared`, `Http` effect
       variant, health-check flow proving the contract round-trip + two-event
       HTTP idiom, 7 passing tests.
-- [ ] **US-4.2 — Auth flow** (login → store JWT via `crux_kv` → `GET /me`).
+- [x] **US-4.2 — Auth flow** (login → store JWT via `crux_kv` → `GET /me`).
       Everything downstream is authenticated, so this comes first (see story
-      below).
+      below). Done: contracts derives + auth core + 7 tests + Leptos
+      `crux_http`/`crux_kv` capabilities + login screen.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
       dependency order).
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
@@ -801,35 +802,39 @@ both ends round-trip the same DTOs.
 
 **Acceptance criteria**
 
-- [ ] `Model` carries an auth state: `Unauthenticated` vs `Authenticated { token,
+- [x] `Model` carries an auth state: `Unauthenticated` vs `Authenticated { token,
       user }` (or equivalent).
-- [ ] `Event::LoginSubmit { email, password }` emits an `Http` POST to
+- [x] `Event::LoginSubmit { email, password }` emits an `Http` POST to
       `/auth/login` with a JSON `LoginRequest` body (assert method/URL/body).
-- [ ] A canned `LoginResponse` resolves to storing `token` + `user` in the model
+- [x] A canned `LoginResponse` resolves to storing `token` + `user` in the model
       and emitting a KV `set` effect for the token (so the session survives
       reload).
-- [ ] A canned login **rejection** (401) leaves the model unauthenticated and
+- [x] A canned login **rejection** (401) leaves the model unauthenticated and
       surfaces the error (no token stored).
-- [ ] `Event::RestoreSession` reads the token from KV (`get`), and when present
+- [x] `Event::RestoreSession` reads the token from KV (`get`), and when present
       emits `GET /me` with `Authorization: Bearer <token>` (assert header).
-- [ ] `GET /me` success stores the `UserResponse`; `/me` 401 clears the stored
+- [x] `GET /me` success stores the `UserResponse`; `/me` 401 clears the stored
       token (session expired) and returns to `Unauthenticated`.
-- [ ] `Event::Logout` clears the token (a KV `delete` effect) and resets the
+- [x] `Event::Logout` clears the token (a KV `delete` effect) and resets the
       model to `Unauthenticated`.
-- [ ] The contracts prerequisite is done: `LoginRequest: Serialize`,
+- [x] The contracts prerequisite is done: `LoginRequest: Serialize`,
       `LoginResponse`/`UserResponse: Deserialize` (server build + OpenAPI
       unchanged otherwise).
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+  **Implemented**: `contracts/auth.rs` derives; auth core (`Auth` state,
+  `LoginSubmit`/`RestoreSession`/`Logout` + `LoginResult`/`MeResult`/`Token*`
+  events, `pending_token` bridge) with 7 tests in `shared/src/app.rs`.
 
 **Shell contract** (a checklist every shell satisfies — not a per-shell story; see
 `client/AGENTS.md` §7 and `SCREENS_SUPPORT.md` "Shell coverage").
 
-- [ ] Implement the `crux_http` capability (perform the fetch, feed bytes back
+- [x] Implement the `crux_http` capability (perform the fetch, feed bytes back
       via `resolve`) and `crux_kv` (localStorage) — replaces US-4.1's
       `Effect::Http(_)` stub.
-- [ ] Render a login form (email + password) forwarding `Event::LoginSubmit`;
+- [x] Render a login form (email + password) forwarding `Event::LoginSubmit`;
       on startup, forward `Event::RestoreSession`.
-- [ ] Render `ViewModel` auth state (a signed-in vs. signed-out view), with a
+- [x] Render `ViewModel` auth state (a signed-in vs. signed-out view), with a
       sign-out affordance forwarding `Event::Logout`.
 
 > **Verified in Leptos now; SwiftUI/WinUI/Compose/Libadwaita check the same
