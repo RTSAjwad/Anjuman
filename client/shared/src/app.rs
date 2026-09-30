@@ -9,6 +9,8 @@ use crux_core::{
     render::{self, RenderOperation},
 };
 use crux_http::{command::Http, protocol::HttpRequest};
+use std::collections::HashMap;
+
 use crux_kv::protocol::KeyValueOperation;
 use facet::Facet;
 use serde::{Deserialize, Serialize};
@@ -181,8 +183,7 @@ pub struct ViewModel {
 
 /// The shell-facing view of a card during study (a Facet/FFI-friendly mirror of
 /// the wire `StudyCard`, following the same core-local mapping as `DeckSummary`
-/// vs. `DeckResponse`). Only the fields US-4.5 renders are exposed; bury/suspend,
-/// flags, and `predicted_interval` are out of scope for now.
+/// vs. `DeckResponse`). Bury/suspend and flags are out of scope for now.
 #[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
 pub struct StudyCardView {
     pub card_id: i64,
@@ -192,6 +193,10 @@ pub struct StudyCardView {
     pub state: String,
     /// Current position in the learning/relearning steps list (0-based).
     pub step_index: i64,
+    /// Predicted interval (in seconds) until next review per rating, keyed by
+    /// rating 1..=4 (1=Again, 2=Hard, 3=Good, 4=Easy). `None` when the server
+    /// returned no prediction (e.g. certain new/learning states).
+    pub predicted_interval: Option<HashMap<i32, i64>>,
 }
 
 /// The shell-facing per-state counts for a study session (a Facet-friendly
@@ -223,6 +228,11 @@ impl From<&StudyCard> for StudyCardView {
             back: c.back.clone(),
             state: c.state.clone(),
             step_index: c.step_index,
+            predicted_interval: c.predicted_interval.as_ref().map(|m| {
+                m.iter()
+                    .filter_map(|(k, v)| k.parse::<i32>().ok().map(|rating| (rating, *v)))
+                    .collect()
+            }),
         }
     }
 }
@@ -1192,6 +1202,32 @@ mod tests {
         let vm = Anjuman.view(&model);
         assert_eq!(vm.current_card.as_ref().map(|c| c.card_id), Some(7));
         assert_eq!(vm.counts.review_count, 5);
+    }
+
+    /// `StudyCard.predicted_interval` (rating→seconds, string-keyed on the wire)
+    /// is mapped into `StudyCardView` keyed by `i32` rating.
+    #[test]
+    fn study_maps_predicted_interval() {
+        let mut model = study_ready_model();
+        let mut card = study_card(7);
+        card.predicted_interval = Some(
+            [("1".to_string(), 60), ("2".to_string(), 600), ("3".to_string(), 1209600), ("4".to_string(), 2073600)]
+                .into_iter()
+                .collect(),
+        );
+        let response = ResponseBuilder::ok().body(study_advance(Some(card))).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+        let intervals = vm
+            .current_card
+            .as_ref()
+            .and_then(|c| c.predicted_interval.as_ref())
+            .expect("predicted_interval mapped into view");
+        assert_eq!(intervals.get(&1), Some(&60));
+        assert_eq!(intervals.get(&2), Some(&600));
+        assert_eq!(intervals.get(&3), Some(&1209600));
+        assert_eq!(intervals.get(&4), Some(&2073600));
     }
 
     /// A finished study session (`next_card: None`) exposes a "nothing due" state

@@ -1074,9 +1074,10 @@ needs the mirror direction (same as auth/decks).
 
 **Out of scope**
 
-- Flip/reveal animation, bury/suspend-from-study, flags, predicted-interval
-  labels (`StudyCard.predicted_interval` is already returned; *displaying* it is
-  optional shell polish), and any offline/queueing.
+- Flip/reveal animation, bury/suspend-from-study, flags, and any
+  offline/queueing. Predicted-interval labels are now in scope: `StudyCardView`
+  exposes `predicted_interval` (rating→seconds) for the shell to format under
+  each answer button (formatting itself is shell polish).
 
 ---
 
