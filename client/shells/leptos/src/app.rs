@@ -59,6 +59,10 @@ pub fn RootComponent() -> impl IntoView {
     let revealed = RwSignal::new(false);
     let started_for = StoredValue::new(0i64);
     let seen_card = StoredValue::new(0i64);
+    // Whether the current deck's `StartStudy` request is still in flight (true
+    // from the moment we fire it until a result lands — a card, an error, or a
+    // confirmed empty response). Distinguishes "loading" from "nothing due".
+    let study_pending = RwSignal::new(false);
     Effect::new(move |_| {
         let vm = view.get();
 
@@ -66,8 +70,17 @@ pub fn RootComponent() -> impl IntoView {
         if let Some(deck) = &vm.selected_deck {
             if started_for.get_value() != deck.id {
                 started_for.set_value(deck.id);
+                study_pending.set(true);
                 set_event.set(Event::StartStudy);
             }
+        }
+
+        // A study result has arrived once a card or an error is present. (An
+        // empty deck is the ambiguous case — the core doesn't yet expose a
+        // loading flag; see the `study_pending`/carve-out note in the study
+        // screen.)
+        if vm.current_card.is_some() || vm.study_error.is_some() {
+            study_pending.set(false);
         }
 
         // Reset the reveal whenever the shown card changes.
@@ -123,7 +136,7 @@ pub fn RootComponent() -> impl IntoView {
                                             </BreadcrumbItem>
                                         </Breadcrumb>
                                         <StudyScreen
-                                            vm=vm.clone() deck=deck revealed=revealed set_event=set_event />
+                                            vm=vm.clone() deck=deck revealed=revealed study_pending=study_pending set_event=set_event />
                                     }
                                     .into_any()
                                 } else {
@@ -242,14 +255,16 @@ fn deck_list(vm: ViewModel, set_event: WriteSignal<Event>) -> impl IntoView {
 }
 
 /// The study screen: one card at a time, reveal-then-answer, plus due counts,
-/// a "nothing due" completion state, and the study error surface. Pure rendering
-/// of the given `ViewModel` snapshot — study state (`StartStudy` gating, reveal
-/// reset) lives in `RootComponent`.
+/// a "loading" state (while the first fetch is in flight), a "nothing due"
+/// completion state, and the study error surface. Pure rendering of the given
+/// `ViewModel` snapshot — study state (`StartStudy` gating, reveal reset)
+/// lives in `RootComponent`.
 #[component]
 fn study_screen(
     vm: ViewModel,
     deck: DeckSummary,
     revealed: RwSignal<bool>,
+    study_pending: RwSignal<bool>,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     let current = vm.current_card;
@@ -274,7 +289,16 @@ fn study_screen(
 
                 {match current {
                     Some(card) => study_card_view(card, revealed, set_event).into_any(),
-                    None => study_done_view(set_event).into_any(),
+                    None => { move || {
+                        if study_pending.get() {
+                            view! {
+                                <p style="color: #888;">"Loading…"</p>
+                            }
+                            .into_any()
+                        } else {
+                            study_done_view(set_event).into_any()
+                        }
+                    }}.into_any(),
                 }}
             </div>
         </Card>
