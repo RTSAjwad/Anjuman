@@ -14,8 +14,8 @@ use shared::app::{DeckSummary, StudyCardView};
 use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
-    Badge, BadgeAppearance, BadgeColor, BadgeSize, Button, ButtonAppearance, Card, ConfigProvider,
-    Input,
+    Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
+    BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Input, NavDrawer, NavItem,
 };
 
 use crate::core_link;
@@ -78,40 +78,73 @@ pub fn RootComponent() -> impl IntoView {
         }
     });
 
+    // -----------------------------------------------------------------
+    // Sidebar navigation state. "Decks" is the only destination for now; its
+    // `NavItem` is always selected, and clicking it (or the breadcrumb's
+    // "Decks" link) returns to the list via `Event::CloseDeck`.
+    let nav_selected = RwSignal::new("decks".to_string());
+    let open_categories = RwSignal::new(Vec::<String>::new());
+    // Back to the list (fires `CloseDeck`). Shared by the sidebar and breadcrumb.
+    let close_deck = move || set_event.set(Event::CloseDeck);
+
     view! {
         <ConfigProvider>
-            <main style="max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
-                <h1>"Anjuman"</h1>
-
-                {move || {
-                    let vm: ViewModel = view.get();
-                    if vm.authenticated {
-                        view! {
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-                                <div>
-                                    <p>"Signed in as " <strong>{vm.display_name.clone()}</strong></p>
-                                    <p style="color: #888;">{vm.email.clone()}</p>
+            {move || {
+                let vm: ViewModel = view.get();
+                if vm.authenticated {
+                    view! {
+                        <div class="app-shell">
+                            <aside class="app-sidebar">
+                                <div class="app-sidebar__brand">"Anjuman"</div>
+                                <NavDrawer selected_value=nav_selected open_categories=open_categories multiple=false>
+                                    <NavItem value=RwSignal::new("decks".to_string())>
+                                        "Decks"
+                                    </NavItem>
+                                </NavDrawer>
+                                <div class="app-sidebar__footer">
+                                    <p class="app-sidebar__user">{vm.display_name.clone()}</p>
+                                    <Button appearance=ButtonAppearance::Subtle on_click=logout>
+                                        "Log out"
+                                    </Button>
                                 </div>
-                                <Button appearance=ButtonAppearance::Subtle on_click=logout>
-                                    "Log out"
-                                </Button>
-                            </div>
+                            </aside>
 
-                            {if let Some(deck) = vm.selected_deck.clone() {
-                                view! {
-                                    <StudyScreen
-                                        vm=vm.clone() deck=deck revealed=revealed set_event=set_event />
-                                }
-                                .into_any()
-                            } else {
-                                view! {
-                                    <DeckList vm=vm.clone() set_event=set_event />
-                                }
-                                .into_any()
-                            }}
-                        }.into_any()
-                    } else {
-                        view! {
+                            <main class="app-content">
+                                {if let Some(deck) = vm.selected_deck.clone() {
+                                    let deck_title = deck.title.clone();
+                                    view! {
+                                        <Breadcrumb>
+                                            <BreadcrumbItem>
+                                                <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
+                                            </BreadcrumbItem>
+                                            <BreadcrumbDivider />
+                                            <BreadcrumbItem>
+                                                <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">{deck_title}</button>
+                                            </BreadcrumbItem>
+                                        </Breadcrumb>
+                                        <StudyScreen
+                                            vm=vm.clone() deck=deck revealed=revealed set_event=set_event />
+                                    }
+                                    .into_any()
+                                } else {
+                                    view! {
+                                        <Breadcrumb>
+                                            <BreadcrumbItem>
+                                                <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">"Decks"</button>
+                                            </BreadcrumbItem>
+                                        </Breadcrumb>
+                                        <DeckList vm=vm.clone() set_event=set_event />
+                                    }
+                                    .into_any()
+                                }}
+                            </main>
+                        </div>
+                    }
+                    .into_any()
+                } else {
+                    view! {
+                        <main class="app-login">
+                            <h1>"Anjuman"</h1>
                             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
                                 <Input value=email placeholder="Email" />
                                 <Input value=password placeholder="Password" />
@@ -146,10 +179,11 @@ pub fn RootComponent() -> impl IntoView {
                                     }).collect_view()}
                                 </div>
                             </div>
-                        }.into_any()
+                        </main>
                     }
-                }}
-            </main>
+                    .into_any()
+                }
+            }}
         </ConfigProvider>
     }
 }
