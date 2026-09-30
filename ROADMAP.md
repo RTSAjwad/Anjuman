@@ -72,6 +72,9 @@ matrix's "Summary of the biggest gaps" is the working list:
 - [ ] **Custom scheduling (JS) — descoped (collection-wide)** — text-area JS
       hook, collection-wide, "use at your own risk"; deferred with the other
       collection-wide options (stage 7 note below).
+- [ ] **Deck sharing: subtree access model** → US-2.19 (drafted; see below) —
+      a grant on a deck covers its subtree, ancestors are read-only context,
+      and the student's list stays a tree.
 - [x] **Lapses** — leech threshold/action + empty relearning steps. Done
       (US-2.2–US-2.4). Minimum interval is SM-2 — out of scope.
 - [x] **US-2.2 — Leech threshold**
@@ -543,6 +546,65 @@ matrix's "Summary of the biggest gaps" is the working list:
       (optimizer). Fixed two stale rows: "Display order taken from selected
       deck" (now ✅ — it is implemented) and "Save to all subdecks" (now ⏳ —
       deferred convenience, not missing scheduling).
+
+### US-2.19 — Deck sharing: subtree access model
+
+**As** a student,
+**I want** sharing a deck to cover its whole subtree (and not leak ancestors I
+wasn't given),
+**so that** what I can open/study matches what the teacher actually shared, and
+my deck list is a consistent tree.
+
+**Background / decisions (settled)**
+
+Today `check_deck_visible` (the single access predicate behind `get_deck`,
+`list_deck_classes`, `notes::list_notes`, and both study endpoints) checks only
+the **single deck id** — owner → admin → collaborator → class-membership — with
+**no recursion**. But the student *listing* and *counts* already recurse via
+`WITH RECURSIVE subtree`. Result: a student shared a parent deck sees
+**subtree-wide counts but only the parent row** — the children aren't listed, so
+they can't be opened/studied individually. And a student shared only a *child*
+deck has no visible parent, so their tree is incoherent.
+
+Three decisions (documented divergence from Anki, where deck ownership is
+single-user and trivially total):
+
+1. **Grant = subtree.** Sharing deck X recursively grants X *and all its
+   descendants* — for listing, counts, study, notes, everything that checks
+   `check_deck_visible`.
+2. **Ancestors are read-only context, not grants.** A student granted a *child*
+   deck sees its ancestors in the list purely so the tree renders, but those
+   ancestors are **not studyable** by them (only the granted node + its
+   descendants are). We do **not** widen a child grant up the tree (that would
+   silently expose the parent's own cards).
+3. **The list is still a tree** for students — context-only ancestors render in
+   place, marked non-studyable, never flattened away.
+
+**Acceptance criteria**
+
+- [ ] `check_deck_visible` grants access when the deck **or any ancestor** is
+      shared to the user (a student granted `Cell Biology` can study it and its
+      descendants; a student granted `Biology 101` can study the whole subtree).
+- [ ] `list_decks` (student branch) returns, for a parent/child grant, the
+      whole connected subtree — including **context-only ancestor rows** for a
+      child grant — so the tree renders fully.
+- [ ] Study (`GET`/`POST /decks/{id}/study`) honours the subtree rule: studyable
+      iff the deck or an ancestor is granted; a context-only ancestor returns a
+      rejection (not its own cards).
+- [ ] Context-only ancestors are distinguished from studyable decks in the
+      response (e.g. a `studyable`/`granted` flag) so the client can disable
+      "study" on them.
+- [ ] `GET /decks/counts` and card/note listing share the same subtree rule.
+- [ ] Each criterion has a `server/tests/` test named after it (new
+      `server/tests/deck_sharing.rs`, or extended existing deck tests).
+
+**Out of scope / related**
+
+- Stage 7 personal `deck_options` overrides (scheduling tuning) — orthogonal to
+  this access-model story.
+- Teacher/admin sharing UX and collaborator nesting (reuse existing
+  `share_deck`/`add_deck_to_class`; this story only changes how a grant
+  *propagates* to descendants/ancestors).
 
 Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
 `/api-docs`).

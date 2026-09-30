@@ -295,6 +295,11 @@ optional polish, not a correctness requirement.
   handlers to match the in-app min/max. (The only deliberately-divergent bound
   is maximum interval rejecting the redundant `0` — Anki floors it to `1`
   anyway, as documented in the Advanced section.)
+- **Deck sharing is subtree-scoped; ancestors are read-only context.** sharing a
+  deck (via class or collaborator) recursively grants its descendants; a student
+  granted a *child* deck sees its ancestors for tree context but those ancestors
+  are **not studyable** unless separately granted. Anki has no analogue (single
+  user owns everything). See ROADMAP US-2.19.
 
 ## Open questions / under-documented Anki behaviour
 
