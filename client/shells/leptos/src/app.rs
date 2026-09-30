@@ -283,7 +283,7 @@ fn study_screen(
                             color=BadgeColor::Danger
                             size=BadgeSize::Small
                         >
-                            {counts.learning_count.to_string()}
+                            {(counts.learning_count + counts.relearning_count).to_string()}
                         </Badge>
                         <Badge
                             appearance=BadgeAppearance::Tint
@@ -291,13 +291,6 @@ fn study_screen(
                             size=BadgeSize::Small
                         >
                             {counts.review_count.to_string()}
-                        </Badge>
-                        <Badge
-                            appearance=BadgeAppearance::Tint
-                            color=BadgeColor::Warning
-                            size=BadgeSize::Small
-                        >
-                            {counts.relearning_count.to_string()}
                         </Badge>
                     </div>
                 </div>
