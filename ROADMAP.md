@@ -998,18 +998,23 @@ already in `model.decks` (the study *cards* are fetched by US-4.5).
       shell can show a study screen heading/context (and gate the study button).
 - [x] Opening an unknown `deck_id` (not in the list) is a no-op that does not
       crash or select a bogus deck.
+- [x] `Event::CloseDeck` returns to the deck list: clears `selected_deck` and
+      resets in-flight study state (`current_card`/`counts`/`study_error`) while
+      keeping auth + decks intact (carve-out for back-navigation).
 - [x] Each criterion has a `shared` test named after it; `cargo test` passes.
 
   **Implemented**: `selected_deck` model state, `Event::OpenDeck`, `find_deck`
   selection helper, `ViewModel.selected_deck`; `DeckSummary` gained `studyable`
   (US-2.19 carve-out) so the shell can disable study on context-only decks.
-  3 new tests (17 total in `shared`). Logout clears selection.
+  Later added `Event::CloseDeck` (back-navigation seam) for the shell's
+  breadcrumb/sidebar. 4 new tests (18 total in `shared`). Logout clears selection.
 
 **Shell contract**
 
 - [ ] Tapping a deck forwards `Event::OpenDeck { deck_id }`.
 - [ ] When `ViewModel` shows a selected deck, render the study screen (even if
       empty of cards until US-4.5); otherwise render the deck list.
+- [ ] The breadcrumb/sidebar back-to-list affordance forwards `Event::CloseDeck`.
 
 **Out of scope**
 

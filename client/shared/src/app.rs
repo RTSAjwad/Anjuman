@@ -94,6 +94,9 @@ pub enum Event {
     Answer {
         rating: i32,
     },
+    /// Leave the study screen and return to the deck list: clear the selection
+    /// and reset in-flight study state (keeps auth + deck data intact).
+    CloseDeck,
 
     // --- Core-local completion events (never cross the FFI boundary) ---
 
@@ -422,6 +425,16 @@ impl crux_core::App for Anjuman {
                 if let Some(summary) = find_deck(&model.decks, deck_id) {
                     model.selected_deck = Some(summary);
                 }
+                render::render()
+            }
+
+            Event::CloseDeck => {
+                // Back-navigation: drop the selection and any in-flight study
+                // state, but keep auth + decks (unlike `Logout`).
+                model.selected_deck = None;
+                model.current_card = None;
+                model.counts = StudyCounts::default();
+                model.study_error = None;
                 render::render()
             }
 
@@ -1193,5 +1206,29 @@ mod tests {
         let _ = update(Event::Logout, &mut model);
         assert!(model.current_card.is_none());
         assert_eq!(model.counts.new_count, 0);
+    }
+
+    /// `CloseDeck` clears the selection + study state but keeps auth + decks
+    /// (back-navigation, distinct from `Logout`).
+    #[test]
+    fn close_deck_clears_selection_but_keeps_session() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        model.counts = StudyCounts {
+            new_count: 9,
+            ..Default::default()
+        };
+        model.study_error = Some("boom".to_string());
+
+        let effects = update(Event::CloseDeck, &mut model);
+
+        assert!(model.selected_deck.is_none(), "selection cleared");
+        assert!(model.current_card.is_none(), "card cleared");
+        assert_eq!(model.counts.new_count, 0, "counts reset");
+        assert!(model.study_error.is_none(), "study error reset");
+        // Auth + deck data are preserved (unlike Logout).
+        assert!(matches!(model.auth, Auth::Authenticated { .. }));
+        assert_eq!(model.decks.len(), 1);
+        assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
     }
 }
