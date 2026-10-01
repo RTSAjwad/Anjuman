@@ -690,7 +690,7 @@ mod tests {
         // Default steps "1m 10m" → Hard on the first step = (60 + 600)/2 = 330s
         // (5m30s). The Anki manual calls this "6m" (display-rounded); the real
         // client shows "<6m". We keep the exact seconds. See
-        // DECK_OPTIONS_SUPPORT.md "Hard-button delay precision".
+        // docs/support/deck-options.md "Hard-button delay precision".
         assert_eq!(hard_step_delay(&[60, 600, 86400], 0), 330);
     }
 

@@ -12,7 +12,7 @@ Three documents, three jobs — keep them from overlapping:
 | Artifact | File | Holds |
 |---|---|---|
 | **Order + story list** | [`ROADMAP.md`](./ROADMAP.md) | *What* is next, in dependency order, with status |
-| **Feature spec** (the "why") | `server/DECK_OPTIONS_SUPPORT.md`, `server/PREFERENCES_SUPPORT.md` | The detailed per-feature support matrix that stories are *derived from* |
+| **Feature spec** (the "why") | [`docs/support/deck-options.md`](../support/deck-options.md), [`docs/support/preferences.md`](../support/preferences.md) | The detailed per-feature support matrix that stories are *derived from* |
 | **Test contract** | `server/tests/*.rs`, `client/shared` tests | Executable acceptance criteria — the tests *enforce* the story |
 
 Rule of thumb:
@@ -79,7 +79,8 @@ tests are the compiled version of those criteria.
   `tower::ServiceExt::oneshot`. Name the test after the criterion it asserts.
 - **Client stories (stage 4)** — each criterion maps to a `CruxCore::update`
   test in `client/shared`, asserting on `caps.effects()` (the side-effect-free
-  Elm-style idiom; `AppTester` is deprecated — see `client/AGENTS.md`).
+  Elm-style idiom; `AppTester` is deprecated — see
+  [`docs/client/CLIENT.md`](../client/CLIENT.md)).
 
 ### Client (Crux) test idiom
 
@@ -99,7 +100,7 @@ An HTTP round-trip is **two events**, and therefore two assertions:
    yields a `Render` effect — assert on the resulting `Model`/`ViewModel`.
 
 The wire payloads are `anjuman_contracts` DTOs, deserialized in the core (the
-shell forwards bytes opaquely — see `client/ARCHITECTURE.md` §5).
+shell forwards bytes opaquely — see [`docs/client/ARCHITECTURE.md`](../client/ARCHITECTURE.md) §5).
 
 A story is **done only when** every acceptance criterion has a passing test. The
 converse applies too: **no untested acceptance criteria** — if a criterion isn't
@@ -122,7 +123,7 @@ Acceptance criteria should therefore be phrased as **core behaviours** ("on
 `LoginSuccess`, `model.auth_token` is stored and an `Http` effect for `/me` is
 emitted"), not UI prose ("the user sees a login form").
 
-Rules carried over from `AGENTS.md` "Definitions of done":
+Rules carried over from the Definition of Done ([`PIPELINE.md`](./PIPELINE.md) §4):
 
 1. `cargo build` and `cargo test` pass in the affected workspace(s).
 2. Each acceptance criterion has a test named after it.

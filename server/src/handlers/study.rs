@@ -523,7 +523,7 @@ async fn next_due_card(
     let options = options_for(db, deck_id).await?;
     let gather = options.new_gather_order;
     // Deterministic per-student-day seed for the random orders (divergence from
-    // Anki's per-session seed; see DECK_OPTIONS_SUPPORT.md).
+    // Anki's per-session seed; see docs/support/deck-options.md).
     let seed = format!("{student_id}:{}", day_start.date_naive());
 
     // The ORDER BY ordering key for *new* cards. Review/learning cards are
@@ -573,7 +573,7 @@ async fn next_due_card(
     // variant maps to an ordering key inside a `CASE WHEN state = 'review'`
     // guard so learning/new cards (sorted by their own keys) are unaffected.
     //
-    // Mapping (see DECK_OPTIONS_SUPPORT.md):
+    // Mapping (see docs/support/deck-options.md):
     //   due date        -> scs.due_at
     //   deck            -> cd.title
     //   interval        -> scs.stability
@@ -588,7 +588,7 @@ async fn next_due_card(
     // raw `current_retrievability` probability: the probability is strictly
     // monotonic decreasing in `days_since_review / stability`, and
     // `days_since_review = stability + overdue`, so ordering by the ratio is
-    // exactly equivalent (documented in DECK_OPTIONS_SUPPORT.md).
+    // exactly equivalent (documented in docs/support/deck-options.md).
     let review_sort_option = options.review_sort_order;
 
     // Days-overdue per card, as a seconds-derived float (bound `now` = $4).
@@ -597,7 +597,7 @@ async fn next_due_card(
     // current_retrievability is strictly monotonic decreasing in
     // `days_since_last_review / stability`, so ordering by the ratio is exactly
     // equivalent to ordering by the raw probability (documented in
-    // DECK_OPTIONS_SUPPORT.md).
+    // docs/support/deck-options.md).
     let overdue = "(EXTRACT(EPOCH FROM ($4 - scs.due_at)) / 86400.0)";
 
     let review_sort = match review_sort_option {

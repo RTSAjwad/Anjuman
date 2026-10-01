@@ -4,7 +4,7 @@ A cross-platform application with a shared Rust **core** and first-class native
 shells on five platforms (SwiftUI, WinUI, Jetpack Compose, Libadwaita, and a
 Leptos web shell).
 
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full architecture.
+See [`ARCHITECTURE.md`](../docs/client/ARCHITECTURE.md) for the full architecture.
 
 ## Layout
 

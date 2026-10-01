@@ -143,7 +143,7 @@ impl Default for InsertionOrder {
 /// The action taken when a card reaches the leech threshold.
 ///
 /// Mirrors Anki's leech action. `SuspendCard` also tags the note in Anki, but
-/// this repo has no tag system yet (see `ROADMAP.md` stage 6); until then the
+/// this repo has no tag system yet (see `docs/process/ROADMAP.md` stage 6); until then the
 /// tag half is omitted and the note is marked via `notes.leech_tagged_at`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

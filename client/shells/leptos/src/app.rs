@@ -231,7 +231,7 @@ fn deck_list(vm: ViewModel, set_event: WriteSignal<Event>) -> impl IntoView {
     // The deck list itself: a collapsible tree (title + due counts). The core
     // builds the tree (`DeckSummary.children`); the shell only renders it and
     // holds which nodes are expanded (transient UI state — see the divergence
-    // note in SCREENS_SUPPORT.md). Collapsed by default.
+    // note in docs/support/screens.md). Collapsed by default.
     //
     // We render the tree with plain elements rather than thaw's `Tree`/
     // `TreeItem`: thaw indents the whole row (badges included) by depth and

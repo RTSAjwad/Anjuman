@@ -1,8 +1,9 @@
-# AGENTS.md
+# Client reference (versions, gotchas, conventions)
 
-Guidance and authoritative references for working on this repository. Read this
-first; it exists to save you from re-discovering version-specific APIs and
-gotchas — and from trusting "latest" docs where the exact version matters.
+Guidance and authoritative references for working on the **client workspace**
+(`client/`). Read this before touching `client/` — it exists to save you from
+re-discovering version-specific APIs and gotchas — and from trusting "latest"
+docs where the exact version matters.
 
 For the *why* behind the design, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 This file is the *how* and *where to look*. For building a shell (Leptos now,
@@ -21,7 +22,8 @@ SwiftUI/WinUI/Compose/Libadwaita are planned.
   `src/app.rs`, FFI in `src/ffi.rs`, typegen binary in `src/bin/codegen.rs`.
 - `shells/leptos/` — the web front-end (CSR-only, `trunk`).
 - `SCREENS_SUPPORT.md` — the client feature matrix (screens + deferred
-  client-side behaviours) that stage-4 stories derive from.
+  client-side behaviours) that stage-4 stories derive from. Lives in
+  [`docs/support/screens.md`](../support/screens.md).
 - `flake.nix` — Nix dev shell (in the **repo root**; provisions Rust 1.98 +
   `wasm32` target, `trunk`, `boltffi_cli`, `pnpm`, `gtk4`/`libadwaita`, plus the
   server's `sqlx-cli`/`sqlite`).
@@ -138,7 +140,7 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 - An HTTP round-trip is **two events**: `Event::Load<X>` (emits
   `Effect::Http(request)`) and `Event::<X>Received(HttpResponse)` (fed back in,
   mutates `model`). Tests assert the emitted `Http` capability and the
-  post-response `Model`/`ViewModel` separately (see `PLANNING.md` §3).
+  post-response `Model`/`ViewModel` separately (see [`PLANNING.md`](../process/PLANNING.md) §3).
 
 ### Testing
 - Test `update` directly (`Command::effects()`), **never** `AppTester`
@@ -173,9 +175,9 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 - FFI binding tool is **BoltFFI** (not uniffi).
 - The Axum server and `anjuman_contracts` live in this monorepo as sibling
   folders (`../server`, `../contracts`) — but each is a **separate Cargo
-  workspace** (see ARCHITECTURE.md §7), linked by path dependencies.
+  workspace** (see [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7), linked by path dependencies.
 
-See `ARCHITECTURE.md` §8 for the full settled-vs-open list.
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8 for the full settled-vs-open list.
 
 ## 6. Open questions / TODO
 
@@ -205,16 +207,16 @@ Libadwaita later). To avoid one story per shell (and the drift that would cause)
 - **Each story carries a `Shell contract` checklist** — the *minimum* a shell
   must do to run the feature (render `ViewModel` field X, forward `Event` Y,
   execute `Effect` Z). This is a checklist, **not** a set of per-shell stories.
-- **Shells are columns in `SCREENS_SUPPORT.md`**, not stories. A screen/behaviour's
+- **Shells are columns in `SCREENS_SUPPORT.md`** ([`docs/support/screens.md`](../support/screens.md)), not stories. A screen/behaviour's
   coverage per shell (`Leptos | SwiftUI | WinUI | Compose | Libadwaita`) is one
   ✅/❌/⚪ cell. When a new shell lands, you check off its column against the
   existing shell contracts — you don't author parallel stories.
 - **Genuinely shell-specific behaviour** (form-factor: answer-key bindings,
   "spacebar also answers", theme) is **not** a core story. It is classified ⚪ in
-  the `SCREENS_SUPPORT.md` matrix and tracked per-shell there. (For mobile
+  the `SCREENS_SUPPORT.md` matrix ([`docs/support/screens.md`](../support/screens.md)) and tracked per-shell there. (For mobile
   conventions, consult AnkiDroid later rather than inventing our own.)
 
-This mirrors `PLANNING.md` §3 "Core vs. shell test split": the core is the
+This mirrors [`PLANNING.md`](../process/PLANNING.md) §3 "Core vs. shell test split": the core is the
 single source of truth for behaviour; the shell contract + matrix record the
 thin per-platform glue without duplicating the story.
 

@@ -4,7 +4,7 @@ Full end-to-end `TIMESTAMPTZ` migration. This document is the authoritative
 plan for converting the timestamp model from `i64` epoch-seconds to
 `chrono::DateTime<Utc>`, preserving **identical scheduling behaviour**.
 
-> Companion to `docs/postgres-migration.md` (which covers Phases 0–3 and the
+> Companion to [`docs/adr/postgres-migration.md`](./postgres-migration.md) (which covers Phases 0–3 and the
 > non-timestamp SQL conversions). This doc is the *timestamp-specific* blast
 > radius and safety rules.
 

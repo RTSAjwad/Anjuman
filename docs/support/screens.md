@@ -1,9 +1,9 @@
 # Anjuman Client — Screens & Client-side Behaviour Matrix
 
-The client analog of `server/DECK_OPTIONS_SUPPORT.md` / `server/PREFERENCES_SUPPORT.md`.
+The client analog of [`docs/support/deck-options.md`](./deck-options.md) / [`docs/support/preferences.md`](./preferences.md).
 It catalogues what the **client** owns — screens, flows, and the behaviours that
 stages 2–3 marked "client-side (stage 4)" — so each can become a `US-4.x` story
-in `ROADMAP.md` stage 4. The *ordering* and *status* live in `ROADMAP.md`; this
+in `ROADMAP.md` stage 4. The *ordering* and *status* live in [`docs/process/ROADMAP.md`](../process/ROADMAP.md); this
 document records the *what* and *why*.
 
 Legend:
@@ -64,7 +64,7 @@ tracked here only.
 > **CSS inversion** (`night_mode` class + `filter: invert(…)`), not a palette
 > re-theme — card authors write arbitrary CSS that a token swap can't cover. The
 > shell injects the inversion into the card `<iframe>`; the core/server only
-> deliver `StudyCardView.styling`. See US-4.6 in `ROADMAP.md`.
+> deliver `StudyCardView.styling`. See US-4.6 in [`docs/process/ROADMAP.md`](../process/ROADMAP.md).
 | Answer-key bindings | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
 Legend: ✅ implemented · 🟡 partial · ⚪ not yet / shell not built.
@@ -82,7 +82,7 @@ These were persisted server-side (or descoped) with a "behaviour client-side
 | Maximum answer seconds | US-2.15 | `maximum_answer_seconds` (server clamps) | Run the stopwatch and send `response_time_ms`. |
 | Timebox popup | US-3.2 | `timebox_time_limit` (persisted, persistence-only) | Periodically show "N cards this timebox". |
 | Leech "Tag Only" popup | US-2.3 | `leech_action` enum (`TagOnly` is a no-op server-side) | Show the leech pop-up (tagging itself is stage 6). |
-| Theme / answer keys / form-factor prefs | stage 3 matrix | n/a (client-owned) | Client-local settings (see `PREFERENCES_SUPPORT.md`). |
+| Theme / answer keys / form-factor prefs | stage 3 matrix | n/a (client-owned) | Client-local settings (see [`docs/support/preferences.md`](./preferences.md)). |
 
 ## Client-side divergences to preserve (from stages 2–3)
 
@@ -98,7 +98,7 @@ These were persisted server-side (or descoped) with a "behaviour client-side
   synced across shells (heavier, but matches Anki's cross-device behaviour).
   Until then, this is tracked here, not as a core story.
 - **Random display orders are deterministic per student-day** (not per-session),
-  because the server is stateless — recorded in `DECK_OPTIONS_SUPPORT.md`; the
+  because the server is stateless — recorded in [`docs/support/deck-options.md`](./deck-options.md); the
   client must not assume per-session shuffling.
 - **`Mix` new/review order was descoped** to "show after" (server), documented as
   a divergence; a faithful `Mix` would need session state the server doesn't hold.

@@ -245,7 +245,6 @@ server/                    # anjuman_server — Axum backend (its own workspace)
 client/                    # this workspace
 ├── Cargo.toml              # [workspace] + [workspace.dependencies] (central pinning)
 ├── .gitignore
-├── ARCHITECTURE.md         # this document
 │
 ├── shared/                 # Crux core: Model/Event/ViewModel/Effect, App impl
 ├── shared/boltffi.toml     # BoltFFI targets (apple, android, wasm, csharp)

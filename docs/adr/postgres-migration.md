@@ -1,7 +1,7 @@
 # Migration Plan — SQLite → Postgres
 
 This is the detailed execution plan for ROADMAP task 1. It supersedes the
-summary checklist in `ROADMAP.md`. Work it top-to-bottom; each phase is
+summary checklist in [`docs/process/ROADMAP.md`](../process/ROADMAP.md). Work it top-to-bottom; each phase is
 independently verifiable.
 
 ## Goals & non-goals
@@ -206,7 +206,7 @@ smoke-test CRUD + study flow.
 4. Delete `server/platform.db{,.backup,.bak}` (local cleanup).
 5. Delete the old `server/migrations/*.sql` (replaced by `0001`/`0002`).
 6. OpenAPI — confirm route coverage unchanged (71 operations via `/api-docs`).
-7. Update `ROADMAP.md` (flip task 1 to `[x]`) + `AGENTS.md` §5 database line.
+7. Update [`docs/process/ROADMAP.md`](../process/ROADMAP.md) (flip task 1 to `[x]`) + `AGENTS.md` §5 database line.
 
 ---
 

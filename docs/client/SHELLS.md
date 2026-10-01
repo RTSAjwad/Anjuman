@@ -5,10 +5,10 @@ A shell is the thin layer that turns the shared core's `ViewModel`, `Event`, and
 reference for building a shell** — any of the five targets (Leptos, SwiftUI,
 WinUI, Jetpack Compose, Libadwaita). It records the shared *pattern*; per-shell
 toolchain gotchas live in each shell's own directory when they genuinely diverge
-(see `client/AGENTS.md` for the shared version pinnings).
+(see [`CLIENT.md`](./CLIENT.md) for the shared version pinnings).
 
-Read [`client/ARCHITECTURE.md`](./ARCHITECTURE.md) for the *why* (core-first,
-boundaries) and [`client/AGENTS.md`](./AGENTS.md) for the version-pinned *how*.
+Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the *why* (core-first,
+boundaries) and [`CLIENT.md`](./CLIENT.md) for the version-pinned *how*.
 This guide is the *what a shell must do*.
 
 ## 1. The two access paths — pick one per shell
@@ -117,9 +117,9 @@ with the platform's clock.
 A shell agent does **not** read the user stories and invent behaviour — it
 satisfies the **shell contract** and the **coverage matrix**:
 
-- **`ROADMAP.md`** — each story ends with a `Shell contract` checklist (render X,
+- **`ROADMAP.md`** ([`docs/process/ROADMAP.md`](../process/ROADMAP.md)) — each story ends with a `Shell contract` checklist (render X,
   forward Y, execute Z). That is the shell's work order.
-- **`client/SCREENS_SUPPORT.md`** — the "Shell coverage" matrix is the parity
+- **`SCREENS_SUPPORT.md`** ([`docs/support/screens.md`](../support/screens.md)) — the "Shell coverage" matrix is the parity
   ledger; tick your shell's column as you complete a contract.
 
 If the contract is silent on something a shell needs (an ambiguous prop, a
@@ -133,7 +133,7 @@ between the core agent and the shell agent.
   that return `impl IntoView` inside `Space`/`Card` triggers an `IntoFragment`
   error). thaw's `Input` is driven by a `Model<String>` (an `RwSignal` via its
   `value` prop), not an `on_change` callback. Uses `gloo-net` + `gloo-storage`.
-- **SwiftUI / WinUI / Compose** — FFI shells; see `client/AGENTS.md` §BoltFFI for
+- **SwiftUI / WinUI / Compose** — FFI shells; see [`CLIENT.md`](./CLIENT.md) §BoltFFI for
   the binding + typegen flow (`boltffi generate <lang>`).
 
 Add a section here for each shell as it is implemented.

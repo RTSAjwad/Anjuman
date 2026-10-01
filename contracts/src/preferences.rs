@@ -1,4 +1,4 @@
-//! User preferences — the server-side subset (see `PREFERENCES_SUPPORT.md`).
+//! User preferences — the server-side subset (see `docs/support/preferences.md`).
 //!
 //! Only preferences that change *shared scheduling behaviour* live here; the
 //! client-side / form-factor / Anki-specific preferences are out of scope for

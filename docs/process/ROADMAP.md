@@ -20,7 +20,7 @@ by `services-flake` (`nix run .#anjuman`). All handler SQL + the full
 `DateTime<Utc>` timestamp migration landed; `cargo build`/`test` pass and
 OpenAPI route coverage is unchanged (71 operations).
 
-> Detailed plans: `docs/postgres-migration.md`, `docs/timestamptz-migration.md`.
+> Detailed plans: [`docs/adr/postgres-migration.md`](../adr/postgres-migration.md), [`docs/adr/timestamptz-migration.md`](../adr/timestamptz-migration.md).
 
 ### Sub-tasks (summary)
 
@@ -47,10 +47,10 @@ work, migrations run cleanly from empty, SQLite footprint removed.
 > plumbing + preserve it in OpenAPI, and test only its **round-trip through
 > create/update/read** — we do *not* implement (or test) the behaviour, and we
 > document it as "behaviour client-side" with a stage-4 reference. Full details
-> and per-row classification live in `DECK_OPTIONS_SUPPORT.md` ("Scope: server
+> and per-row classification live in [`docs/support/deck-options.md`](../support/deck-options.md) ("Scope: server
 > vs. client behaviour").
 
-Close the gaps in `server/DECK_OPTIONS_SUPPORT.md` as far as practical. The
+Close the gaps in [`docs/support/deck-options.md`](../support/deck-options.md) as far as practical. The
 matrix's "Summary of the biggest gaps" is the working list:
 
 - [x] **Display order** — US-2.8–US-2.12 (gather, sort, new/review, interday,
@@ -199,7 +199,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       **Relation to US-2.6** — resolves each subdeck's *effective* limit via the
       same `effective_daily_limits` helper.
 - [x] **US-2.1 — Hard-button step behaviour** — implement Anki's exact
-      learning/relearning Hard rules. See `PLANNING.md` §2.
+      learning/relearning Hard rules. See [`docs/process/PLANNING.md`](./PLANNING.md) §2.
 
       **As** a student reviewing a (re)learning card,
       **I want** the Hard button to follow Anki's step rules,
@@ -351,7 +351,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       them (stage 4). Server work is **fixed fields + CRUD round-trip only** —
       no behaviour, and tests assert persistence, not effect.
 
-      Options (from `DECK_OPTIONS_SUPPORT.md` "Audio" / "Timers" / "Auto Advance"):
+      Options (from [`docs/support/deck-options.md`](../support/deck-options.md) "Audio" / "Timers" / "Auto Advance"):
       - [x] On-screen timer — "Show on-screen timer" (boolean, default off).
       - [x] On-screen timer — "Stop on-screen timer on answer" (boolean, default off).
       - [x] Audio — "Don't play audio automatically" (boolean).
@@ -620,7 +620,7 @@ Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
 ## 3. Preferences — server-side only   `[x]`
 
 > **Scope:** most Anki preferences are client-side, form-factor-specific, or
-> Anki-specific and do **not** belong in the server (see `server/PREFERENCES_SUPPORT.md`
+> Anki-specific and do **not** belong in the server (see [`docs/support/preferences.md`](../support/preferences.md)
 > "Scope philosophy"). Stage 3 implements only the preferences that change
 > *shared scheduling behaviour* — `day_start_hour` (+ per-user `timezone`),
 > `learn_ahead_seconds`, and `timebox_time_limit` (persistence-only) — plus the
@@ -698,13 +698,13 @@ rest of `user_preferences`).
 
 - **Scope decision**: timezone is *per-user*, not per-school and not per-preset
   (same decision as the rest of `user_preferences`; recorded in
-  `PREFERENCES_SUPPORT.md`). A future stage may revisit a school-wide default.
+  [`docs/support/preferences.md`](../support/preferences.md)). A future stage may revisit a school-wide default.
 - **Storage format**: IANA name (`TEXT`), not a fixed `UTC+hh` offset — a fixed
   offset silently breaks across daylight-saving changes, whereas the IANA name
   follows the zone's own offset transitions.
 - **Default**: `"UTC"` for now, preserving current behaviour exactly until a
   client/onboarding sets a real zone. Revisit later (school-based, location-
-  based, etc.). **Decision recorded in `PREFERENCES_SUPPORT.md`.**
+  based, etc.). **Decision recorded in [`docs/support/preferences.md`](../support/preferences.md).**
 - **Analytics bucketing** (`analytics.rs`'s `start_of_today`/`start_of_week`,
   `DATE_TRUNC('day', …)`) is **not** in scope here — those are report roll-ups,
   not scheduling correctness; reconciling them to per-user local days is a
@@ -777,9 +777,9 @@ implication.
 
 Replace the counter-demo core with the real domain, consuming
 `anjuman_contracts` and the server API. Follows the same discipline as stages
-2–3: a story derives from `client/SCREENS_SUPPORT.md` (the feature matrix), and
+2–3: a story derives from [`docs/support/screens.md`](../support/screens.md) (the feature matrix), and
 every acceptance criterion maps to a `CruxCore::update` test in `client/shared`
-(see `PLANNING.md` §3 for the client test idiom — assert on `caps.effects()` and
+(see [`docs/process/PLANNING.md`](./PLANNING.md) §3 for the client test idiom — assert on `caps.effects()` and
 injected `HttpResponse`s, never a running server).
 
 > **Core vs. shell.** Acceptance criteria live in and test the **core**; the
@@ -805,7 +805,7 @@ injected `HttpResponse`s, never a running server).
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
-      (see `client/SCREENS_SUPPORT.md`). Each gets its own story.
+      (see [`docs/support/screens.md`](../support/screens.md)). Each gets its own story.
 - [ ] **Deck-options/preferences UI** — the settings screens that CRUD
       `deck-options` and `/preferences`.
 - [ ] Keep the FFI `Bridge`/`codegen` surface working as the model grows;
@@ -823,7 +823,7 @@ capabilities with a working test harness,
 
 Today `client/shared` is the counter demo: a `Render`-only `Effect` enum, no
 `anjuman_contracts` dependency, no HTTP/KV/time capabilities, and only the
-counter tests. This story front-loads the API surface (per `PLANNING.md` §4) so
+counter tests. This story front-loads the API surface (per [`docs/process/PLANNING.md`](./PLANNING.md) §4) so
 the client is pinned to the same `anjuman_contracts` DTOs the server serves.
 
 **Acceptance criteria**
@@ -900,7 +900,7 @@ both ends round-trip the same DTOs.
   events, `pending_token` bridge) with 7 tests in `shared/src/app.rs`.
 
 **Shell contract** (a checklist every shell satisfies — not a per-shell story; see
-`client/AGENTS.md` §7 and `SCREENS_SUPPORT.md` "Shell coverage").
+[`docs/client/CLIENT.md`](../client/CLIENT.md) §7 and [`docs/support/screens.md`](../support/screens.md) "Shell coverage").
 
 - [x] Implement the `crux_http` capability (perform the fetch, feed bytes back
       via `resolve`) and `crux_kv` (localStorage) — replaces US-4.1's
@@ -1153,7 +1153,7 @@ Three decisions, recorded here so implementation is unambiguous:
 - [ ] Inject `StudyCardView.styling` into the card `<iframe>` (concatenated with
       the rendered side, Anki-style).
 - [ ] Dark-mode inversion: this is tracked under `Theme
-      (dark/light/follow-system)` in `SCREENS_SUPPORT.md` (a ⚪ shell-only
+      (dark/light/follow-system)` in [`docs/support/screens.md`](../support/screens.md) (a ⚪ shell-only
       behaviour) — the shell applies the inversion class/stylesheet in the
       iframe, not the core/server. This story documents the *decision*; the shell
       work is a separate ⚪ cell, not a `shared` criterion.
@@ -1313,7 +1313,7 @@ One decision, recorded so this is unambiguous:
 ## 5. Backfill — user stories + tests for existing features   `[ ]`
 
 After the feature work settles, harden the *existing* surface: characterise it
-and lock it down with the story→test discipline (see `PLANNING.md`). This runs
+and lock it down with the story→test discipline (see [`docs/process/PLANNING.md`](./PLANNING.md)). This runs
 last so feature stages can move fast without a large backfill up front, while
 still ending with full regression coverage. New features added in stages 2–4
 should still ship *their own* stories + tests inline, not wait for this stage.
@@ -1388,7 +1388,7 @@ options belong to the single user). This stage makes the personalisation model
   preset*, with an explicit per-deck permission to admit overrides.
 - A student can study a shared deck with their own limits/steps without
   touching the teacher's preset.
-- Documented in `DECK_OPTIONS_SUPPORT.md` "Key architectural differences".
+- Documented in [`docs/support/deck-options.md`](../support/deck-options.md) "Key architectural differences".
 
 ---
 
@@ -1406,7 +1406,7 @@ options belong to the single user). This stage makes the personalisation model
 - **Not implemented: full Anki gather→sort parity** — true parity still needs
   a two-phase gather-then-sort pipeline, which contradicts our stateless,
   sessionless study design, so we approximate with gather-primary sort-secondary
-  ordering in a single query. See `DECK_OPTIONS_SUPPORT.md` "New-card ordering
+  ordering in a single query. See [`docs/support/deck-options.md`](../support/deck-options.md) "New-card ordering
   composes as gather then sort". (This limitation is narrower than it once
   seemed: see the "Mix" finding below — the mix itself is not a queue concern.)
 - **"Mix with reviews" is Anki's stateless `Intersperser`, now implemented.**

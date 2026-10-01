@@ -1,4 +1,4 @@
-// User preferences — the server-side subset (see `PREFERENCES_SUPPORT.md`).
+// User preferences — the server-side subset (see `docs/support/preferences.md`).
 //
 // `user_preferences` is keyed per user. Rows are created lazily: reading a user
 // with no row returns the defaults (matching the fallbacks used throughout
