@@ -22,6 +22,8 @@ pub struct NoteType {
     pub name: String,
     pub field_names: Vec<String>,
     pub sort_field: String,
+    /// The shared styling CSS block (per note type).
+    pub styling: String,
     pub templates: Vec<Template>,
 }
 
@@ -59,7 +61,7 @@ pub struct RenderedCard {
 /// Look up a note type by ID, including its templates.
 pub async fn get_note_type(db: &PgPool, id: i64) -> Result<NoteType, String> {
     let row = sqlx::query!(
-        "SELECT id, name, field_names, sort_field FROM note_types WHERE id = $1",
+        "SELECT id, name, field_names, sort_field, styling FROM note_types WHERE id = $1",
         id
     )
     .fetch_optional(db)
@@ -94,6 +96,7 @@ pub async fn get_note_type(db: &PgPool, id: i64) -> Result<NoteType, String> {
         name: row.name,
         field_names,
         sort_field: row.sort_field,
+        styling: row.styling,
         templates,
     })
 }

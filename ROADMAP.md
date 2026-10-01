@@ -798,7 +798,8 @@ injected `HttpResponse`s, never a running server).
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
       dependency order). Decks list is US-4.3 (done); study entry is US-4.4
       (done) and the study loop core is US-4.5 (done; Leptos rendering pending
-      the shell agent); notes + cards remain.
+      the shell agent); card styling (note-type CSS) is US-4.6 (done core+server;
+      shell injection + dark-mode inversion pending); notes + cards remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -1100,14 +1101,14 @@ Three decisions, recorded here so implementation is unambiguous:
 
 1. **Styling is per note type, not per template.** The `styling` value lives on
    the `note_types` row (not `note_type_templates`) and is shared by every card
-   of that note type. Wire field name: **`css`**
-   (plain `String`, mirrors `front`/`back`).
+   of that note type. Field name **`styling`** everywhere (matching Anki's
+   vocabulary), a plain `String` that mirrors `front`/`back`.
 2. **Dark mode is Anki's inversion, not a re-theme.** Card authors write
    arbitrary CSS, so a palette/theme swap can't cover it. The shell injects a
    `night_mode` class + an inversion stylesheet into the card `<iframe>` when the
    app is dark (the opt-in `html.night_mode img { filter: invert(180deg) }`
    convention plus a coarse `filter: invert(...)`), exactly as Anki documents it.
-   This is a **client-side** concern — the core/server only delivers `css`; no
+   This is a **client-side** concern — the core/server only deliver `styling`; no
    server round-trip for dark mode.
 3. **Default styling is Anki's default `.card` rule**, seeded onto existing note
    types so even untouched note types render sanely:
@@ -1123,32 +1124,32 @@ Three decisions, recorded here so implementation is unambiguous:
 
 **Acceptance criteria**
 
-- [ ] Schema: `note_types` gains a `styling TEXT NOT NULL DEFAULT ''` column
+- [x] Schema: `note_types` gains a `styling TEXT NOT NULL DEFAULT ''` column
       (new migration `0023_note_type_styling.sql`; never edit the applied
       `0001`/`0002`). `clone_note_type` copies `styling` to the copy.
-- [ ] Contracts: `NoteTypeResponse` and `UpdateNoteType` gain a `css: String` /
-      `css: Option<String>` field (respectively); `StudyCard` gains
-      `css: String`. (No separate `CreateNoteType` body exists — note types are
-      created via `clone_note_type`.)
-- [ ] Server `note_types.rs`: load `styling` in `get_note_type`; carry it on
+- [x] Contracts: `NoteTypeResponse` and `UpdateNoteType` gain a `styling: String`
+      / `styling: Option<String>` field (respectively); `StudyCard` gains
+      `styling: String`. (No separate `CreateNoteType` body exists — note types
+      are created via `clone_note_type`.)
+- [x] Server `note_types.rs`: load `styling` in `get_note_type`; carry it on
       `NoteType`; expose it via `to_response`.
-- [ ] Server `note_types_handler.rs`: `update_note_type` persists `css` when
+- [x] Server `note_types_handler.rs`: `update_note_type` persists `styling` when
       provided; `clone_note_type` copies the source `styling` (explicit column
       list — the DB default is *not* applied to an explicit INSERT).
-- [ ] Server `study.rs::row_to_study_card`: set `StudyCard.css = nt.styling`
+- [x] Server `study.rs::row_to_study_card`: set `StudyCard.styling = nt.styling`
       (the note type is already fetched there).
-- [ ] Seed: set the default `.card` styling on both seed note types (new seed
-      migration, appended to the same `0023` file or a `0024` seed migration).
-- [ ] `shared`: `StudyCardView` gains `css: String`, populated from `StudyCard`
-      in `From<&StudyCard>`.
-- [ ] Each criterion has a `server/tests/` test (or a `shared` test for the
+- [x] Seed: set the default `.card` styling on both seed note types (new seed
+      migration, appended to the same `0023` file).
+- [x] `shared`: `StudyCardView` gains `styling: String`, populated from
+      `StudyCard` in `From<&StudyCard>`.
+- [x] Each criterion has a `server/tests/` test (or a `shared` test for the
       `StudyCardView` mapping) named after it; `cargo test` passes and OpenAPI
       still generates.
 
 **Shell contract**
 
-- [ ] Inject `StudyCardView.css` into the card `<iframe>` (concatenated with the
-      rendered side, Anki-style).
+- [ ] Inject `StudyCardView.styling` into the card `<iframe>` (concatenated with
+      the rendered side, Anki-style).
 - [ ] Dark-mode inversion: this is tracked under `Theme
       (dark/light/follow-system)` in `SCREENS_SUPPORT.md` (a ⚪ shell-only
       behaviour) — the shell applies the inversion class/stylesheet in the

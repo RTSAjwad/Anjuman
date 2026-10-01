@@ -9,6 +9,8 @@ pub struct UpdateNoteType {
     pub name: Option<String>,
     pub field_names: Option<Vec<String>>,
     pub sort_field: Option<String>,
+    /// The shared styling CSS block (per note type).
+    pub styling: Option<String>,
 }
 
 /// Expected JSON body for creating a card template.
@@ -60,6 +62,8 @@ pub struct NoteTypeResponse {
     pub name: String,
     pub field_names: Vec<String>,
     pub sort_field: String,
+    /// The shared styling CSS block (per note type).
+    pub styling: String,
     pub templates: Vec<Template>,
     pub note_count: i64,
 }

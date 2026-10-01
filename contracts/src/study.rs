@@ -17,6 +17,10 @@ pub struct StudyCard {
     pub note_id: i64,
     pub front: String,
     pub back: String,
+    /// The note type's shared styling CSS (Anki's per-note-type "Styling"
+    /// block), delivered alongside the rendered card so the shell can render it
+    /// self-contained. Empty string when no styling is set.
+    pub styling: String,
     pub state: String,
     pub due_at: Option<DateTime<Utc>>,
     pub stability: f64,

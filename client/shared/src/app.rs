@@ -197,6 +197,9 @@ pub struct StudyCardView {
     /// rating 1..=4 (1=Again, 2=Hard, 3=Good, 4=Easy). `None` when the server
     /// returned no prediction (e.g. certain new/learning states).
     pub predicted_interval: Option<HashMap<i32, i64>>,
+    /// The note type's shared styling CSS; injected into the card so it renders
+    /// self-contained (empty string when the note type has no styling).
+    pub styling: String,
 }
 
 /// The shell-facing per-state counts for a study session (a Facet-friendly
@@ -233,6 +236,7 @@ impl From<&StudyCard> for StudyCardView {
                     .filter_map(|(k, v)| k.parse::<i32>().ok().map(|rating| (rating, *v)))
                     .collect()
             }),
+            styling: c.styling.clone(),
         }
     }
 }
@@ -1058,6 +1062,7 @@ mod tests {
             note_id: 1,
             front: "front".to_string(),
             back: "back".to_string(),
+            styling: "body { color: black; }".to_string(),
             state: "new".to_string(),
             due_at: None,
             stability: 0.0,
@@ -1228,6 +1233,23 @@ mod tests {
         assert_eq!(intervals.get(&2), Some(&600));
         assert_eq!(intervals.get(&3), Some(&1209600));
         assert_eq!(intervals.get(&4), Some(&2073600));
+    }
+
+    /// `StudyCard.styling` is mapped into `StudyCardView.styling` so the shell
+    /// can inject it into the card.
+    #[test]
+    fn study_maps_styling() {
+        let mut model = study_ready_model();
+        let mut card = study_card(7);
+        card.styling = "body { color: red; }".to_string();
+        let response = ResponseBuilder::ok().body(study_advance(Some(card))).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+        assert_eq!(
+            vm.current_card.as_ref().map(|c| c.styling.as_str()),
+            Some("body { color: red; }")
+        );
     }
 
     /// A finished study session (`next_card: None`) exposes a "nothing due" state

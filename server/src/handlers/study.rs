@@ -1051,6 +1051,7 @@ async fn row_to_study_card(
         note_id: c.note_id,
         front: rendered.front,
         back: rendered.back,
+        styling: nt.styling,
         state: c.state.as_str().to_string(),
         due_at: c.due_at,
         stability: c.stability,

@@ -77,6 +77,7 @@ async fn to_response(
         name: nt.name,
         field_names: nt.field_names,
         sort_field: nt.sort_field,
+        styling: nt.styling,
         templates: nt.templates,
         note_count: count,
     })
@@ -164,11 +165,12 @@ pub async fn clone_note_type(
     let source_field_names_json = sqlx::types::Json(source.field_names.clone());
 
     let result = sqlx::query!(
-        "INSERT INTO note_types (school_id, name, field_names, sort_field, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        "INSERT INTO note_types (school_id, name, field_names, sort_field, styling, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
         claims.school_id,
         new_name,
         source_field_names_json as _,
         source.sort_field,
+        source.styling,
         claims.sub,
         Utc::now(),
     )
@@ -301,6 +303,21 @@ pub async fn update_note_type(
         sqlx::query!(
             "UPDATE note_types SET sort_field = $1 WHERE id = $2",
             sort_field,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
+    }
+    if let Some(styling) = &body.styling {
+        sqlx::query!(
+            "UPDATE note_types SET styling = $1 WHERE id = $2",
+            styling,
             id
         )
         .execute(&mut *tx)
