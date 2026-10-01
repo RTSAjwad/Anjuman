@@ -14,6 +14,7 @@ pub mod db_types;
 pub mod deck_options;
 pub mod note_types;
 pub mod openapi;
+pub mod permissions;
 pub mod routes;
 pub mod state;
 

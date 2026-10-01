@@ -800,8 +800,8 @@ injected `HttpResponse`s, never a running server).
       (done) and the study loop core is US-4.5 (done; Leptos rendering pending
       the shell agent); card styling (note-type CSS) is US-4.6 (done core+server;
       shell injection + dark-mode inversion pending); deck authorization
-      predicate is US-4.7 and teacher/admin study + real counts is US-4.8
-      (drafted, next); notes + cards remain.
+      predicate is US-4.7 (done) and teacher/admin study + real counts is
+      US-4.8 (drafted, next); notes + cards remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -1214,16 +1214,16 @@ recorded here because they are the whole point of the change:
 
 **Acceptance criteria**
 
-- [ ] The deck-access predicate exists and answers `Study` for a deck the user
+- [x] The deck-access predicate exists and answers `Study` for a deck the user
       owns, collaborates on, or reaches via a class (extended over the subtree
       per US-2.19) — and `Study` is **not** granted merely for being `Admin`.
-- [ ] `check_deck_studyable` (and study `GET`/`POST`) consult the predicate; an
+- [x] `check_deck_studyable` (and study `GET`/`POST`) consult the predicate; an
       admin who does not own/collaborate a deck gets `403` (behaviour change from
       today's blanket grant).
-- [ ] `has_grant` no longer short-circuits `Admin → true`.
-- [ ] The predicate is `pub` and reusable from `list_decks`/`deck_counts` so
+- [x] `has_grant` no longer short-circuits `Admin → true`.
+- [x] The predicate is `pub` and reusable from `list_decks`/`deck_counts` so
       US-4.8 can compute `studyable` from it (no duplicate logic).
-- [ ] Each criterion has a `server/tests/` test named after it (e.g.
+- [x] Each criterion has a `server/tests/` test named after it (e.g.
       `server/tests/deck_permissions.rs`); `cargo test` passes and OpenAPI still
       generates.
 
