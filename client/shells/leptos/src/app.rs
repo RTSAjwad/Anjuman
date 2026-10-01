@@ -10,7 +10,7 @@
 //! `IntoFragment` error).
 
 use leptos::prelude::*;
-use shared::app::{DeckSummary, StudyCardView, StudyCountsView};
+use shared::app::{DeckOptionsView, DeckSummary, StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
@@ -19,6 +19,15 @@ use thaw::{
 };
 
 use crate::core_link;
+
+/// The active sub-view of a selected deck, chosen via the breadcrumb. This is
+/// shell-local navigation state (the core has no Study/Options split), so it
+/// lives here rather than in a `ViewModel` field.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DeckView {
+    Study,
+    Options,
+}
 
 #[component]
 pub fn RootComponent() -> impl IntoView {
@@ -58,23 +67,39 @@ pub fn RootComponent() -> impl IntoView {
     // `StartStudy` so it fires exactly once per opened deck (not every re-render).
     let revealed = RwSignal::new(false);
     let started_for = StoredValue::new(0i64);
+    let options_for = StoredValue::new(0i64);
     let seen_card = StoredValue::new(0i64);
+
+    // The shell-local sub-view of the selected deck, chosen via the breadcrumb
+    // (Decks → [Deck Name] → Study | Options). Opening a deck defaults to
+    // `Study`. Transient UI state (the core has no Study/Options split).
+    let active_view = RwSignal::new(DeckView::Study);
+
     Effect::new(move |_| {
         let vm = view.get();
 
-        match &vm.selected_deck {
-            Some(deck) => {
-                // Once per newly-opened deck, request the first due card.
-                if started_for.get_value() != deck.id {
-                    started_for.set_value(deck.id);
-                    set_event.set(Event::StartStudy);
+        if let Some(deck) = &vm.selected_deck {
+            match active_view.get() {
+                DeckView::Study => {
+                    // Once per newly-opened deck, request the first due card.
+                    if started_for.get_value() != deck.id {
+                        started_for.set_value(deck.id);
+                        set_event.set(Event::StartStudy);
+                    }
+                }
+                DeckView::Options => {
+                    // Once per deck (until re-entered), fetch its preset.
+                    if options_for.get_value() != deck.id {
+                        options_for.set_value(deck.id);
+                        set_event.set(Event::DeckOptionsRequested { deck_id: deck.id });
+                    }
                 }
             }
-            None => {
-                // Deck closed: reset the guard so re-opening the *same* deck
-                // re-fires `StartStudy`.
-                started_for.set_value(0);
-            }
+        } else {
+            // Deck closed: reset the guards so re-opening the *same* deck
+            // re-fires the relevant request.
+            started_for.set_value(0);
+            options_for.set_value(0);
         }
 
         // Reset the reveal whenever the shown card changes.
@@ -86,24 +111,36 @@ pub fn RootComponent() -> impl IntoView {
     });
 
     // -----------------------------------------------------------------
-    // Sidebar navigation state. "Decks" is the only destination for now; its
-    // `NavItem` is always selected, and clicking it (or the breadcrumb's
-    // "Decks" link) returns to the list via `Event::CloseDeck`.
-    let nav_selected = RwSignal::new("decks".to_string());
-    let open_categories = RwSignal::new(Vec::<String>::new());
+    // Navigation state.
+    //
+    // `active_view` is declared above (before the request-driving Effect). The
+    // closures below just write it and dispatch the matching core events.
+
     // Back to the list (fires `CloseDeck`). Shared by the sidebar and breadcrumb.
-    let close_deck = move || set_event.set(Event::CloseDeck);
+    let close_deck = move || {
+        active_view.set(DeckView::Study);
+        set_event.set(Event::CloseDeck);
+    };
+
+    // Open a deck and land on a sub-view (Study via the row title, Options via
+    // the row's gear icon). `Callback` so it can cross the `#[component]`
+    // boundary into `DeckList`.
+    let navigate = Callback::new(move |(deck_id, view): (i64, DeckView)| {
+        active_view.set(view);
+        set_event.set(Event::OpenDeck { deck_id });
+    });
 
     view! {
         <ConfigProvider>
             {move || {
                 let vm: ViewModel = view.get();
                 if vm.authenticated {
+                    let selected_deck = vm.selected_deck.clone();
                     view! {
                         <div class="app-shell">
                             <aside class="app-sidebar">
                                 <div class="app-sidebar__brand">"Anjuman"</div>
-                                <NavDrawer selected_value=nav_selected open_categories=open_categories multiple=false>
+                                <NavDrawer selected_value=RwSignal::new("decks".to_string()) open_categories=RwSignal::new(Vec::<String>::new()) multiple=false>
                                     <NavItem value=RwSignal::new("decks".to_string())>
                                         "Decks"
                                     </NavItem>
@@ -117,9 +154,11 @@ pub fn RootComponent() -> impl IntoView {
                             </aside>
 
                             <main class="app-content">
-                                {if let Some(deck) = vm.selected_deck.clone() {
+                                {if let Some(deck) = selected_deck.clone() {
                                     let deck_title = deck.title.clone();
                                     let counts = vm.counts.clone();
+                                    let deck_options_view = vm.deck_options.clone();
+                                    let deck_options_error = vm.deck_options_error.clone();
                                     view! {
                                         <div class="app-header">
                                             <Breadcrumb>
@@ -128,13 +167,36 @@ pub fn RootComponent() -> impl IntoView {
                                                 </BreadcrumbItem>
                                                 <BreadcrumbDivider />
                                                 <BreadcrumbItem>
-                                                    <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">{deck_title}</button>
+                                                    {deck_title}
+                                                </BreadcrumbItem>
+                                                <BreadcrumbDivider />
+                                                <BreadcrumbItem>
+                                                    <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
+                                                        {match active_view.get() {
+                                                            DeckView::Study => "Study",
+                                                            DeckView::Options => "Options",
+                                                        }}
+                                                    </span>
                                                 </BreadcrumbItem>
                                             </Breadcrumb>
-                                            {study_count_badges(counts)}
+                                            <div class="app-header__actions">
+                                                {match active_view.get() {
+                                                    DeckView::Study => study_count_badges(counts).into_any(),
+                                                    DeckView::Options => ().into_any(),
+                                                }}
+                                            </div>
                                         </div>
-                                        <StudyScreen
-                                            vm=vm.clone() revealed=revealed set_event=set_event />
+                                        {match active_view.get() {
+                                            DeckView::Study => view! {
+                                                <StudyScreen
+                                                    vm=vm.clone() revealed=revealed set_event=set_event />
+                                            }.into_any(),
+                                            DeckView::Options => view! {
+                                                <DeckOptionsPanel
+                                                    options=deck_options_view
+                                                    error=deck_options_error />
+                                            }.into_any(),
+                                        }}
                                     }
                                     .into_any()
                                 } else {
@@ -147,7 +209,7 @@ pub fn RootComponent() -> impl IntoView {
                                             </Breadcrumb>
                                         </div>
                                         <div class="app-content__pad">
-                                            <DeckList vm=vm.clone() set_event=set_event />
+                                            <DeckList vm=vm.clone() on_navigate=navigate />
                                         </div>
                                     }
                                     .into_any()
@@ -207,7 +269,7 @@ pub fn RootComponent() -> impl IntoView {
 /// explicit error and empty states. Pure rendering of the `ViewModel` — no
 /// logic beyond deciding what the three states look like.
 #[component]
-fn deck_list(vm: ViewModel, set_event: WriteSignal<Event>) -> impl IntoView {
+fn deck_list(vm: ViewModel, on_navigate: Callback<(i64, DeckView), ()>) -> impl IntoView {
     // Error state — a deck fetch failed.
     if let Some(err) = vm.decks_error {
         return view! {
@@ -249,7 +311,7 @@ fn deck_list(vm: ViewModel, set_event: WriteSignal<Event>) -> impl IntoView {
                 <span class="thaw-deck-col">"Review"</span>
             </div>
             <div class="thaw-deck-tree" role="tree">
-                {deck_subtree(decks, 0, open_items, set_event)}
+                {deck_subtree(decks, 0, open_items, on_navigate)}
             </div>
         </Card>
     }
@@ -296,7 +358,7 @@ fn study_screen(
     }
 }
 
-/// The study due-count badges shown in the header, next to the breadcrumb.
+/// The due-count badges shown in the header, next to the breadcrumb.
 fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
     view! {
         <div class="thaw-study-counts">
@@ -323,6 +385,320 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
             </Badge>
         </div>
     }
+}
+
+/// The read-only deck-options panel (US-4.9): shows the selected deck's
+/// scheduling preset, grouped the way the support matrix groups them, with
+/// enums rendered as human labels rather than raw snake_case strings.
+///
+/// Rendered alongside the study screen; nothing is shown until the preset has
+/// been requested (via `Event::DeckOptionsRequested`) and returned — the fetch
+/// itself is triggered from the header affordance, so this component only
+/// renders whatever the `ViewModel` already carries.
+#[component]
+fn deck_options_panel(options: Option<DeckOptionsView>, error: Option<String>) -> impl IntoView {
+    let options = match options {
+        Some(o) => o,
+        None => {
+            // Error and empty states for an unresolved preset.
+            return view! {
+                <section class="deck-options">
+                    {if let Some(err) = error {
+                        view! { <p class="deck-options__error">"Could not load deck options: " {err}</p> }
+                            .into_any()
+                    } else {
+                        view! { <p class="deck-options__empty">"No deck options to show."</p> }
+                            .into_any()
+                    }}
+                </section>
+            }
+            .into_any();
+        }
+    };
+
+    // Force the name into the view so the header renders once (rather than in a
+    // closure); the grouped rows below are static given a fixed preset.
+    let name = options.name.clone();
+
+    view! {
+        <section class="deck-options">
+            <header class="deck-options__header">
+                <h2 class="deck-options__title">"Deck options"</h2>
+                <span class="deck-options__preset">{name}</span>
+            </header>
+
+            <OptionsGroup title="Daily limits">
+                <OptionRow label="New cards/day" value=options.new_per_day.to_string() />
+                <OptionRow label="Maximum reviews/day" value=options.review_per_day.to_string() />
+            </OptionsGroup>
+
+            <OptionsGroup title="New cards">
+                <OptionRow label="Learning steps" value=format_steps(&options.learning_steps) />
+                <OptionRow label="Insertion order" value=label_insertion_order(&options.insertion_order) />
+            </OptionsGroup>
+
+            <OptionsGroup title="Lapses">
+                <OptionRow label="Relearning steps" value=format_steps(&options.relearning_steps) />
+                <OptionRow label="Leech threshold" value=options.leech_threshold.to_string() />
+                <OptionRow label="Leech action" value=label_leech_action(&options.leech_action) />
+            </OptionsGroup>
+
+            <OptionsGroup title="Display order">
+                <OptionRow label="New card gather order" value=label_new_gather_order(&options.new_gather_order) />
+                <OptionRow label="New card sort order" value=label_new_sort_order(&options.new_sort_order) />
+                <OptionRow label="New/review order" value=label_new_review_order(&options.new_review_order) />
+                <OptionRow label="Interday learning/review order" value=label_interday_order(&options.interday_order) />
+                <OptionRow label="Review sort order" value=label_review_sort_order(&options.review_sort_order) />
+            </OptionsGroup>
+
+            <OptionsGroup title="Burying">
+                <OptionRow label="Bury new siblings" value=bool_label(options.bury_new) />
+                <OptionRow label="Bury review siblings" value=bool_label(options.bury_review) />
+                <OptionRow label="Bury interday learning siblings" value=bool_label(options.bury_interday) />
+            </OptionsGroup>
+
+            <OptionsGroup title="Audio">
+                <OptionRow label="Don't play audio automatically" value=bool_label(options.dont_play_audio_automatically) />
+                <OptionRow label="Skip question when replaying answer" value=bool_label(options.skip_question_when_replaying_answer) />
+            </OptionsGroup>
+
+            <OptionsGroup title="Timers">
+                <OptionRow label="Maximum answer seconds" value=options.maximum_answer_seconds.to_string() />
+                <OptionRow label="Show on-screen timer" value=bool_label(options.show_on_screen_timer) />
+                <OptionRow label="Stop on-screen timer on answer" value=bool_label(options.stop_timer_on_answer) />
+            </OptionsGroup>
+
+            <OptionsGroup title="Auto advance">
+                <OptionRow label="Seconds to show question" value=format_seconds(&options.auto_advance_seconds_show_question) />
+                <OptionRow label="Seconds to show answer" value=format_seconds(&options.auto_advance_seconds_show_answer) />
+                <OptionRow label="Wait for audio" value=bool_label(options.auto_advance_wait_for_audio) />
+                <OptionRow label="Question action" value=label_question_action(&options.auto_advance_question_action) />
+                <OptionRow label="Answer action" value=label_answer_action(&options.auto_advance_answer_action) />
+            </OptionsGroup>
+
+            <OptionsGroup title="FSRS">
+                <OptionRow label="Desired retention" value=format_percent(options.desired_retention) />
+                <OptionRow label="Easy days" value=format_easy_days(&options.easy_days) />
+            </OptionsGroup>
+
+            <OptionsGroup title="Advanced">
+                <OptionRow label="Maximum interval" value=format_days(options.maximum_interval) />
+                <OptionRow
+                    label="FSRS parameters"
+                    value=if options.fsrs_parameters.is_empty() {
+                        "Default".to_string()
+                    } else {
+                        format_parameters(&options.fsrs_parameters)
+                    }
+                />
+            </OptionsGroup>
+        </section>
+    }
+    .into_any()
+}
+
+/// A titled group of option rows within the read-only preset.
+#[component]
+fn options_group(title: &'static str, children: Children) -> impl IntoView {
+    view! {
+        <div class="deck-options-group">
+            <h3 class="deck-options-group__title">{title}</h3>
+            <dl class="deck-options-group__rows">{children()}</dl>
+        </div>
+    }
+}
+
+/// A single `label → value` row.
+#[component]
+fn option_row(label: &'static str, value: String) -> impl IntoView {
+    view! {
+        <div class="deck-options-row">
+            <dt class="deck-options-row__label">{label}</dt>
+            <dd class="deck-options-row__value">{value}</dd>
+        </div>
+    }
+}
+
+/// Format learning/relearning steps (seconds) back to Anki's compact `1m 10m`
+/// notation, so the values read the way the user expects them on the wire.
+fn format_steps(steps: &[i64]) -> String {
+    if steps.is_empty() {
+        return "(none)".to_string();
+    }
+    steps.iter().map(|&s| format_interval(s)).collect::<Vec<_>>().join(" ")
+}
+
+/// Format an auto-advance seconds value; `0` disables the feature.
+fn format_seconds(value: &f64) -> String {
+    if *value <= 0.0 {
+        "Off (0 s)".to_string()
+    } else if value.fract() == 0.0 {
+        format!("{value:.0} s")
+    } else {
+        format!("{value:.1} s")
+    }
+}
+
+/// Format desired retention as a whole percent (0.9 → "90%").
+fn format_percent(value: f64) -> String {
+    format!("{:.0}%", value * 100.0)
+}
+
+/// Format the maximum review interval in days, matching Anki's unit.
+fn format_days(value: i64) -> String {
+    format!("{value} days")
+}
+
+/// Format the raw FSRS weight vector (kept read-only; the optimizer is deferred).
+fn format_parameters(params: &[f32]) -> String {
+    params
+        .iter()
+        .map(|w| format!("{w:.4}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Format Easy Days as a compact Monday-first readout (e.g. "Mon Reduced, …").
+fn format_easy_days(days: &[String]) -> String {
+    const NAMES: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    if days.len() != 7 {
+        return "(unset)".to_string();
+    }
+    days.iter()
+        .enumerate()
+        .map(|(i, d)| format!("{} {}", NAMES[i], label_easy_day(d)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Whether a boolean option is on/off.
+fn bool_label(value: bool) -> String {
+    if value {
+        "On".to_string()
+    } else {
+        "Off".to_string()
+    }
+}
+
+// --- Enum label helpers (snake_case wire name → human label) ---
+// These map the serde wire forms exposed on `DeckOptionsView` back to the labels
+// Anki uses in-app, so the read-only screen never shows raw debug strings.
+
+fn label_new_gather_order(value: &str) -> String {
+    match value {
+        "deck" => "Deck".to_string(),
+        "deck_then_random_notes" => "Deck, then random notes".to_string(),
+        "ascending" => "Ascending position".to_string(),
+        "descending" => "Descending position".to_string(),
+        "random_notes" => "Random notes".to_string(),
+        "random_cards" => "Random cards".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_new_sort_order(value: &str) -> String {
+    match value {
+        "card_type_then_gathered" => "Card type, then order gathered".to_string(),
+        "gathered" => "Order gathered".to_string(),
+        "card_type_then_random" => "Card type, then random".to_string(),
+        "random_note_then_card_type" => "Random note, then card type".to_string(),
+        "random" => "Random".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_new_review_order(value: &str) -> String {
+    match value {
+        "mix" => "Mix with reviews".to_string(),
+        "after" => "Show after reviews".to_string(),
+        "before" => "Show before reviews".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_interday_order(value: &str) -> String {
+    label_new_review_order(value)
+}
+
+fn label_review_sort_order(value: &str) -> String {
+    match value {
+        "due_then_random" => "Due date, then random".to_string(),
+        "due_then_deck" => "Due date, then deck".to_string(),
+        "deck_then_due" => "Deck, then due date".to_string(),
+        "ascending_interval" => "Ascending intervals".to_string(),
+        "descending_interval" => "Descending intervals".to_string(),
+        "easy_first" => "Easy first".to_string(),
+        "difficult_first" => "Difficult first".to_string(),
+        "ascending_retrievability" => "Ascending retrievability".to_string(),
+        "descending_retrievability" => "Descending retrievability".to_string(),
+        "relative_overdueness" => "Relative overdueness".to_string(),
+        "random" => "Random".to_string(),
+        "order_added" => "Order added".to_string(),
+        "latest_added_first" => "Latest added first".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_insertion_order(value: &str) -> String {
+    match value {
+        "sequential" => "Sequential".to_string(),
+        "random" => "Random".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_leech_action(value: &str) -> String {
+    match value {
+        "tag_only" => "Tag only".to_string(),
+        "suspend_card" => "Suspend card".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_question_action(value: &str) -> String {
+    match value {
+        "show_answer" => "Show answer".to_string(),
+        "show_card" => "Show card".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_answer_action(value: &str) -> String {
+    match value {
+        "bury_card" => "Bury card".to_string(),
+        "answer_again" => "Answer again".to_string(),
+        "answer_good" => "Answer good".to_string(),
+        "answer_hard" => "Answer hard".to_string(),
+        "show_reminder" => "Show reminder".to_string(),
+        other => humanize(other),
+    }
+}
+
+fn label_easy_day(value: &str) -> String {
+    match value {
+        "minimum" => "Minimum".to_string(),
+        "reduced" => "Reduced".to_string(),
+        "normal" => "Normal".to_string(),
+        other => humanize(other),
+    }
+}
+
+/// Fallback: turn a snake_case wire name into Title Case (used only for values
+/// not otherwise mapped — every current enum is mapped above, so this is a
+/// defensive path for future enum additions).
+fn humanize(snake: &str) -> String {
+    snake
+        .split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A single card: the front (then the revealed back) rendered as HTML in a
@@ -465,11 +841,11 @@ fn deck_subtree(
     decks: Vec<DeckSummary>,
     depth: usize,
     open_items: RwSignal<HashSet<i64>>,
-    set_event: WriteSignal<Event>,
+    on_navigate: Callback<(i64, DeckView), ()>,
 ) -> impl IntoView {
     decks
         .into_iter()
-        .map(|deck| deck_item(deck, depth, open_items, set_event))
+        .map(|deck| deck_item(deck, depth, open_items, on_navigate))
         .collect_view()
 }
 
@@ -478,7 +854,7 @@ fn deck_item(
     deck: DeckSummary,
     depth: usize,
     open_items: RwSignal<HashSet<i64>>,
-    set_event: WriteSignal<Event>,
+    on_navigate: Callback<(i64, DeckView), ()>,
 ) -> impl IntoView {
     let id = deck.id;
     let has_children = !deck.children.is_empty();
@@ -541,11 +917,11 @@ fn deck_item(
                     .into_any()
                 }}
                 {if studyable {
-                    let set_event = set_event;
+                    let on_navigate = on_navigate;
                     view! {
                         <button
                             class="thaw-deck-row__label thaw-deck-row__label--study"
-                            on:click=move |_| set_event.set(Event::OpenDeck { deck_id: id })
+                            on:click=move |_| on_navigate.run((id, DeckView::Study))
                         >
                             {deck.title}
                         </button>
@@ -586,10 +962,39 @@ fn deck_item(
             >
                 {deck.review_count.to_string()}
             </Badge>
+            <div class="thaw-deck-row__actions">
+                {if studyable {
+                    let on_navigate = on_navigate;
+                    view! {
+                        <button
+                            class="thaw-deck-row__gear"
+                            aria-label="Deck options"
+                            title="Deck options"
+                            on:click=move |_| on_navigate.run((id, DeckView::Options))
+                        >
+                            <svg
+                                fill="currentColor"
+                                aria-hidden="true"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 20 20"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path d="M10 6.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM8 10a2 2 0 1 1 4 0 2 2 0 0 1-4 0Z" fill="currentColor"></path>
+                                <path d="M8.13 2.03a1.75 1.75 0 0 1 3.74 0l.13.76c.18.1.35.2.52.32l.72-.28a1.75 1.75 0 0 1 2.1 3.1l-.5.59c.06.2.11.4.15.61l.76.13a1.75 1.75 0 0 1 0 3.48l-.76.13c-.04.21-.09.41-.15.61l.5.59a1.75 1.75 0 0 1-2.1 3.1l-.72-.28c-.17.12-.34.22-.52.32l-.13.76a1.75 1.75 0 0 1-3.74 0l-.13-.76a4.85 4.85 0 0 1-.52-.32l-.72.28a1.75 1.75 0 0 1-2.1-3.1l.5-.59a4.85 4.85 0 0 1-.15-.61l-.76-.13a1.75 1.75 0 0 1 0-3.48l.76-.13c.04-.21.09-.41.15-.61l-.5-.59a1.75 1.75 0 0 1 2.1-3.1l.72.28c.17-.12.34-.22.52-.32l.13-.76Z" fill="none" stroke="currentColor" stroke-width="1.5"></path>
+                            </svg>
+                        </button>
+                    }
+                    .into_any()
+                } else {
+                    // Context-only ancestor: no options affordance.
+                    ().into_any()
+                }}
+            </div>
         </div>
         {move || {
             if has_children && open_items.get().contains(&id) {
-                deck_subtree(children.clone(), depth + 1, open_items, set_event).into_any()
+                deck_subtree(children.clone(), depth + 1, open_items, on_navigate).into_any()
             } else {
                 ().into_any()
             }
