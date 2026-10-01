@@ -10,12 +10,13 @@
 //! `IntoFragment` error).
 
 use leptos::prelude::*;
-use shared::app::{DeckOptionsView, DeckSummary, StudyCardView, StudyCountsView};
+use shared::app::{DeckOptionsEdit, DeckOptionsView, DeckSummary, StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
-    BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Input, NavDrawer, NavItem,
+    BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Input, InputType, NavDrawer,
+    NavItem, Select, SelectSize, Switch,
 };
 
 use crate::core_link;
@@ -192,7 +193,8 @@ pub fn RootComponent() -> impl IntoView {
                                             DeckView::Options => view! {
                                                 <DeckOptionsPanel
                                                     options=deck_options_view
-                                                    error=deck_options_error />
+                                                    error=deck_options_error
+                                                    set_event=set_event />
                                             }.into_any(),
                                         }}
                                     }
@@ -385,16 +387,19 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
     }
 }
 
-/// The read-only deck-options panel (US-4.9): shows the selected deck's
-/// scheduling preset, grouped the way the support matrix groups them, with
-/// enums rendered as human labels rather than raw snake_case strings.
+/// Editable deck-options form (US-4.10): renders the selected deck's preset as
+/// controls (number/text inputs, bool switches, enum selectors), applies local
+/// validation, and forwards `Event::DeckOptionsSave` with the edited values.
 ///
-/// Rendered alongside the study screen; nothing is shown until the preset has
-/// been requested (via `Event::DeckOptionsRequested`) and returned — the fetch
-/// itself is triggered from the header affordance, so this component only
-/// renders whatever the `ViewModel` already carries.
+/// Nothing is shown until the preset has been fetched (via the Options route's
+/// `DeckOptionsRequested`). The form state is local (this component) and reset
+/// on each entry to Options.
 #[component]
-fn deck_options_panel(options: Option<DeckOptionsView>, error: Option<String>) -> impl IntoView {
+fn deck_options_panel(
+    options: Option<DeckOptionsView>,
+    error: Option<String>,
+    set_event: WriteSignal<Event>,
+) -> impl IntoView {
     let options = match options {
         Some(o) => o,
         None => {
@@ -414,9 +419,22 @@ fn deck_options_panel(options: Option<DeckOptionsView>, error: Option<String>) -
         }
     };
 
-    // Force the name into the view so the header renders once (rather than in a
-    // closure); the grouped rows below are static given a fixed preset.
     let name = options.name.clone();
+    // Editable draft state, initialized from the loaded preset. Rebuilt on each
+    // entry to Options (see `RootComponent`, which mounts this only on the
+    // Options route).
+    let state = DeckOptionsEditState::from_view(&options);
+    // Local (shell-side) save error: parse errors that never reach the core.
+    // `error` above carries the core-set fetch/save error; this is separate.
+    let local_error = RwSignal::new(None::<String>);
+
+    let on_save = move |_| {
+        local_error.set(None);
+        match state.to_edit() {
+            Ok(edit) => set_event.set(Event::DeckOptionsSave(edit)),
+            Err(msg) => local_error.set(Some(msg)),
+        }
+    };
 
     view! {
         <section class="deck-options">
@@ -426,94 +444,390 @@ fn deck_options_panel(options: Option<DeckOptionsView>, error: Option<String>) -
             </header>
 
             <OptionsGroup title="Daily limits">
-                <OptionRow label="New cards/day" value=options.new_per_day.to_string() />
-                <OptionRow label="Maximum reviews/day" value=options.review_per_day.to_string() />
+                <NumberField label="New cards/day" value=state.new_per_day placeholder="20" />
+                <NumberField label="Maximum reviews/day" value=state.review_per_day placeholder="200" />
             </OptionsGroup>
 
             <OptionsGroup title="New cards">
-                <OptionRow label="Learning steps" value=format_steps(&options.learning_steps) />
-                <OptionRow label="Insertion order" value=label_insertion_order(&options.insertion_order) />
+                <TextField label="Learning steps" value=state.learning_steps placeholder="1m 10m" />
+                <SelectField
+                    label="Insertion order"
+                    value=state.insertion_order
+                    options=INSERTION_ORDER_OPTIONS />
             </OptionsGroup>
 
             <OptionsGroup title="Lapses">
-                <OptionRow label="Relearning steps" value=format_steps(&options.relearning_steps) />
-                <OptionRow label="Leech threshold" value=options.leech_threshold.to_string() />
-                <OptionRow label="Leech action" value=label_leech_action(&options.leech_action) />
+                <TextField label="Relearning steps" value=state.relearning_steps placeholder="10m" />
+                <NumberField label="Leech threshold" value=state.leech_threshold placeholder="8" />
+                <SelectField label="Leech action" value=state.leech_action options=LEECH_ACTION_OPTIONS />
             </OptionsGroup>
 
             <OptionsGroup title="Display order">
-                <OptionRow label="New card gather order" value=label_new_gather_order(&options.new_gather_order) />
-                <OptionRow label="New card sort order" value=label_new_sort_order(&options.new_sort_order) />
-                <OptionRow label="New/review order" value=label_new_review_order(&options.new_review_order) />
-                <OptionRow label="Interday learning/review order" value=label_interday_order(&options.interday_order) />
-                <OptionRow label="Review sort order" value=label_review_sort_order(&options.review_sort_order) />
+                <SelectField label="New card gather order" value=state.new_gather_order options=NEW_GATHER_OPTIONS />
+                <SelectField label="New card sort order" value=state.new_sort_order options=NEW_SORT_OPTIONS />
+                <SelectField label="New/review order" value=state.new_review_order options=NEW_REVIEW_OPTIONS />
+                <SelectField label="Interday learning/review order" value=state.interday_order options=NEW_REVIEW_OPTIONS />
+                <SelectField label="Review sort order" value=state.review_sort_order options=REVIEW_SORT_OPTIONS />
             </OptionsGroup>
 
             <OptionsGroup title="Burying">
-                <OptionRow label="Bury new siblings" value=bool_label(options.bury_new) />
-                <OptionRow label="Bury review siblings" value=bool_label(options.bury_review) />
-                <OptionRow label="Bury interday learning siblings" value=bool_label(options.bury_interday) />
+                <ToggleField label="Bury new siblings" checked=state.bury_new />
+                <ToggleField label="Bury review siblings" checked=state.bury_review />
+                <ToggleField label="Bury interday learning siblings" checked=state.bury_interday />
             </OptionsGroup>
 
             <OptionsGroup title="Audio">
-                <OptionRow label="Don't play audio automatically" value=bool_label(options.dont_play_audio_automatically) />
-                <OptionRow label="Skip question when replaying answer" value=bool_label(options.skip_question_when_replaying_answer) />
+                <ToggleField label="Don't play audio automatically" checked=state.dont_play_audio_automatically />
+                <ToggleField label="Skip question when replaying answer" checked=state.skip_question_when_replaying_answer />
             </OptionsGroup>
 
             <OptionsGroup title="Timers">
-                <OptionRow label="Maximum answer seconds" value=options.maximum_answer_seconds.to_string() />
-                <OptionRow label="Show on-screen timer" value=bool_label(options.show_on_screen_timer) />
-                <OptionRow label="Stop on-screen timer on answer" value=bool_label(options.stop_timer_on_answer) />
+                <NumberField label="Maximum answer seconds" value=state.maximum_answer_seconds placeholder="60" />
+                <ToggleField label="Show on-screen timer" checked=state.show_on_screen_timer />
+                <ToggleField label="Stop on-screen timer on answer" checked=state.stop_timer_on_answer />
             </OptionsGroup>
 
             <OptionsGroup title="Auto advance">
-                <OptionRow label="Seconds to show question" value=format_seconds(&options.auto_advance_seconds_show_question) />
-                <OptionRow label="Seconds to show answer" value=format_seconds(&options.auto_advance_seconds_show_answer) />
-                <OptionRow label="Wait for audio" value=bool_label(options.auto_advance_wait_for_audio) />
-                <OptionRow label="Question action" value=label_question_action(&options.auto_advance_question_action) />
-                <OptionRow label="Answer action" value=label_answer_action(&options.auto_advance_answer_action) />
+                <NumberField label="Seconds to show question" value=state.auto_advance_show_question placeholder="0" />
+                <NumberField label="Seconds to show answer" value=state.auto_advance_show_answer placeholder="0" />
+                <ToggleField label="Wait for audio" checked=state.auto_advance_wait_for_audio />
+                <SelectField label="Question action" value=state.auto_advance_question_action options=QUESTION_ACTION_OPTIONS />
+                <SelectField label="Answer action" value=state.auto_advance_answer_action options=ANSWER_ACTION_OPTIONS />
             </OptionsGroup>
 
             <OptionsGroup title="FSRS">
-                <OptionRow label="Desired retention" value=format_percent(options.desired_retention) />
-                <OptionRow label="Easy days" value=format_easy_days(&options.easy_days) />
+                <NumberField label="Desired retention (%) " value=state.desired_retention placeholder="90" />
+                <EasyDaysField days=state.easy_days />
             </OptionsGroup>
 
             <OptionsGroup title="Advanced">
-                <OptionRow label="Maximum interval" value=format_days(options.maximum_interval) />
-                <OptionRow
-                    label="FSRS parameters"
-                    value=if options.fsrs_parameters.is_empty() {
-                        "Default".to_string()
-                    } else {
-                        format_parameters(&options.fsrs_parameters)
-                    }
-                />
+                <NumberField label="Maximum interval (days)" value=state.maximum_interval placeholder="36500" />
+                <FieldRow label="FSRS parameters">
+                    <span class="deck-options__readonly">
+                        {if options.fsrs_parameters.is_empty() {
+                            "Default".to_string()
+                        } else {
+                            format_parameters(&options.fsrs_parameters)
+                        }}
+                    </span>
+                </FieldRow>
             </OptionsGroup>
+
+            <footer class="deck-options__footer">
+                {move || {
+                    if let Some(msg) = local_error.get() {
+                        view! { <p class="deck-options__error">{msg}</p> }.into_any()
+                    } else if let Some(msg) = error.clone() {
+                        view! { <p class="deck-options__error">{msg}</p> }.into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
+                <Button appearance=ButtonAppearance::Primary on_click=on_save>
+                    "Save"
+                </Button>
+            </footer>
         </section>
     }
     .into_any()
 }
 
-/// A titled group of option rows within the read-only preset.
+/// The editable draft state for a deck-options preset. Each control binds to a
+/// `RwSignal`; `to_edit` parses the raw strings into a typed `DeckOptionsEdit`
+/// (or returns a human-readable parse error). Enums stay as their `snake_case`
+/// wire form; numbers/steps are parsed on save.
+#[derive(Clone, Copy)]
+struct DeckOptionsEditState {
+    new_per_day: RwSignal<String>,
+    review_per_day: RwSignal<String>,
+    leech_threshold: RwSignal<String>,
+    maximum_answer_seconds: RwSignal<String>,
+    maximum_interval: RwSignal<String>,
+    desired_retention: RwSignal<String>,
+    auto_advance_show_question: RwSignal<String>,
+    auto_advance_show_answer: RwSignal<String>,
+    learning_steps: RwSignal<String>,
+    relearning_steps: RwSignal<String>,
+    bury_new: RwSignal<bool>,
+    bury_review: RwSignal<bool>,
+    bury_interday: RwSignal<bool>,
+    dont_play_audio_automatically: RwSignal<bool>,
+    skip_question_when_replaying_answer: RwSignal<bool>,
+    show_on_screen_timer: RwSignal<bool>,
+    stop_timer_on_answer: RwSignal<bool>,
+    auto_advance_wait_for_audio: RwSignal<bool>,
+    new_gather_order: RwSignal<String>,
+    new_sort_order: RwSignal<String>,
+    new_review_order: RwSignal<String>,
+    interday_order: RwSignal<String>,
+    review_sort_order: RwSignal<String>,
+    insertion_order: RwSignal<String>,
+    leech_action: RwSignal<String>,
+    auto_advance_question_action: RwSignal<String>,
+    auto_advance_answer_action: RwSignal<String>,
+    easy_days: [RwSignal<String>; 7],
+}
+
+impl DeckOptionsEditState {
+    /// Initialise the draft from a loaded preset's current values.
+    fn from_view(o: &DeckOptionsView) -> Self {
+        DeckOptionsEditState {
+            new_per_day: RwSignal::new(o.new_per_day.to_string()),
+            review_per_day: RwSignal::new(o.review_per_day.to_string()),
+            leech_threshold: RwSignal::new(o.leech_threshold.to_string()),
+            maximum_answer_seconds: RwSignal::new(o.maximum_answer_seconds.to_string()),
+            maximum_interval: RwSignal::new(o.maximum_interval.to_string()),
+            desired_retention: RwSignal::new(format_desired_retention(o.desired_retention)),
+            auto_advance_show_question: RwSignal::new(format_float_input(o.auto_advance_seconds_show_question)),
+            auto_advance_show_answer: RwSignal::new(format_float_input(o.auto_advance_seconds_show_answer)),
+            learning_steps: RwSignal::new(format_steps(&o.learning_steps)),
+            relearning_steps: RwSignal::new(format_steps(&o.relearning_steps)),
+            bury_new: RwSignal::new(o.bury_new),
+            bury_review: RwSignal::new(o.bury_review),
+            bury_interday: RwSignal::new(o.bury_interday),
+            dont_play_audio_automatically: RwSignal::new(o.dont_play_audio_automatically),
+            skip_question_when_replaying_answer: RwSignal::new(o.skip_question_when_replaying_answer),
+            show_on_screen_timer: RwSignal::new(o.show_on_screen_timer),
+            stop_timer_on_answer: RwSignal::new(o.stop_timer_on_answer),
+            auto_advance_wait_for_audio: RwSignal::new(o.auto_advance_wait_for_audio),
+            new_gather_order: RwSignal::new(o.new_gather_order.clone()),
+            new_sort_order: RwSignal::new(o.new_sort_order.clone()),
+            new_review_order: RwSignal::new(o.new_review_order.clone()),
+            interday_order: RwSignal::new(o.interday_order.clone()),
+            review_sort_order: RwSignal::new(o.review_sort_order.clone()),
+            insertion_order: RwSignal::new(o.insertion_order.clone()),
+            leech_action: RwSignal::new(o.leech_action.clone()),
+            auto_advance_question_action: RwSignal::new(o.auto_advance_question_action.clone()),
+            auto_advance_answer_action: RwSignal::new(o.auto_advance_answer_action.clone()),
+            easy_days: {
+                // Always 7 entries (the wire array is Monday-first); defensively
+                // default any missing entry to "normal".
+                let arr: [RwSignal<String>; 7] =
+                    std::array::from_fn(|_| RwSignal::new("normal".to_string()));
+                for (i, d) in o.easy_days.iter().enumerate().take(7) {
+                    arr[i].set(d.clone());
+                }
+                arr
+            },
+        }
+    }
+
+    /// Parse the raw draft into a typed `DeckOptionsEdit`. All fields are `Some`
+    /// (the whole preset is sent on save); enums stay snake_case; numbers and
+    /// steps are parsed, returning `Err` with a readable message on failure.
+    fn to_edit(&self) -> Result<DeckOptionsEdit, String> {
+        let int = |s: &RwSignal<String>, what: &str| -> Result<i64, String> {
+            let t = s.get().trim().to_string();
+            t.parse::<i64>().map_err(|_| format!("{what} must be a whole number"))
+        };
+        let float = |s: &RwSignal<String>, what: &str| -> Result<f64, String> {
+            let t = s.get().trim().to_string();
+            t.parse::<f64>().map_err(|_| format!("{what} must be a number"))
+        };
+
+        Ok(DeckOptionsEdit {
+            new_per_day: Some(int(&self.new_per_day, "New cards/day")?),
+            review_per_day: Some(int(&self.review_per_day, "Maximum reviews/day")?),
+            leech_threshold: Some(int(&self.leech_threshold, "Leech threshold")?),
+            maximum_answer_seconds: Some(int(&self.maximum_answer_seconds, "Maximum answer seconds")?),
+            maximum_interval: Some(int(&self.maximum_interval, "Maximum interval")?),
+            // Desired retention is entered as a percent (e.g. 90); convert to 0..1.
+            desired_retention: Some(float(&self.desired_retention, "Desired retention")? / 100.0),
+            auto_advance_seconds_show_question: Some(float(&self.auto_advance_show_question, "Auto-advance seconds (question)")?),
+            auto_advance_seconds_show_answer: Some(float(&self.auto_advance_show_answer, "Auto-advance seconds (answer)")?),
+            learning_steps: Some(self.learning_steps.get().trim().to_string()),
+            relearning_steps: Some(self.relearning_steps.get().trim().to_string()),
+            bury_new: Some(self.bury_new.get()),
+            bury_review: Some(self.bury_review.get()),
+            bury_interday: Some(self.bury_interday.get()),
+            dont_play_audio_automatically: Some(self.dont_play_audio_automatically.get()),
+            skip_question_when_replaying_answer: Some(self.skip_question_when_replaying_answer.get()),
+            show_on_screen_timer: Some(self.show_on_screen_timer.get()),
+            stop_timer_on_answer: Some(self.stop_timer_on_answer.get()),
+            auto_advance_wait_for_audio: Some(self.auto_advance_wait_for_audio.get()),
+            new_gather_order: Some(self.new_gather_order.get()),
+            new_sort_order: Some(self.new_sort_order.get()),
+            new_review_order: Some(self.new_review_order.get()),
+            interday_order: Some(self.interday_order.get()),
+            review_sort_order: Some(self.review_sort_order.get()),
+            insertion_order: Some(self.insertion_order.get()),
+            leech_action: Some(self.leech_action.get()),
+            auto_advance_question_action: Some(self.auto_advance_question_action.get()),
+            auto_advance_answer_action: Some(self.auto_advance_answer_action.get()),
+            easy_days: Some(self.easy_days.iter().map(|d| d.get()).collect()),
+            // Name and parameters are not edited here (read-only); leave absent.
+            name: None,
+            fsrs_parameters: None,
+        })
+    }
+}
+
+/// A titled group of option rows within the settings form.
 #[component]
 fn options_group(title: &'static str, children: Children) -> impl IntoView {
     view! {
         <div class="deck-options-group">
             <h3 class="deck-options-group__title">{title}</h3>
-            <dl class="deck-options-group__rows">{children()}</dl>
+            <div class="deck-options-group__rows">{children()}</div>
         </div>
     }
 }
 
-/// A single `label → value` row.
+/// A label + control row. The control is provided as children.
 #[component]
-fn option_row(label: &'static str, value: String) -> impl IntoView {
+fn field_row(label: &'static str, children: Children) -> impl IntoView {
     view! {
         <div class="deck-options-row">
-            <dt class="deck-options-row__label">{label}</dt>
-            <dd class="deck-options-row__value">{value}</dd>
+            <span class="deck-options-row__label">{label}</span>
+            <div class="deck-options-row__control">{children()}</div>
         </div>
+    }
+}
+
+/// A numeric text input bound to a string signal (parsed on save).
+#[component]
+fn number_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
+    view! {
+        <FieldRow label=label>
+            <Input value=value placeholder=placeholder input_type=Signal::derive(|| InputType::Number) />
+        </FieldRow>
+    }
+}
+
+/// A free-text input (Anki-style step strings).
+#[component]
+fn text_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
+    view! {
+        <FieldRow label=label>
+            <Input value=value placeholder=placeholder />
+        </FieldRow>
+    }
+}
+
+/// A boolean toggle row.
+#[component]
+fn toggle_field(label: &'static str, checked: RwSignal<bool>) -> impl IntoView {
+    view! {
+        <FieldRow label=label>
+            <Switch checked=checked />
+        </FieldRow>
+    }
+}
+
+/// An enum selector row, driven by a snake-case string signal.
+#[component]
+fn select_field(
+    label: &'static str,
+    value: RwSignal<String>,
+    options: &'static [(&'static str, &'static str)],
+) -> impl IntoView {
+    view! {
+        <FieldRow label=label>
+            <Select value=value size=SelectSize::Medium>
+                {options.iter().map(|(val, lbl)| {
+                    view! { <option value=*val selected=move || value.get() == *val>{*lbl}</option> }
+                }).collect_view()}
+            </Select>
+        </FieldRow>
+    }
+}
+
+/// Seven per-weekday Easy Days selectors (Monday-first).
+#[component]
+fn easy_days_field(days: [RwSignal<String>; 7]) -> impl IntoView {
+    const NAMES: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    view! {
+        <div class="deck-options-easy-days">
+            {NAMES.iter().enumerate().map(|(i, name)| {
+                let d = days[i];
+                view! {
+                    <div class="deck-options-easy-day">
+                        <span class="deck-options-easy-day__label">{*name}</span>
+                        <Select value=d size=SelectSize::Medium>
+                            {EASY_DAY_OPTIONS.iter().map(|(val, lbl)| {
+                                view! { <option value=*val selected=move || d.get() == *val>{*lbl}</option> }
+                            }).collect_view()}
+                        </Select>
+                    </div>
+                }
+            }).collect_view()}
+        </div>
+    }
+}
+
+// --- Enum option lists (wire snake_case value, human label) ---
+
+const NEW_GATHER_OPTIONS: &[(&str, &str)] = &[
+    ("deck", "Deck"),
+    ("deck_then_random_notes", "Deck, then random notes"),
+    ("ascending", "Ascending position"),
+    ("descending", "Descending position"),
+    ("random_notes", "Random notes"),
+    ("random_cards", "Random cards"),
+];
+const NEW_SORT_OPTIONS: &[(&str, &str)] = &[
+    ("card_type_then_gathered", "Card type, then order gathered"),
+    ("gathered", "Order gathered"),
+    ("card_type_then_random", "Card type, then random"),
+    ("random_note_then_card_type", "Random note, then card type"),
+    ("random", "Random"),
+];
+const NEW_REVIEW_OPTIONS: &[(&str, &str)] = &[
+    ("mix", "Mix with reviews"),
+    ("after", "Show after reviews"),
+    ("before", "Show before reviews"),
+];
+const REVIEW_SORT_OPTIONS: &[(&str, &str)] = &[
+    ("due_then_random", "Due date, then random"),
+    ("due_then_deck", "Due date, then deck"),
+    ("deck_then_due", "Deck, then due date"),
+    ("ascending_interval", "Ascending intervals"),
+    ("descending_interval", "Descending intervals"),
+    ("easy_first", "Easy first"),
+    ("difficult_first", "Difficult first"),
+    ("ascending_retrievability", "Ascending retrievability"),
+    ("descending_retrievability", "Descending retrievability"),
+    ("relative_overdueness", "Relative overdueness"),
+    ("random", "Random"),
+    ("order_added", "Order added"),
+    ("latest_added_first", "Latest added first"),
+];
+const INSERTION_ORDER_OPTIONS: &[(&str, &str)] = &[
+    ("sequential", "Sequential"),
+    ("random", "Random"),
+];
+const LEECH_ACTION_OPTIONS: &[(&str, &str)] = &[
+    ("tag_only", "Tag only"),
+    ("suspend_card", "Suspend card"),
+];
+const QUESTION_ACTION_OPTIONS: &[(&str, &str)] = &[
+    ("show_answer", "Show answer"),
+    ("show_card", "Show card"),
+];
+const ANSWER_ACTION_OPTIONS: &[(&str, &str)] = &[
+    ("bury_card", "Bury card"),
+    ("answer_again", "Answer again"),
+    ("answer_good", "Answer good"),
+    ("answer_hard", "Answer hard"),
+    ("show_reminder", "Show reminder"),
+];
+const EASY_DAY_OPTIONS: &[(&str, &str)] = &[
+    ("minimum", "Minimum"),
+    ("reduced", "Reduced"),
+    ("normal", "Normal"),
+];
+
+/// Format desired retention (0..1) into a whole-percent string (e.g. 0.9 → "90").
+fn format_desired_retention(value: f64) -> String {
+    format!("{:.0}", value * 100.0)
+}
+
+/// Format a float for an editable input (drop a trailing `.0`, keep 1 dp else).
+fn format_float_input(value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
     }
 }
 
@@ -526,27 +840,6 @@ fn format_steps(steps: &[i64]) -> String {
     steps.iter().map(|&s| format_interval(s)).collect::<Vec<_>>().join(" ")
 }
 
-/// Format an auto-advance seconds value; `0` disables the feature.
-fn format_seconds(value: &f64) -> String {
-    if *value <= 0.0 {
-        "Off (0 s)".to_string()
-    } else if value.fract() == 0.0 {
-        format!("{value:.0} s")
-    } else {
-        format!("{value:.1} s")
-    }
-}
-
-/// Format desired retention as a whole percent (0.9 → "90%").
-fn format_percent(value: f64) -> String {
-    format!("{:.0}%", value * 100.0)
-}
-
-/// Format the maximum review interval in days, matching Anki's unit.
-fn format_days(value: i64) -> String {
-    format!("{value} days")
-}
-
 /// Format the raw FSRS weight vector (kept read-only; the optimizer is deferred).
 fn format_parameters(params: &[f32]) -> String {
     params
@@ -554,149 +847,6 @@ fn format_parameters(params: &[f32]) -> String {
         .map(|w| format!("{w:.4}"))
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-/// Format Easy Days as a compact Monday-first readout (e.g. "Mon Reduced, …").
-fn format_easy_days(days: &[String]) -> String {
-    const NAMES: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    if days.len() != 7 {
-        return "(unset)".to_string();
-    }
-    days.iter()
-        .enumerate()
-        .map(|(i, d)| format!("{} {}", NAMES[i], label_easy_day(d)))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-/// Whether a boolean option is on/off.
-fn bool_label(value: bool) -> String {
-    if value {
-        "On".to_string()
-    } else {
-        "Off".to_string()
-    }
-}
-
-// --- Enum label helpers (snake_case wire name → human label) ---
-// These map the serde wire forms exposed on `DeckOptionsView` back to the labels
-// Anki uses in-app, so the read-only screen never shows raw debug strings.
-
-fn label_new_gather_order(value: &str) -> String {
-    match value {
-        "deck" => "Deck".to_string(),
-        "deck_then_random_notes" => "Deck, then random notes".to_string(),
-        "ascending" => "Ascending position".to_string(),
-        "descending" => "Descending position".to_string(),
-        "random_notes" => "Random notes".to_string(),
-        "random_cards" => "Random cards".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_new_sort_order(value: &str) -> String {
-    match value {
-        "card_type_then_gathered" => "Card type, then order gathered".to_string(),
-        "gathered" => "Order gathered".to_string(),
-        "card_type_then_random" => "Card type, then random".to_string(),
-        "random_note_then_card_type" => "Random note, then card type".to_string(),
-        "random" => "Random".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_new_review_order(value: &str) -> String {
-    match value {
-        "mix" => "Mix with reviews".to_string(),
-        "after" => "Show after reviews".to_string(),
-        "before" => "Show before reviews".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_interday_order(value: &str) -> String {
-    label_new_review_order(value)
-}
-
-fn label_review_sort_order(value: &str) -> String {
-    match value {
-        "due_then_random" => "Due date, then random".to_string(),
-        "due_then_deck" => "Due date, then deck".to_string(),
-        "deck_then_due" => "Deck, then due date".to_string(),
-        "ascending_interval" => "Ascending intervals".to_string(),
-        "descending_interval" => "Descending intervals".to_string(),
-        "easy_first" => "Easy first".to_string(),
-        "difficult_first" => "Difficult first".to_string(),
-        "ascending_retrievability" => "Ascending retrievability".to_string(),
-        "descending_retrievability" => "Descending retrievability".to_string(),
-        "relative_overdueness" => "Relative overdueness".to_string(),
-        "random" => "Random".to_string(),
-        "order_added" => "Order added".to_string(),
-        "latest_added_first" => "Latest added first".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_insertion_order(value: &str) -> String {
-    match value {
-        "sequential" => "Sequential".to_string(),
-        "random" => "Random".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_leech_action(value: &str) -> String {
-    match value {
-        "tag_only" => "Tag only".to_string(),
-        "suspend_card" => "Suspend card".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_question_action(value: &str) -> String {
-    match value {
-        "show_answer" => "Show answer".to_string(),
-        "show_card" => "Show card".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_answer_action(value: &str) -> String {
-    match value {
-        "bury_card" => "Bury card".to_string(),
-        "answer_again" => "Answer again".to_string(),
-        "answer_good" => "Answer good".to_string(),
-        "answer_hard" => "Answer hard".to_string(),
-        "show_reminder" => "Show reminder".to_string(),
-        other => humanize(other),
-    }
-}
-
-fn label_easy_day(value: &str) -> String {
-    match value {
-        "minimum" => "Minimum".to_string(),
-        "reduced" => "Reduced".to_string(),
-        "normal" => "Normal".to_string(),
-        other => humanize(other),
-    }
-}
-
-/// Fallback: turn a snake_case wire name into Title Case (used only for values
-/// not otherwise mapped — every current enum is mapped above, so this is a
-/// defensive path for future enum additions).
-fn humanize(snake: &str) -> String {
-    snake
-        .split('_')
-        .filter(|w| !w.is_empty())
-        .map(|w| {
-            let mut chars = w.chars();
-            match chars.next() {
-                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// A single card: the front (then the revealed back) rendered as HTML in a

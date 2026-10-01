@@ -283,7 +283,7 @@
       .thaw-breadcrumb-button--current:hover {
         text-decoration: none;
       }
-      /* Read-only deck-options panel (US-4.9): grouped `label → value` rows. */
+      /* Deck-options panel (US-4.9 read-only + US-4.10 edit/save). */
       .deck-options {
         display: flex;
         flex-direction: column;
@@ -330,16 +330,47 @@
       .deck-options-row {
         display: flex;
         justify-content: space-between;
+        align-items: center;
         gap: 1rem;
       }
       .deck-options-row__label {
         color: var(--colorNeutralForeground3);
       }
-      .deck-options-row__value {
-        margin: 0;
+      .deck-options-row__control {
+        display: flex;
+        justify-content: flex-end;
+        min-width: 0;
+      }
+      .deck-options-row__control .thaw-input,
+      .deck-options-row__control .thaw-select {
+        width: 16rem;
+      }
+      .deck-options__readonly {
         color: var(--colorNeutralForeground1);
-        text-align: right;
         overflow-wrap: anywhere;
+        text-align: right;
+      }
+      .deck-options__footer {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.5rem;
+      }
+      .deck-options-easy-days {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .deck-options-easy-day {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+      }
+      .deck-options-easy-day__label {
+        color: var(--colorNeutralForeground3);
+        min-width: 2.5rem;
+        text-align: right;
       }
     </style>
     <!-- The lib and bin targets are both named `leptos_shell`; point trunk at
