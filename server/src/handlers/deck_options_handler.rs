@@ -264,6 +264,16 @@ pub async fn update_deck_options(
     let existing = deck_options::get_options(&state.db, id)
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "Deck options not found".to_string()))?;
+
+    // The global default preset (id 0) is system-owned and shared across every
+    // school. Real-school users may *read* it (see `get_deck_options`), but may
+    // not mutate it — a teacher customises by creating/editing their own preset.
+    if existing.id == 0 {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "The global default preset is read-only; create your own preset to customise".to_string(),
+        ));
+    }
     if existing.school_id != claims.school_id {
         return Err((StatusCode::NOT_FOUND, "Deck options not found".to_string()));
     }
@@ -798,6 +808,15 @@ pub async fn delete_deck_options(
     let existing = deck_options::get_options(&state.db, id)
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "Deck options not found"))?;
+
+    // The global default preset (id 0) is system-owned and shared; real-school
+    // users may read it but not delete it.
+    if existing.id == 0 {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "The global default preset cannot be deleted",
+        ));
+    }
     if existing.school_id != claims.school_id {
         return Err((StatusCode::NOT_FOUND, "Deck options not found"));
     }

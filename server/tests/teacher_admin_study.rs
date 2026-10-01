@@ -139,7 +139,7 @@ async fn deck_options_id_resolves_to_effective_preset() {
 /// from any school (US-4.9 carve-out): `GET /deck-options/0` must not 404 for a
 /// real-school caller, since a deck with no `options_id` resolves to it.
 #[tokio::test]
-async fn get_global_default_preset_is_cross_school() {
+async fn get_deck_options_resolves_global_default_for_other_school() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (_teacher_id, token) = create_user(&app, UserRole::Teacher).await;
@@ -156,4 +156,53 @@ async fn get_global_default_preset_is_cross_school() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["id"].as_i64(), Some(0));
     assert_eq!(json["name"].as_str(), Some("Default"));
+}
+
+/// The global default preset (id 0) is read-only for real-school users: `PATCH`
+/// and `DELETE` on it are rejected (403), so no school can mutate/delete the
+/// shared system default — while their *own* presets remain fully editable.
+#[tokio::test]
+async fn global_default_preset_is_read_only_for_other_schools() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    // PATCH /deck-options/0 -> 403.
+    let patch = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/deck-options/0")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({ "new_per_day": 99 }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(patch.status(), StatusCode::FORBIDDEN, "PATCH id 0 is forbidden");
+
+    // DELETE /deck-options/0 -> 403.
+    let delete = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/deck-options/0")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete.status(), StatusCode::FORBIDDEN, "DELETE id 0 is forbidden");
+
+    // The default preset survives untouched.
+    let still_there = anjuman_server::deck_options::get_options(&app.db, 0)
+        .await
+        .expect("id 0 still present");
+    assert_eq!(still_there.name, "Default");
 }
