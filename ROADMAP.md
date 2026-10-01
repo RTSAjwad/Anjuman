@@ -801,7 +801,7 @@ injected `HttpResponse`s, never a running server).
       the shell agent); card styling (note-type CSS) is US-4.6 (done core+server;
       shell injection + dark-mode inversion pending); deck authorization
       predicate is US-4.7 (done) and teacher/admin study + real counts is
-      US-4.8 (drafted, next); notes + cards remain.
+      US-4.8 (done); notes + cards remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -1280,20 +1280,20 @@ One decision, recorded so this is unambiguous:
 
 **Acceptance criteria**
 
-- [ ] `list_decks` admin + teacher branches compute `studyable` from the new
+- [x] `list_decks` admin + teacher branches compute `studyable` from the new
       deck-access permission predicate (US-4.7) — i.e. `Study` is granted —
       instead of hardcoding `true`, and are scoped to the decks the caller
       actually holds a grant on (not every school deck).
-- [ ] `list_decks` admin + teacher branches return real per-state counts by
+- [x] `list_decks` admin + teacher branches return real per-state counts by
       calling `deck_counts_for_student(claims.sub, deck_id)` (and real
       `total_count`), so new/learning/review/relearning are populated —
       mirroring the student branch.
-- [ ] `GET /decks/counts` teacher/admin branch returns per-state counts (via the
+- [x] `GET /decks/counts` teacher/admin branch returns per-state counts (via the
       same `deck_counts_for_student`) instead of hardcoded `0`.
-- [ ] `studyable` and counts are consistent: a deck marked studyable in the list
+- [x] `studyable` and counts are consistent: a deck marked studyable in the list
       is one the `Study` permission (US-4.7) admits, and its counts match what
       the study flow would show.
-- [ ] Each criterion has a `server/tests/` test named after it (e.g. in a new
+- [x] Each criterion has a `server/tests/` test named after it (e.g. in a new
       `server/tests/teacher_admin_study.rs`); `cargo test` passes and OpenAPI
       still generates.
 

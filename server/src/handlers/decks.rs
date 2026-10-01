@@ -41,6 +41,7 @@ use anjuman_contracts::{MessageResponse, UserRole};
 use crate::{
     auth::AuthUser,
     db_types::{DbLimitMode, DbUserRole},
+    permissions::{DeckPerm, deck_permission},
     state::AppState,
 };
 
@@ -1076,9 +1077,16 @@ pub async fn list_decks(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-        let decks: Vec<DeckResponse> = rows
-            .into_iter()
-            .map(|r| DeckResponse {
+        let mut decks: Vec<DeckResponse> = Vec::new();
+        for r in rows {
+            let deck_id = r.id;
+            let studyable =
+                deck_permission(&state.db, &claims, deck_id).await? == DeckPerm::Study;
+            let counts =
+                crate::handlers::study::deck_counts_for_student(&state.db, claims.sub, deck_id)
+                    .await
+                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+            decks.push(DeckResponse {
                 id: r.id,
                 school_id: r.school_id,
                 title: r.title,
@@ -1095,14 +1103,14 @@ pub async fn list_decks(
                 review_per_day_override: None,
                 new_per_day_today_date: None,
                 review_per_day_today_date: None,
-                new_count: None,
-                learning_count: None,
-                review_count: None,
-                relearning_count: None,
+                new_count: Some(counts.new_count),
+                learning_count: Some(counts.learning_count),
+                review_count: Some(counts.review_count),
+                relearning_count: Some(counts.relearning_count),
                 total_count: Some(r.card_count),
-                studyable: true,
-            })
-            .collect();
+                studyable,
+            });
+        }
         return Ok(Json(decks));
     }
 
@@ -1130,9 +1138,15 @@ pub async fn list_decks(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-        let decks: Vec<DeckResponse> = rows
-            .into_iter()
-            .map(|r| DeckResponse {
+        let mut decks: Vec<DeckResponse> = Vec::new();
+        for r in rows {
+            let deck_id = r.id;
+            let studyable = deck_permission(&state.db, &claims, deck_id).await? == DeckPerm::Study;
+            let counts =
+                crate::handlers::study::deck_counts_for_student(&state.db, claims.sub, deck_id)
+                    .await
+                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+            decks.push(DeckResponse {
                 id: r.id,
                 school_id: r.school_id,
                 title: r.title,
@@ -1149,14 +1163,14 @@ pub async fn list_decks(
                 review_per_day_override: None,
                 new_per_day_today_date: None,
                 review_per_day_today_date: None,
-                new_count: None,
-                learning_count: None,
-                review_count: None,
-                relearning_count: None,
+                new_count: Some(counts.new_count),
+                learning_count: Some(counts.learning_count),
+                review_count: Some(counts.review_count),
+                relearning_count: Some(counts.relearning_count),
                 total_count: Some(r.card_count),
-                studyable: true,
-            })
-            .collect();
+                studyable,
+            });
+        }
         return Ok(Json(decks));
     }
 
@@ -1369,7 +1383,8 @@ pub async fn deck_counts(
             });
         }
     } else {
-        // Teacher/admin: total count only.
+        // Teacher/admin: real per-state counts from their own scheduling state
+        // (US-4.8) — mirroring the student branch.
         let rows = sqlx::query!(
             r#"
             SELECT d.id, (SELECT COUNT(*) FROM cards c WHERE c.deck_id IN (
@@ -1396,12 +1411,16 @@ pub async fn deck_counts(
                     continue;
                 }
             }
+            let counts =
+                crate::handlers::study::deck_counts_for_student(&state.db, claims.sub, deck_id)
+                    .await
+                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
             result.push(DeckCounts {
                 deck_id,
-                new_count: 0,
-                learning_count: 0,
-                review_count: 0,
-                relearning_count: 0,
+                new_count: counts.new_count,
+                learning_count: counts.learning_count,
+                review_count: counts.review_count,
+                relearning_count: counts.relearning_count,
                 total_count: row.total,
             });
         }
