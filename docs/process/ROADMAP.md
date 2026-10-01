@@ -1376,13 +1376,13 @@ interface change before client work.
 
 **Shell contract**
 
-- [ ] From a deck's context, forward `Event::DeckOptionsRequested { deck_id }`.
-- [ ] Render the preset's values read-only (name + each option, grouped as the
+- [x] From a deck's context, forward `Event::DeckOptionsRequested { deck_id }`.
+- [x] Render the preset's values read-only (name + each option, grouped as the
       matrix groups them: daily limits / new cards / lapses / display order /
       burying / audio / timers / auto-advance / FSRS / advanced).
-- [ ] Enums render as human labels (see the wire `snake_case` values), not raw
+- [x] Enums render as human labels (see the wire `snake_case` values), not raw
       debug strings.
-- [ ] Render an error/empty state.
+- [x] Render an error/empty state.
 
 **Out of scope**
 

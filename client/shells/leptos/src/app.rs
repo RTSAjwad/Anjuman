@@ -179,12 +179,10 @@ pub fn RootComponent() -> impl IntoView {
                                                     </span>
                                                 </BreadcrumbItem>
                                             </Breadcrumb>
-                                            <div class="app-header__actions">
-                                                {match active_view.get() {
-                                                    DeckView::Study => study_count_badges(counts).into_any(),
-                                                    DeckView::Options => ().into_any(),
-                                                }}
-                                            </div>
+                                            {match active_view.get() {
+                                                DeckView::Study => study_count_badges(counts).into_any(),
+                                                DeckView::Options => ().into_any(),
+                                            }}
                                         </div>
                                         {match active_view.get() {
                                             DeckView::Study => view! {

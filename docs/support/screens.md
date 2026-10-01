@@ -31,7 +31,7 @@ Legend:
 | Notes (browser/edit) | ❌ | Consumes `GET /notes`, note-type/template UI later. |
 | Cards / browser | ❌ | Consumes `GET /cards`; flag/suspend/bury actions. |
 | Study session | ❌ | Consumes `GET/POST /decks/{id}/study`; the single-card loop. |
-| Deck options settings | 🟡 | US-4.9 (view) + US-4.10 (edit/save) core done; shell rendering/editing pending the shell agent. Preferences settings not yet drafted. |
+| Deck options settings | 🟡 | US-4.9 (view) + US-4.10 (edit/save) core done; read-only shell view done (Leptos), edit/save pending the shell agent. Preferences settings not yet drafted. |
 | Classes / dashboard (teacher) | ❌ | Consumer of `/classes`, `/dashboard`; lower priority. |
 | Tagging / search | ❌ | Deferred to stage 6 (search) — no client work now. |
 
@@ -51,7 +51,7 @@ tracked here only.
 | Notes | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Cards / browser | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Study session | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Deck options settings | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Deck options settings | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Classes / dashboard | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | On-screen timer | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Audio playback | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
