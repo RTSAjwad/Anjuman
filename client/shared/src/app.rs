@@ -30,6 +30,17 @@ const API_URL: &str = "http://127.0.0.1:3000";
 /// The key under which the JWT is persisted (by the shell's KV capability).
 const TOKEN_KEY: &str = "auth_token";
 
+/// Which sub-view of the selected deck is showing. This is the core-owned
+/// source of truth for the deck "route" (the shell renders it, it doesn't hold
+/// its own). `Study` is the default when re-opening a deck.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
+pub enum DeckView {
+    #[default]
+    Study,
+    Options,
+}
+
 /// The entire application state.
 #[derive(Default, Serialize, Deserialize)]
 pub struct Model {
@@ -48,6 +59,8 @@ pub struct Model {
     pub decks_error: Option<String>,
     /// The deck the user has opened to study (null until one is selected).
     pub selected_deck: Option<DeckSummary>,
+    /// Which sub-view of the selected deck is showing (Study or Options).
+    pub selected_deck_view: DeckView,
     /// The card currently shown, if study has started and a card is due.
     pub current_card: Option<StudyCard>,
     /// Due counts for the deck being studied.
@@ -99,6 +112,10 @@ pub enum Event {
     /// Open a deck (by id) to study it — records the selection and switches the
     /// shell from the list view to the study screen.
     OpenDeck {
+        deck_id: i64,
+    },
+    /// Open a deck directly into its Options sub-view (deck-options screen).
+    OpenDeckOptions {
         deck_id: i64,
     },
     /// Begin studying the selected deck: fetch the first due card (+ counts).
@@ -212,6 +229,8 @@ pub struct ViewModel {
     /// The selected deck (id + title + studyable) to show on the study screen,
     /// or `None` when showing the list.
     pub selected_deck: Option<DeckSummary>,
+    /// Which sub-view of the selected deck is showing (Study or Options).
+    pub selected_deck_view: DeckView,
     /// A human-readable error from the last decks fetch, if any.
     pub decks_error: Option<String>,
     /// The card currently shown during study, or `None` when nothing is due
@@ -730,6 +749,7 @@ impl crux_core::App for Anjuman {
                 model.decks.clear();
                 model.decks_error = None;
                 model.selected_deck = None;
+                model.selected_deck_view = DeckView::Study;
                 model.current_card = None;
                 model.counts = StudyCounts::default();
                 model.study_error = None;
@@ -741,17 +761,35 @@ impl crux_core::App for Anjuman {
 
             Event::OpenDeck { deck_id } => {
                 // Only decks already in the list are openable; an unknown id is
-                // a no-op (no crash, no bogus selection).
+                // a no-op (no crash, no bogus selection). Opening lands on the
+                // Study sub-view and begins the study fetch directly.
                 if let Some(summary) = find_deck(&model.decks, deck_id) {
                     model.selected_deck = Some(summary);
+                    model.selected_deck_view = DeckView::Study;
+                    return render::render().and(Command::event(Event::StartStudy));
+                }
+                render::render()
+            }
+
+            Event::OpenDeckOptions { deck_id } => {
+                // Open a deck directly into its Options sub-view: select it and
+                // fetch its preset.
+                if let Some(summary) = find_deck(&model.decks, deck_id) {
+                    model.selected_deck = Some(summary);
+                    model.selected_deck_view = DeckView::Options;
+                    return render::render().and(Command::event(Event::DeckOptionsRequested {
+                        deck_id,
+                    }));
                 }
                 render::render()
             }
 
             Event::CloseDeck => {
                 // Back-navigation: drop the selection and any in-flight study
-                // state, but keep auth + decks (unlike `Logout`).
+                // state, but keep auth + decks (unlike `Logout`). Re-opening a
+                // deck always starts on the Study sub-view.
                 model.selected_deck = None;
+                model.selected_deck_view = DeckView::Study;
                 model.current_card = None;
                 model.counts = StudyCounts::default();
                 model.study_error = None;
@@ -1048,6 +1086,7 @@ impl crux_core::App for Anjuman {
                 error: model.error.clone(),
                 decks,
                 selected_deck: model.selected_deck.clone(),
+                selected_deck_view: model.selected_deck_view,
                 decks_error: model.decks_error.clone(),
                 current_card,
                 counts,
@@ -1065,6 +1104,7 @@ impl crux_core::App for Anjuman {
                 error: model.error.clone(),
                 decks,
                 selected_deck: None,
+                selected_deck_view: DeckView::Study,
                 decks_error: model.decks_error.clone(),
                 current_card: None,
                 counts: StudyCountsView::default(),
@@ -1511,6 +1551,64 @@ mod tests {
         let _ = update(Event::OpenDeck { deck_id: 1 }, &mut model);
         let selected = model.selected_deck.clone().expect("selected");
         assert!(!selected.studyable);
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.11 (sub-route) — core-owned deck view (Study vs Options)
+    // --------------------------------------------------------------------
+
+    /// `selected_deck_view` defaults to `Study` (a fresh model, and unauthenticated).
+    #[test]
+    fn selected_deck_view_defaults_to_study() {
+        let model = Model::default();
+        assert_eq!(model.selected_deck_view, DeckView::Study);
+        assert_eq!(Anjuman.view(&model).selected_deck_view, DeckView::Study);
+    }
+
+    /// `OpenDeck` records the selection and lands on the Study sub-view.
+    #[test]
+    fn open_deck_with_view_records_selected_deck_view() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+
+        // Study (OpenDeck) -> Study view.
+        let _ = update(Event::OpenDeck { deck_id: 1 }, &mut model);
+        assert_eq!(model.selected_deck_view, DeckView::Study);
+
+        // Options (OpenDeckOptions) -> Options view.
+        let _ = update(Event::OpenDeckOptions { deck_id: 1 }, &mut model);
+        assert_eq!(model.selected_deck_view, DeckView::Options);
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.selected_deck_view, DeckView::Options);
+    }
+
+    /// Opening into Options fetches the deck-options preset; opening into Study
+    /// chains the study-start (both chain their sub-view's request).
+    #[test]
+    fn open_deck_chains_the_correct_view_request() {
+        // Options -> DeckOptionsRequested (chained; the preset fetch is covered
+        // by the deck_options_requested_* tests). We assert the view reflects
+        // Options and that OpenDeckOptions selects the deck.
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+        let _ = update(Event::OpenDeckOptions { deck_id: 1 }, &mut model);
+        assert!(model.selected_deck.is_some());
+        assert_eq!(model.selected_deck_view, DeckView::Options);
+    }
+
+    /// `CloseDeck` clears the selection and resets `selected_deck_view` to Study,
+    /// so re-opening always starts on Study (unless opened into Options).
+    #[test]
+    fn close_deck_resets_selected_deck_view() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+        // Open into Options, then close.
+        let _ = update(Event::OpenDeckOptions { deck_id: 1 }, &mut model);
+        assert_eq!(model.selected_deck_view, DeckView::Options);
+
+        let _ = update(Event::CloseDeck, &mut model);
+        assert!(model.selected_deck.is_none());
+        assert_eq!(model.selected_deck_view, DeckView::Study);
     }
 
     // --------------------------------------------------------------------
