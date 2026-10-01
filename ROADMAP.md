@@ -799,7 +799,9 @@ injected `HttpResponse`s, never a running server).
       dependency order). Decks list is US-4.3 (done); study entry is US-4.4
       (done) and the study loop core is US-4.5 (done; Leptos rendering pending
       the shell agent); card styling (note-type CSS) is US-4.6 (done core+server;
-      shell injection + dark-mode inversion pending); notes + cards remain.
+      shell injection + dark-mode inversion pending); deck authorization
+      predicate is US-4.7 and teacher/admin study + real counts is US-4.8
+      (drafted, next); notes + cards remain.
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
       playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
@@ -1159,7 +1161,152 @@ Three decisions, recorded here so implementation is unambiguous:
 **Out of scope**
 
 - The shell's actual inversion implementation (the `Theme ⚪` cell), template
-  editor UI for editing `css`, and per-template CSS.
+  editor UI for editing `styling`, and per-template CSS.
+
+---
+
+### US-4.7 — Centralize deck-access authorization behind a permission predicate
+
+**As** a developer adding or changing a deck feature,
+**I want** a single source of truth that answers "what may this user do to this
+deck?",
+**so that** authorization is computed in one place and later permission/scope
+changes are one edit, not a sweep across handlers.
+
+**Background / decisions (settled)**
+
+Deck authorization is currently spread across three ad-hoc mechanisms, which is
+what produced the inconsistencies US-4.8 fixes:
+
+1. **Role checks** — local `check_teacher_or_admin` copies in `decks.rs`,
+   `classes.rs`, `deck_options_handler.rs`, plus inline `claims.role == X`
+   branches.
+2. **Ownership/collaboration checks** — `check_deck_owner`,
+   `check_deck_collaborator`, `is_deck_collaborator`.
+3. **Resource-grant checks** — `has_grant` / `deck_access` / `check_deck_visible`
+   / `check_deck_studyable` (the US-2.19 subtree model).
+
+This story consolidates **deck** authorization into one predicate. Two decisions,
+recorded here because they are the whole point of the change:
+
+1. **Permissions are resource-grants, not role-gates.** "May study deck X" is a
+   function of the user's *relationship* to X (owner / collaborator / class
+   member, extended over the subtree per US-2.19), **not** of their role label
+   alone. Roles only influence which grants a user tends to hold (teachers own
+   decks; admins can manage any deck). This is what makes the model stable when
+   roles or scoping are later re-tuned.
+2. **Admins are NOT blanket-granted study on every deck.** The existing
+   `has_grant` admin short-circuit (`Admin → true`) is removed; an admin holds a
+   grant the same way anyone does (owner/collaborator/class). Management
+   permissions (create/rename/delete/share) stay admin-permissive as today — this
+   story only rationalises the **study/access** predicate.
+
+**Shape (to implement)**
+
+- A single module (e.g. `server/src/permissions.rs`) exposing a deck permission
+  enum/predicate, e.g. `DeckPerm { Study, Manage, Share, ReadAdminDetail, … }`,
+  and one entry point like `deck_permission(db, claims, deck_id) -> DeckPerm` (or
+  `require_deck_perm(…, DeckPerm::Study)` for the deny case).
+- The existing `has_grant` / `deck_access` / `check_deck_visible` /
+  `check_deck_studyable` become the *implementation* behind that predicate; new
+  call sites (and the study/counts call sites US-4.8 touches) call the predicate,
+  not `role ==` directly.
+
+**Acceptance criteria**
+
+- [ ] The deck-access predicate exists and answers `Study` for a deck the user
+      owns, collaborates on, or reaches via a class (extended over the subtree
+      per US-2.19) — and `Study` is **not** granted merely for being `Admin`.
+- [ ] `check_deck_studyable` (and study `GET`/`POST`) consult the predicate; an
+      admin who does not own/collaborate a deck gets `403` (behaviour change from
+      today's blanket grant).
+- [ ] `has_grant` no longer short-circuits `Admin → true`.
+- [ ] The predicate is `pub` and reusable from `list_decks`/`deck_counts` so
+      US-4.8 can compute `studyable` from it (no duplicate logic).
+- [ ] Each criterion has a `server/tests/` test named after it (e.g.
+      `server/tests/deck_permissions.rs`); `cargo test` passes and OpenAPI still
+      generates.
+
+**Non-goals (do this later, not here)**
+
+- A generic role→permission table / dynamic RBAC engine. This is a *coded*
+  domain predicate for decks, not a configurable permission store.
+- Migrating every `check_teacher_or_admin` across the server (classes, deck
+  options, analytics, dashboard, card/note editing). Those are a separate,
+  follow-on sweep; only deck *access/study* is in scope here.
+
+**Shell contract**
+
+- [ ] None — no wire/`ViewModel` change.
+
+---
+
+### US-4.8 — Teachers/admins can study decks, with real per-state counts
+
+**As** a teacher (or admin) who owns/collaborates on a deck,
+**I want** to open and study that deck exactly like a student — including real
+per-state due counts on the deck list,
+**so that** I can preview my own material and its scheduling the way my students
+will see it.
+
+**Prerequisite:** US-4.7 (deck-access permission predicate) — this story consumes
+its `Study` permission for `studyable`/`check_deck_studyable` rather than
+re-hardcoding role checks.
+
+**Background / decisions (settled)**
+
+Study already *works* for teachers/admins: `deck_advance` calls
+`ensure_card_states_for_deck(claims.sub, …)`, so a teacher/admin studying a deck
+lazily gets their **own** `student_card_states` rows — they study through the
+same per-user scheduling path as a student.
+
+But the deck *list* and *counts* are inconsistent with that:
+
+1. `list_decks` hardcodes `studyable: true` for the admin and teacher branches
+   (rather than computing it via the US-4.7 predicate).
+2. `list_decks` (admin + teacher branches) and `GET /decks/counts` (teacher/
+   admin branch) return **no per-state counts** — `new_count`/`learning_count`/
+   `review_count`/`relearning_count` are `None`/hardcoded `0`, and only
+   `total_count` is populated. The core maps `None` → `0`, so admin/teacher deck
+   lists show `0` for new/learning/review.
+
+One decision, recorded so this is unambiguous:
+
+- **Teachers/admins may study the decks they hold a grant on** (owned or
+  collaborated), using their **own** per-user scheduling state — the same code
+  path students use. This is now *by design*, matching Anki's owner-preview
+  reality. (Whether an *admin's* grant is blanket or owner/collaborator-based is
+  settled in US-4.7.)
+
+**Acceptance criteria**
+
+- [ ] `list_decks` admin + teacher branches compute `studyable` from the new
+      deck-access permission predicate (US-4.7) — i.e. `Study` is granted —
+      instead of hardcoding `true`, and are scoped to the decks the caller
+      actually holds a grant on (not every school deck).
+- [ ] `list_decks` admin + teacher branches return real per-state counts by
+      calling `deck_counts_for_student(claims.sub, deck_id)` (and real
+      `total_count`), so new/learning/review/relearning are populated —
+      mirroring the student branch.
+- [ ] `GET /decks/counts` teacher/admin branch returns per-state counts (via the
+      same `deck_counts_for_student`) instead of hardcoded `0`.
+- [ ] `studyable` and counts are consistent: a deck marked studyable in the list
+      is one the `Study` permission (US-4.7) admits, and its counts match what
+      the study flow would show.
+- [ ] Each criterion has a `server/tests/` test named after it (e.g. in a new
+      `server/tests/teacher_admin_study.rs`); `cargo test` passes and OpenAPI
+      still generates.
+
+**Shell contract**
+
+- [ ] No new core/`ViewModel` fields — `DeckSummary.studyable` and the count
+      fields already flow through. The shell should continue to gate the study
+      affordance on `studyable` (now correct for teachers/admins).
+
+**Out of scope**
+
+- Sharing/owner UX for adding a collaborator (existing `share_deck`/
+  `add_deck_to_collaborators`), and any role that can study *without* a grant.
 
 ---
 
