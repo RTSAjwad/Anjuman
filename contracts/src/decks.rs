@@ -64,9 +64,6 @@ pub struct UpdateDeck {
     /// Include with any value (even null) to move the deck — null means root.
     #[serde(default, deserialize_with = "deserialize_some_option")]
     pub parent_id: Option<Option<i64>>,
-    /// Assign a deck options preset. Omit to leave unchanged; null clears it.
-    #[serde(default, deserialize_with = "deserialize_some_option")]
-    pub options_id: Option<Option<i64>>,
     /// Update the deck description. Omit the field to leave unchanged.
     /// Include with `null` to clear the description.
     #[serde(default, deserialize_with = "deserialize_some_option")]
@@ -79,6 +76,17 @@ pub struct UpdateDeck {
     pub new_per_day_override: Option<Option<i64>>,
     #[serde(default, deserialize_with = "deserialize_some_option")]
     pub review_per_day_override: Option<Option<i64>>,
+}
+
+/// Expected JSON body for assigning a deck's scheduling preset (US-4.11).
+///
+/// `options_id: 0` means "use the default" (the server stores `NULL`, which the
+/// read path resolves back to the effective id 0); any non-zero id must be a
+/// preset in the caller's school.
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SetDeckOptions {
+    pub options_id: i64,
 }
 
 /// Query parameters for `DELETE /decks/{id}`.

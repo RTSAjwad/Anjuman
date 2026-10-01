@@ -808,9 +808,10 @@ injected `HttpResponse`s, never a running server).
       (see [`docs/support/screens.md`](../support/screens.md)). Each gets its own story.
 - [ ] **Deck-options/preferences UI** — the settings screens that CRUD
       `deck-options` and `/preferences`. Deck-options: US-4.9 (view a preset,
-      done) and US-4.10 (edit + save a preset, done) below. Preferences UI not
-      yet drafted (and the US-4.9/US-4.10 shell contracts — rendering the preset
-      read-only + editable then saving — are pending the shell agent).
+      done), US-4.10 (edit + save a preset, done), and US-4.11 (assign a deck's
+      preset, done) below. Preferences UI not yet drafted (and the US-4.9/US-4.10
+      shell contracts — rendering the preset read-only + editable then saving —
+      are pending the shell agent).
 - [ ] Keep the FFI `Bridge`/`codegen` surface working as the model grows;
       regenerate bindings.
 
@@ -1451,6 +1452,70 @@ the UI should have caught):
   behaviours (timer/audio/auto-advance). The FSRS parameter *block* (the raw
   weight vector `fsrs_parameters`) is displayed in US-4.9 and left read-only
   here — the optimizer is deferred (US-2.18b).
+
+---
+
+### US-4.11 — Assign a deck's preset (change the deck → preset link)
+
+**As** a signed-in teacher/admin viewing a deck,
+**I want** to change which scheduling preset the deck uses (or clear it back to
+  the default),
+**so that** I can point a deck at a different set of options without recreating
+it.
+
+**Background / decisions (settled)**
+
+The capability exists today only as a side-effect of `PATCH /decks/{id}/rename`
+(`UpdateDeck.options_id`), which is both mis-named ("rename") and subtly broken:
+its validation rejects assigning the global default preset (id 0) to a deck from
+a real school, because it compares against `claims.school_id` and preset 0 is
+owned by the system school — the same cross-school bug US-4.9's carve-out fixed
+for the read path. Assignment is also invisible to the current client (US-4.9/
+4.10 only read/edit the preset a deck *already* has).
+
+This story adds a first-class, correctly-named assignment operation and makes its
+id-0 semantics consistent with the read path (US-4.9) and the write path
+(US-4.10). Three decisions recorded so implementation is unambiguous:
+
+1. **A dedicated endpoint, not `rename`.** Add `PATCH /decks/{id}/options` with
+   a small body, `SetDeckOptions { options_id: i64 }`, and **remove** the
+   `options_id` field from `UpdateDeck`/`rename_deck` (so there's a single,
+   clearly-named way to assign a preset).
+2. **`options_id: 0` means "use the default" — no null.** The body is a plain
+   non-nullable `i64`, symmetric with `DeckResponse.options_id` (so a client can
+   round-trip the id it read back into a request). `0` maps to
+   `decks.options_id = NULL` on write (the DB's "unassigned" state, which the
+   read path already resolves back to the effective id `0`); `n != 0` sets
+   `decks.options_id = n`. Storing `NULL` (not literal `0`) keeps the
+   cross-school-scoped system preset row out of real-school decks' FKs.
+3. **Assignment validation is school-scoped for real presets.** `n != 0` must
+   exist **and** belong to the caller's school (`opt.school_id ==
+   claims.school_id`); otherwise 400. This matches US-4.10 (a user's own presets
+   are editable; the system default is read-only) and keeps other schools'
+   presets unassignable.
+
+**Acceptance criteria**
+
+- [x] `PATCH /decks/{id}/options` exists (new route + handler), accepting
+      `SetDeckOptions { options_id: i64 }`; `UpdateDeck` no longer carries
+      `options_id` (OpenAPI regenerated; no route for it remains).
+- [x] Assigning a preset in the caller's school (`options_id: n`, `n != 0`)
+      updates `decks.options_id` and the response reflects the new effective id `n`.
+- [x] `options_id: 0` clears the assignment (`decks.options_id = NULL`); the
+      effective id then resolves to `0` (the read path already maps NULL → 0).
+- [x] Assigning a preset from a different school (or a nonexistent id) is
+      rejected (400) — no cross-school assignment.
+- [x] Each criterion has a `server/tests/` test named after it; `cargo test`
+      passes and OpenAPI still generates.
+
+**Shell contract**
+
+- [ ] In the deck-options screen, add an "Assign preset" affordance that lists
+      the school's reusable presets (`GET /deck-options`) plus a "Default (id 0)"
+      option, forwarding `Event::DeckOptionsAssign { deck_id, options_id }`.
+- [ ] When the loaded preset is the global default (id 0), the edit/save
+      affordance stays read-only; assigning one of the school's own presets
+      enables editing.
 
 ---
 

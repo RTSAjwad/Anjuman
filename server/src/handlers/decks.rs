@@ -33,8 +33,8 @@ use chrono::Utc;
 
 use anjuman_contracts::decks::{
     AddDeckToClass, ClassInfo, CollaboratorResponse, CreateDeck, DeckCounts, DeckCountsQuery,
-    DeckCountsResponse, DeckDetailResponse, DeckResponse, DeleteDeckQuery, ShareDeck,
-    TransferOwner, UpdateDeck,
+    DeckCountsResponse, DeckDetailResponse, DeckResponse, DeleteDeckQuery, SetDeckOptions,
+    ShareDeck, TransferOwner, UpdateDeck,
 };
 use anjuman_contracts::{MessageResponse, UserRole};
 
@@ -408,26 +408,6 @@ pub async fn rename_deck(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     }
 
-    if let Some(options_id) = body.options_id {
-        // Validate the preset exists in the same school if one is provided.
-        if let Some(oid) = options_id {
-            let opt = crate::deck_options::get_options(&state.db, oid)
-                .await
-                .map_err(|_| (StatusCode::BAD_REQUEST, "Deck options not found"))?;
-            if opt.school_id != claims.school_id {
-                return Err((StatusCode::BAD_REQUEST, "Deck options not found"));
-            }
-        }
-        sqlx::query!(
-            "UPDATE decks SET options_id = $1 WHERE id = $2",
-            options_id,
-            deck_id
-        )
-        .execute(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-    }
-
     // Per-deck daily-limit overflow (`new_per_day_mode`, `review_per_day_mode`,
     // and their override values). Re-validate against the *current* stored
     // override value when only the mode changes.
@@ -486,6 +466,48 @@ pub async fn rename_deck(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     }
+
+    let deck = fetch_deck(&state.db, deck_id).await?;
+    Ok(Json(deck))
+}
+
+/// `PATCH /decks/:id/options` — Assign a deck's scheduling preset (US-4.11).
+///
+/// `options_id: 0` clears the assignment (the deck falls back to the global
+/// default, resolved to the effective id 0 on read); any non-zero id must be a
+/// preset in the caller's school.
+pub async fn set_deck_options(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Path(deck_id): Path<i64>,
+    Json(body): Json<SetDeckOptions>,
+) -> Result<Json<DeckResponse>, (StatusCode, &'static str)> {
+    check_teacher_or_admin(&claims)?;
+    check_deck_collaborator(&state.db, deck_id, claims.school_id, &claims).await?;
+
+    // `0` means "use the default"; any other id must be a real preset in the
+    // caller's school (the system default is read-only / never assignable, and
+    // other schools' presets are out of scope).
+    let stored: Option<i64> = if body.options_id == 0 {
+        None
+    } else {
+        let opt = crate::deck_options::get_options(&state.db, body.options_id)
+            .await
+            .map_err(|_| (StatusCode::BAD_REQUEST, "Deck options not found"))?;
+        if opt.school_id != claims.school_id {
+            return Err((StatusCode::BAD_REQUEST, "Deck options not found"));
+        }
+        Some(body.options_id)
+    };
+
+    sqlx::query!(
+        "UPDATE decks SET options_id = $1 WHERE id = $2",
+        stored,
+        deck_id
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     let deck = fetch_deck(&state.db, deck_id).await?;
     Ok(Json(deck))

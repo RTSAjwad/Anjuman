@@ -120,6 +120,7 @@ pub fn router(state: AppState) -> Router {
         .route("/decks/counts", get(decks::deck_counts))
         .route("/decks/{id}", get(decks::get_deck))
         .route("/decks/{id}/rename", patch(decks::rename_deck))
+        .route("/decks/{id}/options", patch(decks::set_deck_options))
         .route("/decks/{id}", delete(decks::delete_deck))
         .route("/decks/{id}/duplicate", post(decks::duplicate_deck))
         .route("/decks/{id}/share", post(decks::share_deck))
