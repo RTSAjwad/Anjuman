@@ -1081,6 +1081,87 @@ needs the mirror direction (same as auth/decks).
 
 ---
 
+### US-4.6 — Card styling (deliver template CSS + dark-mode inversion decision)
+
+**As** a student reviewing a card,
+**I want** the card to render with its note type's styling (not browser-default
+HTML), and to respect dark mode,
+**so that** cards look the way their author intended, day and night.
+
+**Background / decisions (settled)**
+
+Today `StudyCard` carries only the rendered `front`/`back` HTML — there is no
+styling CSS anywhere in the model. In Anki a note type has three pieces: a
+`front` template, a `back` template, and a **shared "Styling" CSS block** (see
+<https://docs.ankiweb.net/templates/styling.html>), and Anki concatenates the
+styling + rendered side into one self-contained card page.
+
+Three decisions, recorded here so implementation is unambiguous:
+
+1. **Styling is per note type, not per template.** The `styling` value lives on
+   the `note_types` row (not `note_type_templates`) and is shared by every card
+   of that note type. Wire field name: **`css`**
+   (plain `String`, mirrors `front`/`back`).
+2. **Dark mode is Anki's inversion, not a re-theme.** Card authors write
+   arbitrary CSS, so a palette/theme swap can't cover it. The shell injects a
+   `night_mode` class + an inversion stylesheet into the card `<iframe>` when the
+   app is dark (the opt-in `html.night_mode img { filter: invert(180deg) }`
+   convention plus a coarse `filter: invert(...)`), exactly as Anki documents it.
+   This is a **client-side** concern — the core/server only delivers `css`; no
+   server round-trip for dark mode.
+3. **Default styling is Anki's default `.card` rule**, seeded onto existing note
+   types so even untouched note types render sanely:
+   ```css
+   .card {
+       font-family: arial;
+       font-size: 20px;
+       text-align: center;
+       color: black;
+       background-color: white;
+   }
+   ```
+
+**Acceptance criteria**
+
+- [ ] Schema: `note_types` gains a `styling TEXT NOT NULL DEFAULT ''` column
+      (new migration `0023_note_type_styling.sql`; never edit the applied
+      `0001`/`0002`). `clone_note_type` copies `styling` to the copy.
+- [ ] Contracts: `NoteTypeResponse` and `UpdateNoteType` gain a `css: String` /
+      `css: Option<String>` field (respectively); `StudyCard` gains
+      `css: String`. (No separate `CreateNoteType` body exists — note types are
+      created via `clone_note_type`.)
+- [ ] Server `note_types.rs`: load `styling` in `get_note_type`; carry it on
+      `NoteType`; expose it via `to_response`.
+- [ ] Server `note_types_handler.rs`: `update_note_type` persists `css` when
+      provided; `clone_note_type` copies the source `styling` (explicit column
+      list — the DB default is *not* applied to an explicit INSERT).
+- [ ] Server `study.rs::row_to_study_card`: set `StudyCard.css = nt.styling`
+      (the note type is already fetched there).
+- [ ] Seed: set the default `.card` styling on both seed note types (new seed
+      migration, appended to the same `0023` file or a `0024` seed migration).
+- [ ] `shared`: `StudyCardView` gains `css: String`, populated from `StudyCard`
+      in `From<&StudyCard>`.
+- [ ] Each criterion has a `server/tests/` test (or a `shared` test for the
+      `StudyCardView` mapping) named after it; `cargo test` passes and OpenAPI
+      still generates.
+
+**Shell contract**
+
+- [ ] Inject `StudyCardView.css` into the card `<iframe>` (concatenated with the
+      rendered side, Anki-style).
+- [ ] Dark-mode inversion: this is tracked under `Theme
+      (dark/light/follow-system)` in `SCREENS_SUPPORT.md` (a ⚪ shell-only
+      behaviour) — the shell applies the inversion class/stylesheet in the
+      iframe, not the core/server. This story documents the *decision*; the shell
+      work is a separate ⚪ cell, not a `shared` criterion.
+
+**Out of scope**
+
+- The shell's actual inversion implementation (the `Theme ⚪` cell), template
+  editor UI for editing `css`, and per-template CSS.
+
+---
+
 ## 5. Backfill — user stories + tests for existing features   `[ ]`
 
 After the feature work settles, harden the *existing* surface: characterise it

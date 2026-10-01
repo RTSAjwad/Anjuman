@@ -59,6 +59,12 @@ tracked here only.
 | Timebox popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Leech "Tag Only" popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Theme (dark/light/follow-system) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+
+> **Theme + card dark-mode decision (US-4.6):** dark mode on *cards* is Anki's
+> **CSS inversion** (`night_mode` class + `filter: invert(…)`), not a palette
+> re-theme — card authors write arbitrary CSS that a token swap can't cover. The
+> shell injects the inversion into the card `<iframe>`; the core/server only
+> deliver `StudyCardView.css`. See US-4.6 in `ROADMAP.md`.
 | Answer-key bindings | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
 Legend: ✅ implemented · 🟡 partial · ⚪ not yet / shell not built.
