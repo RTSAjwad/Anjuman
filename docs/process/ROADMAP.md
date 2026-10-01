@@ -807,7 +807,8 @@ injected `HttpResponse`s, never a running server).
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
       (see [`docs/support/screens.md`](../support/screens.md)). Each gets its own story.
 - [ ] **Deck-options/preferences UI** — the settings screens that CRUD
-      `deck-options` and `/preferences`.
+      `deck-options` and `/preferences`. Deck-options: US-4.9 (view a preset) and
+      US-4.10 (edit + save a preset) below. Preferences UI not yet drafted.
 - [ ] Keep the FFI `Bridge`/`codegen` surface working as the model grows;
       regenerate bindings.
 
@@ -1307,6 +1308,147 @@ One decision, recorded so this is unambiguous:
 
 - Sharing/owner UX for adding a collaborator (existing `share_deck`/
   `add_deck_to_collaborators`), and any role that can study *without* a grant.
+
+---
+
+### US-4.9 — Deck-options settings screen (view a preset for the selected deck)
+
+**As** a signed-in teacher/admin viewing a deck,
+**I want** to see that deck's scheduling preset (its deck options values) read
+straight from its `options_id`,
+**so that** I can understand how a deck is currently configured before editing it.
+
+**Background**
+
+The deck-options backend is **already complete** (stage 2): the server exposes
+`GET /deck-options` (list presets), `GET /deck-options/{id}` (one preset), and
+`POST`/`PATCH`/`DELETE /deck-options`. The `DeckOptions` response DTO already
+derives **both** `Serialize` and `Deserialize` (`contracts/src/deck_options.rs`),
+so unlike US-4.2/4.3/4.5 there is **no contracts `Deserialize` prerequisite** for
+reading a preset. This story is the **read-only half** of the settings screen: it
+resolves *which* preset the selected deck uses and renders its values.
+
+Two findings, recorded so implementation is unambiguous:
+
+1. **`DeckResponse` does not expose `options_id`.** A deck's preset link is not
+   on the wire today, so the core cannot resolve "which preset does this deck
+   use" from the already-fetched deck. This story needs a **carve-out** (core
+   agent): add `options_id` to `DeckResponse` and populate it in
+   `list_decks`/`get_deck` (mirroring how US-2.19/US-4.4 added `studyable`).
+2. **`options_id` is the *effective* id, resolved server-side — never null on
+   the wire.** A deck with `decks.options_id = NULL` falls back to the global
+   default preset (system school, id 0). The server resolves this when building
+   the response, so `DeckResponse.options_id: i64` is always a concrete, **live**
+   preset id (`decks.options_id.unwrap_or(0)`). The client never applies the
+   fallback itself, and — because id 0 is the system default (never deleted) and
+   `ON DELETE SET NULL` turns a deleted preset back into `NULL` → 0 — the client
+   can never fetch a dangling id, so no 404-on-deleted-preset handling is needed.
+
+**Prerequisite (contracts)** — `DeckResponse` gains
+`options_id: i64` (`Serialize` + `Deserialize`), populated server-side as the
+*effective* preset id (`decks.options_id.unwrap_or(0)`). This is the one
+interface change before client work.
+
+**Acceptance criteria**
+
+- [ ] `DeckResponse` carries `options_id: i64` (`Serialize` + `Deserialize`);
+      the server populates it in `list_decks`/`get_deck` as the **effective** id
+      (`decks.options_id.unwrap_or(0)`), so a deck with no preset reports `0`
+      (no behaviour change otherwise; OpenAPI still generates).
+- [ ] `Model` gains deck-options state for the selected deck: the resolved
+      preset id + an `Option<DeckOptions>` (and an error flag), cleared on
+      `CloseDeck`/logout.
+- [ ] `Event::DeckOptionsRequested { deck_id }` (fired from the selected deck's
+      context) emits `GET /deck-options/{options_id}` with the bearer header,
+      where `{options_id}` is the deck's effective `options_id` (no client-side
+      fallback).
+- [ ] A canned `DeckOptions` response (success) populates the model and exposes
+      the preset's values in the `ViewModel` (name + the field inventory from
+      `docs/support/deck-options.md`, including enums serialized as their wire
+      forms).
+- [ ] A deck with no assigned preset (server reports `options_id: 0`) resolves
+      to the global default preset — the core requests `GET /deck-options/0` and
+      renders it, rather than treating it as absent.
+- [ ] A rejection (403/500) sets an error in the `ViewModel` without crashing.
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] From a deck's context, forward `Event::DeckOptionsRequested { deck_id }`.
+- [ ] Render the preset's values read-only (name + each option, grouped as the
+      matrix groups them: daily limits / new cards / lapses / display order /
+      burying / audio / timers / auto-advance / FSRS / advanced).
+- [ ] Enums render as human labels (see the wire `snake_case` values), not raw
+      debug strings.
+- [ ] Render an error/empty state.
+
+**Out of scope**
+
+- Editing/saving the preset (US-4.10), preset management (create/clone/rename/
+  delete), per-deck `preset`/`this_deck`/`today_only` override UI, and the
+  selection-only *behaviours* (timer/audio/auto-advance) — those are separate
+  stage-4 stories already queued.
+
+---
+
+### US-4.10 — Deck-options settings screen (edit + save a preset)
+
+**As** a signed-in teacher/admin viewing a deck's preset,
+**I want** to edit its deck-options values and save them back to the server,
+**so that** I can tune a deck's scheduling (limits, steps, leeches, ordering, …)
+without leaving the app.
+
+**Background**
+
+Builds on US-4.9 (which resolves & renders the preset read-only). The server
+already supports `PATCH /deck-options/{id}` with an `UpdateDeckOptions` body
+(every field optional). `UpdateDeckOptions` derives **`Deserialize` only** — it
+is a *request* body, so the client must **serialize** it. This is the mirror of
+US-4.5's `StudyAdvanceBody` prerequisite.
+
+**Prerequisite (contracts)** — `UpdateDeckOptions` gains `Serialize` (and
+`CreateDeckOptions` too, if we want a "new preset" path here — otherwise defer
+create to a preset-management story). Server build + OpenAPI unchanged otherwise.
+
+**Validation** — the client must mirror the matrix's min/max/defaults, since the
+server rejects out-of-range values (and we don't want a save to fail on something
+the UI should have caught):
+
+- `new_per_day` / `review_per_day` / `leech_threshold`: 0..=9999 (leech 1..=9999)
+- `desired_retention`: 0.70..=0.99
+- `maximum_answer_seconds`: 1..=7200; `maximum_interval`: 1..=36500
+- `auto_advance_*` seconds: 0.0..=9999.0 (1 dp); `easy_days`: exactly 7 items
+- step strings (`learning_steps`/`relearning_steps`): Anki-style `"1m 10m"`
+
+**Acceptance criteria**
+
+- [ ] The contracts prerequisite is done: `UpdateDeckOptions: Serialize`
+      (server build + OpenAPI unchanged).
+- [ ] `Event::DeckOptionsSave { id, update }` (or a per-field edit → a single
+      save) emits `PATCH /deck-options/{id}` with a JSON `UpdateDeckOptions` body
+      carrying only the changed fields (assert method/URL/body).
+- [ ] A canned `DeckOptions` response (success) updates the model's preset and
+      re-renders; a 4xx/5xx surfaces a save error without losing the edited
+      values (so the user can correct and retry).
+- [ ] Local validation rejects out-of-range values (per the matrix ranges above)
+      *before* emitting the PATCH — no request is emitted for an invalid value.
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] Render the preset as **editable** controls (text/number inputs, booleans,
+      enums as selectors, step strings as text), one per matrix option.
+- [ ] Apply the client-side min/max clamping/messages before forwarding the save.
+- [ ] Forward `Event::DeckOptionsSave { .. }` on save; show a saving/error/
+      saved state.
+
+**Out of scope**
+
+- Preset *management* (create/clone/rename/delete/deassign), the per-deck
+  `preset`/`this_deck`/`today_only` override UI, and the selection-only
+  behaviours (timer/audio/auto-advance). The FSRS parameter *block* (the raw
+  weight vector `fsrs_parameters`) is displayed in US-4.9 and left read-only
+  here — the optimizer is deferred (US-2.18b).
 
 ---
 
