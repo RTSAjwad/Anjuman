@@ -808,9 +808,9 @@ injected `HttpResponse`s, never a running server).
       (see [`docs/support/screens.md`](../support/screens.md)). Each gets its own story.
 - [ ] **Deck-options/preferences UI** — the settings screens that CRUD
       `deck-options` and `/preferences`. Deck-options: US-4.9 (view a preset,
-      done) and US-4.10 (edit + save a preset) below. Preferences UI not yet
-      drafted (and the US-4.9 shell contract — rendering the preset read-only —
-      is pending the shell agent).
+      done) and US-4.10 (edit + save a preset, done) below. Preferences UI not
+      yet drafted (and the US-4.9/US-4.10 shell contracts — rendering the preset
+      read-only + editable then saving — are pending the shell agent).
 - [ ] Keep the FFI `Bridge`/`codegen` surface working as the model grows;
       regenerate bindings.
 
@@ -1424,17 +1424,17 @@ the UI should have caught):
 
 **Acceptance criteria**
 
-- [ ] The contracts prerequisite is done: `UpdateDeckOptions: Serialize`
+- [x] The contracts prerequisite is done: `UpdateDeckOptions: Serialize`
       (server build + OpenAPI unchanged).
-- [ ] `Event::DeckOptionsSave { id, update }` (or a per-field edit → a single
+- [x] `Event::DeckOptionsSave { id, update }` (or a per-field edit → a single
       save) emits `PATCH /deck-options/{id}` with a JSON `UpdateDeckOptions` body
       carrying only the changed fields (assert method/URL/body).
-- [ ] A canned `DeckOptions` response (success) updates the model's preset and
+- [x] A canned `DeckOptions` response (success) updates the model's preset and
       re-renders; a 4xx/5xx surfaces a save error without losing the edited
       values (so the user can correct and retry).
-- [ ] Local validation rejects out-of-range values (per the matrix ranges above)
+- [x] Local validation rejects out-of-range values (per the matrix ranges above)
       *before* emitting the PATCH — no request is emitted for an invalid value.
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes.
 
 **Shell contract**
 

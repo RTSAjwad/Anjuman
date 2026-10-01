@@ -291,7 +291,7 @@ pub struct CreateDeckOptions {
 }
 
 /// Fields that can be updated on a deck options preset.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateDeckOptions {
     pub name: Option<String>,

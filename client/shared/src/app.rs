@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse};
-use anjuman_contracts::deck_options::DeckOptions;
+use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 
 /// The base URL of the Anjuman server.
@@ -103,6 +103,8 @@ pub enum Event {
     DeckOptionsRequested {
         deck_id: i64,
     },
+    /// Save edits to the selected deck's preset (only `Some` fields are changed).
+    DeckOptionsSave(DeckOptionsEdit),
     /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
     Answer {
         rating: i32,
@@ -120,6 +122,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     DeckOptionsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckOptions>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckOptionsSaved(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckOptions>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -433,6 +439,152 @@ fn serde_name<T: Serialize>(v: &T) -> String {
         .to_string()
 }
 
+/// The client-side form of a deck-options edit (the shell forwards this; every
+/// field is `Option` so only the *changed* fields are present). Enum fields are
+/// `String` in their serde `snake_case` wire form (parsed back to contracts
+/// enums in `to_update`). This mirrors `DeckOptionsView` and exists because the
+/// contracts `UpdateDeckOptions`/enums don't implement `Facet`.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Debug)]
+pub struct DeckOptionsEdit {
+    pub name: Option<String>,
+    pub learning_steps: Option<String>,
+    pub relearning_steps: Option<String>,
+    pub desired_retention: Option<f64>,
+    pub bury_new: Option<bool>,
+    pub bury_review: Option<bool>,
+    pub bury_interday: Option<bool>,
+    pub new_per_day: Option<i64>,
+    pub review_per_day: Option<i64>,
+    pub leech_threshold: Option<i64>,
+    pub maximum_answer_seconds: Option<i64>,
+    pub maximum_interval: Option<i64>,
+    pub leech_action: Option<String>,
+    pub new_gather_order: Option<String>,
+    pub new_sort_order: Option<String>,
+    pub new_review_order: Option<String>,
+    pub interday_order: Option<String>,
+    pub review_sort_order: Option<String>,
+    pub insertion_order: Option<String>,
+    pub show_on_screen_timer: Option<bool>,
+    pub stop_timer_on_answer: Option<bool>,
+    pub dont_play_audio_automatically: Option<bool>,
+    pub skip_question_when_replaying_answer: Option<bool>,
+    pub auto_advance_seconds_show_question: Option<f64>,
+    pub auto_advance_seconds_show_answer: Option<f64>,
+    pub auto_advance_wait_for_audio: Option<bool>,
+    pub auto_advance_question_action: Option<String>,
+    pub auto_advance_answer_action: Option<String>,
+    pub easy_days: Option<Vec<String>>,
+    pub fsrs_parameters: Option<Vec<f32>>,
+}
+
+impl DeckOptionsEdit {
+    /// Validate the edit against the matrix's min/max (the server rejects these;
+    /// the client pre-checks so the user sees a local message instead of a failed
+    /// save). Returns `Err(description)` on the first out-of-range value.
+    pub fn validate(&self) -> Result<(), String> {
+        checks(self.new_per_day, 0, 9999, "new cards/day")?;
+        checks(self.review_per_day, 0, 9999, "max reviews/day")?;
+        checks(self.leech_threshold, 1, 9999, "leech threshold")?;
+        checks(self.maximum_answer_seconds, 1, 7200, "maximum answer seconds")?;
+        checks(self.maximum_interval, 1, 36500, "maximum interval")?;
+        if let Some(r) = self.desired_retention {
+            if !(0.70..=0.99).contains(&r) {
+                return Err("desired retention must be 70%–99%".into());
+            }
+        }
+        checks_f64(self.auto_advance_seconds_show_question, 0.0, 9999.0, "auto-advance seconds (question)")?;
+        checks_f64(self.auto_advance_seconds_show_answer, 0.0, 9999.0, "auto-advance seconds (answer)")?;
+        if let Some(days) = &self.easy_days {
+            if days.len() != 7 {
+                return Err("easy days must have exactly 7 entries".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Convert this edit into a `UpdateDeckOptions` (only the `Some` fields are
+    /// set). Enum strings are parsed back to contracts enums; an unrecognised
+    /// string yields `Err` (call `validate`/the caller handles it).
+    pub fn to_update(&self) -> Result<UpdateDeckOptions, String> {
+        Ok(UpdateDeckOptions {
+            name: self.name.clone(),
+            learning_steps: self.learning_steps.clone(),
+            relearning_steps: self.relearning_steps.clone(),
+            desired_retention: self.desired_retention,
+            bury_new: self.bury_new,
+            bury_review: self.bury_review,
+            bury_interday: self.bury_interday,
+            new_per_day: self.new_per_day,
+            review_per_day: self.review_per_day,
+            leech_threshold: self.leech_threshold,
+            leech_action: parse_enum(self.leech_action.as_deref())?,
+            new_gather_order: parse_enum(self.new_gather_order.as_deref())?,
+            new_sort_order: parse_enum(self.new_sort_order.as_deref())?,
+            new_review_order: parse_enum(self.new_review_order.as_deref())?,
+            interday_order: parse_enum(self.interday_order.as_deref())?,
+            review_sort_order: parse_enum(self.review_sort_order.as_deref())?,
+            show_on_screen_timer: self.show_on_screen_timer,
+            stop_timer_on_answer: self.stop_timer_on_answer,
+            dont_play_audio_automatically: self.dont_play_audio_automatically,
+            skip_question_when_replaying_answer: self.skip_question_when_replaying_answer,
+            auto_advance_seconds_show_question: self.auto_advance_seconds_show_question,
+            auto_advance_seconds_show_answer: self.auto_advance_seconds_show_answer,
+            auto_advance_wait_for_audio: self.auto_advance_wait_for_audio,
+            auto_advance_question_action: parse_enum(self.auto_advance_question_action.as_deref())?,
+            auto_advance_answer_action: parse_enum(self.auto_advance_answer_action.as_deref())?,
+            maximum_answer_seconds: self.maximum_answer_seconds,
+            maximum_interval: self.maximum_interval,
+            easy_days: match &self.easy_days {
+                Some(days) => Some(
+                    days.iter()
+                        .map(|d| {
+                            parse_enum(Some(d.as_str()))?
+                                .ok_or_else(|| format!("unknown easy-day value: {d}"))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                ),
+                None => None,
+            },
+            insertion_order: parse_enum(self.insertion_order.as_deref())?,
+            fsrs_parameters: self.fsrs_parameters.clone(),
+        })
+    }
+}
+
+/// Per-option range check helper (integers).
+fn checks(v: Option<i64>, min: i64, max: i64, what: &str) -> Result<(), String> {
+    if let Some(n) = v {
+        if !(min..=max).contains(&n) {
+            return Err(format!("{what} must be {min}..={max}"));
+        }
+    }
+    Ok(())
+}
+
+/// Per-option range check helper (floats).
+fn checks_f64(v: Option<f64>, min: f64, max: f64, what: &str) -> Result<(), String> {
+    if let Some(n) = v {
+        if !(min..=max).contains(&n) {
+            return Err(format!("{what} must be {min}..={max}"));
+        }
+    }
+    Ok(())
+}
+
+/// Parse a `None` → `None`, or a `Some(serde snake_case name)` → the matching
+/// contracts enum variant (via its `Deserialize`).
+fn parse_enum<T: for<'de> serde::Deserialize<'de>>(name: Option<&str>) -> Result<Option<T>, String> {
+    match name {
+        None => Ok(None),
+        Some(s) => {
+            let v = serde_json::from_str(&format!("\"{s}\""))
+                .map_err(|_| format!("unknown enum value: {s}"))?;
+            Ok(Some(v))
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Anjuman;
 
@@ -598,6 +750,53 @@ impl crux_core::App for Anjuman {
 
             Event::DeckOptionsResult(Err(e)) => {
                 model.deck_options = None;
+                model.deck_options_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::DeckOptionsSave(edit) => {
+                // Requires a loaded preset (the PATCH id) + an authenticated
+                // token; otherwise a no-op.
+                let Some(preset) = &model.deck_options else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                // Local validation: reject out-of-range values before any
+                // request is emitted, so the user sees a local error.
+                if let Err(msg) = edit.validate() {
+                    model.deck_options_error = Some(msg);
+                    return render::render();
+                }
+                let update = match edit.to_update() {
+                    Ok(u) => u,
+                    Err(msg) => {
+                        model.deck_options_error = Some(msg);
+                        return render::render();
+                    }
+                };
+                model.deck_options_error = None;
+                Http::patch(format!("{API_URL}/deck-options/{}", preset.id))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&update)
+                    .expect("serialize deck options update")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckOptionsSaved)
+            }
+
+            Event::DeckOptionsSaved(Ok(mut response)) => {
+                model.deck_options =
+                    Some(response.take_body().expect("deck-options response has a body"));
+                model.deck_options_error = None;
+                render::render()
+            }
+
+            Event::DeckOptionsSaved(Err(e)) => {
+                // Keep the currently-loaded preset (so the shell's edited values
+                // are not lost) and surface the save error.
                 model.deck_options_error = Some(e.to_string());
                 render::render()
             }
@@ -1642,5 +1841,124 @@ mod tests {
 
         let _ = update(Event::CloseDeck, &mut model);
         assert!(model.deck_options.is_none());
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.10 — deck-options settings screen (edit + save a preset)
+    // --------------------------------------------------------------------
+
+    /// A model with a preset already loaded (US-4.9 ran), ready to save edits.
+    fn loaded_preset_model(id: i64) -> Model {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(deck_options(id, "Default")).build();
+        let _ = update(Event::DeckOptionsResult(Ok(response)), &mut model);
+        model
+    }
+
+    /// `DeckOptionsSave` emits `PATCH /deck-options/{id}` with an
+    /// `UpdateDeckOptions` body carrying only the changed (`Some`) fields.
+    #[test]
+    fn deck_options_save_emits_patch_with_body() {
+        let mut model = loaded_preset_model(7);
+        let edit = DeckOptionsEdit {
+            new_per_day: Some(30),
+            desired_retention: Some(0.85),
+            ..DeckOptionsEdit::default()
+        };
+
+        let effects = update(Event::DeckOptionsSave(edit), &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/deck-options/7"
+                );
+                let body: UpdateDeckOptions =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                // Only the changed fields are present; unchanged are None.
+                assert_eq!(body.new_per_day, Some(30));
+                assert_eq!(body.desired_retention, Some(0.85));
+                assert_eq!(body.review_per_day, None);
+                assert_eq!(body.name, None);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckOptionsSave` with no loaded preset (or unauthenticated) is a no-op.
+    #[test]
+    fn deck_options_save_without_loaded_preset_is_noop() {
+        let mut model = authenticated_model(); // no preset loaded
+        let edit = DeckOptionsEdit {
+            new_per_day: Some(30),
+            ..DeckOptionsEdit::default()
+        };
+        let effects = update(Event::DeckOptionsSave(edit), &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// A successful save updates the loaded preset; a rejection surfaces an
+    /// error and keeps the previously-loaded preset (edited values not lost).
+    #[test]
+    fn deck_options_save_success_and_rejection() {
+        // Success: the PATCH response replaces the loaded preset.
+        let mut model = loaded_preset_model(7);
+        let updated = ResponseBuilder::ok().body(deck_options(7, "Renamed")).build();
+        let _ = update(Event::DeckOptionsSaved(Ok(updated)), &mut model);
+        assert_eq!(model.deck_options.as_ref().map(|o| o.name.as_str()), Some("Renamed"));
+        assert!(model.deck_options_error.is_none());
+
+        // Rejection: error set, but the loaded preset is kept.
+        let mut model2 = loaded_preset_model(7);
+        let err = crux_http::testing::rejection::<DeckOptions>(500, "boom").unwrap_err();
+        let _ = update(Event::DeckOptionsSaved(Err(err)), &mut model2);
+        assert!(model2.deck_options_error.is_some());
+        assert_eq!(model2.deck_options.as_ref().map(|o| o.id), Some(7), "preset kept on error");
+    }
+
+    /// Local validation rejects out-of-range values before any request is
+    /// emitted (the error is surfaced on the model, not a failed save).
+    #[test]
+    fn deck_options_save_validates_ranges_before_emitting() {
+        // new_per_day out of range (must be 0..=9999).
+        let mut model = loaded_preset_model(7);
+        let bad = DeckOptionsEdit {
+            new_per_day: Some(10_000),
+            ..DeckOptionsEdit::default()
+        };
+        let effects = update(Event::DeckOptionsSave(bad), &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+        assert!(model.deck_options_error.is_some());
+
+        // leech_threshold below min (must be 1..=9999).
+        let mut model2 = loaded_preset_model(7);
+        let bad2 = DeckOptionsEdit {
+            leech_threshold: Some(0),
+            ..DeckOptionsEdit::default()
+        };
+        let effects2 = update(Event::DeckOptionsSave(bad2), &mut model2);
+        assert!(!effects2.iter().any(|e| matches!(e, Effect::Http(_))));
+        assert!(model2.deck_options_error.is_some());
+
+        // desired_retention out of range (must be 0.70..=0.99).
+        let mut model3 = loaded_preset_model(7);
+        let bad3 = DeckOptionsEdit {
+            desired_retention: Some(0.5),
+            ..DeckOptionsEdit::default()
+        };
+        let effects3 = update(Event::DeckOptionsSave(bad3), &mut model3);
+        assert!(!effects3.iter().any(|e| matches!(e, Effect::Http(_))));
+        assert!(model3.deck_options_error.is_some());
+
+        // A valid value still emits the PATCH.
+        let mut model4 = loaded_preset_model(7);
+        let good = DeckOptionsEdit {
+            new_per_day: Some(9999),
+            ..DeckOptionsEdit::default()
+        };
+        let ok_effects = update(Event::DeckOptionsSave(good), &mut model4);
+        assert!(ok_effects.iter().any(|e| matches!(e, Effect::Http(_))));
     }
 }
