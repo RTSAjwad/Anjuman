@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse};
+use anjuman_contracts::deck_options::DeckOptions;
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 
 /// The base URL of the Anjuman server.
@@ -53,6 +54,11 @@ pub struct Model {
     pub counts: StudyCounts,
     /// A human-readable error from the last study request, if any.
     pub study_error: Option<String>,
+    /// The selected deck's scheduling preset (from `GET /deck-options/{id}`),
+    /// once fetched.
+    pub deck_options: Option<DeckOptions>,
+    /// A human-readable error from the last deck-options fetch, if any.
+    pub deck_options_error: Option<String>,
 }
 
 /// Authentication state.
@@ -92,6 +98,11 @@ pub enum Event {
     },
     /// Begin studying the selected deck: fetch the first due card (+ counts).
     StartStudy,
+    /// Fetch the selected deck's scheduling preset (its deck options), resolved
+    /// via the deck's effective `options_id`.
+    DeckOptionsRequested {
+        deck_id: i64,
+    },
     /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
     Answer {
         rating: i32,
@@ -105,6 +116,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     StudyStarted(#[facet(opaque)] crux_http::Result<crux_http::Response<StudyAdvance>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckOptionsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckOptions>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -157,7 +172,7 @@ pub enum Effect {
 }
 
 /// The precise state the UI needs to render.
-#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Debug)]
 pub struct ViewModel {
     pub email: String,
     pub authenticated: bool,
@@ -179,6 +194,10 @@ pub struct ViewModel {
     pub counts: StudyCountsView,
     /// A human-readable error from the last study request, if any.
     pub study_error: Option<String>,
+    /// The selected deck's scheduling preset, once fetched (US-4.9).
+    pub deck_options: Option<DeckOptionsView>,
+    /// A human-readable error from the last deck-options fetch, if any.
+    pub deck_options_error: Option<String>,
 }
 
 /// The shell-facing view of a card during study (a Facet/FFI-friendly mirror of
@@ -325,6 +344,95 @@ fn find_deck(decks: &[DeckResponse], deck_id: i64) -> Option<DeckSummary> {
     })
 }
 
+/// The shell-facing view of a deck-options preset (a `Facet`/`PartialEq`-friendly
+/// mirror of the contracts `DeckOptions`, following the same pattern as
+/// `DeckSummary`/`StudyCardView`). Enums are exposed as their serde `snake_case`
+/// string names so the shell can render human labels without depending on the
+/// contracts enum types (which don't implement `Facet`).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Debug)]
+pub struct DeckOptionsView {
+    pub id: i64,
+    pub school_id: i64,
+    pub name: String,
+    pub learning_steps: Vec<i64>,
+    pub relearning_steps: Vec<i64>,
+    pub desired_retention: f64,
+    pub bury_new: bool,
+    pub bury_review: bool,
+    pub bury_interday: bool,
+    pub new_per_day: i64,
+    pub review_per_day: i64,
+    pub leech_threshold: i64,
+    pub maximum_answer_seconds: i64,
+    pub maximum_interval: i64,
+    pub new_gather_order: String,
+    pub new_sort_order: String,
+    pub new_review_order: String,
+    pub interday_order: String,
+    pub review_sort_order: String,
+    pub insertion_order: String,
+    pub leech_action: String,
+    pub show_on_screen_timer: bool,
+    pub stop_timer_on_answer: bool,
+    pub dont_play_audio_automatically: bool,
+    pub skip_question_when_replaying_answer: bool,
+    pub auto_advance_seconds_show_question: f64,
+    pub auto_advance_seconds_show_answer: f64,
+    pub auto_advance_wait_for_audio: bool,
+    pub auto_advance_question_action: String,
+    pub auto_advance_answer_action: String,
+    pub easy_days: Vec<String>,
+    pub fsrs_parameters: Vec<f32>,
+}
+
+impl From<&DeckOptions> for DeckOptionsView {
+    fn from(o: &DeckOptions) -> Self {
+        DeckOptionsView {
+            id: o.id,
+            school_id: o.school_id,
+            name: o.name.clone(),
+            learning_steps: o.learning_steps.clone(),
+            relearning_steps: o.relearning_steps.clone(),
+            desired_retention: o.desired_retention,
+            bury_new: o.bury_new,
+            bury_review: o.bury_review,
+            bury_interday: o.bury_interday,
+            new_per_day: o.new_per_day,
+            review_per_day: o.review_per_day,
+            leech_threshold: o.leech_threshold,
+            maximum_answer_seconds: o.maximum_answer_seconds,
+            maximum_interval: o.maximum_interval,
+            new_gather_order: serde_name(&o.new_gather_order),
+            new_sort_order: serde_name(&o.new_sort_order),
+            new_review_order: serde_name(&o.new_review_order),
+            interday_order: serde_name(&o.interday_order),
+            review_sort_order: serde_name(&o.review_sort_order),
+            insertion_order: serde_name(&o.insertion_order),
+            leech_action: serde_name(&o.leech_action),
+            show_on_screen_timer: o.show_on_screen_timer,
+            stop_timer_on_answer: o.stop_timer_on_answer,
+            dont_play_audio_automatically: o.dont_play_audio_automatically,
+            skip_question_when_replaying_answer: o.skip_question_when_replaying_answer,
+            auto_advance_seconds_show_question: o.auto_advance_seconds_show_question,
+            auto_advance_seconds_show_answer: o.auto_advance_seconds_show_answer,
+            auto_advance_wait_for_audio: o.auto_advance_wait_for_audio,
+            auto_advance_question_action: serde_name(&o.auto_advance_question_action),
+            auto_advance_answer_action: serde_name(&o.auto_advance_answer_action),
+            easy_days: o.easy_days.iter().map(serde_name).collect(),
+            fsrs_parameters: o.fsrs_parameters.clone(),
+        }
+    }
+}
+
+/// Serialize a `Serialize` value to its snake_case wire name (e.g. an enum
+/// variant) and return it sans quotes.
+fn serde_name<T: Serialize>(v: &T) -> String {
+    serde_json::to_string(v)
+        .expect("serialize enum")
+        .trim_matches('"')
+        .to_string()
+}
+
 #[derive(Default)]
 pub struct Anjuman;
 
@@ -429,6 +537,8 @@ impl crux_core::App for Anjuman {
                 model.current_card = None;
                 model.counts = StudyCounts::default();
                 model.study_error = None;
+                model.deck_options = None;
+                model.deck_options_error = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
             }
@@ -449,6 +559,46 @@ impl crux_core::App for Anjuman {
                 model.current_card = None;
                 model.counts = StudyCounts::default();
                 model.study_error = None;
+                model.deck_options = None;
+                model.deck_options_error = None;
+                render::render()
+            }
+
+            Event::DeckOptionsRequested { deck_id } => {
+                // Resolve the selected deck's effective `options_id` and fetch its
+                // preset. Requires an authenticated token; otherwise a no-op.
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let Some(options_id) = model
+                    .decks
+                    .iter()
+                    .find(|d| d.id == deck_id)
+                    .map(|d| d.options_id)
+                else {
+                    // Unknown deck — no bogus request.
+                    return render::render();
+                };
+                model.deck_options = None;
+                model.deck_options_error = None;
+                Http::get(format!("{API_URL}/deck-options/{options_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckOptionsResult)
+            }
+
+            Event::DeckOptionsResult(Ok(mut response)) => {
+                model.deck_options =
+                    Some(response.take_body().expect("deck-options response has a body"));
+                model.deck_options_error = None;
+                render::render()
+            }
+
+            Event::DeckOptionsResult(Err(e)) => {
+                model.deck_options = None;
+                model.deck_options_error = Some(e.to_string());
                 render::render()
             }
 
@@ -598,6 +748,8 @@ impl crux_core::App for Anjuman {
                 current_card,
                 counts,
                 study_error: model.study_error.clone(),
+                deck_options: model.deck_options.as_ref().map(DeckOptionsView::from),
+                deck_options_error: model.deck_options_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -611,6 +763,8 @@ impl crux_core::App for Anjuman {
                 current_card: None,
                 counts: StudyCountsView::default(),
                 study_error: None,
+                deck_options: None,
+                deck_options_error: None,
             },
         }
     }
@@ -843,6 +997,7 @@ mod tests {
             owner_last_name: "O".to_string(),
             parent_id,
             created_at: Utc::now(),
+            options_id: 0,
             new_per_day_mode: None,
             review_per_day_mode: None,
             new_per_day_override: None,
@@ -1331,5 +1486,161 @@ mod tests {
         assert!(matches!(model.auth, Auth::Authenticated { .. }));
         assert_eq!(model.decks.len(), 1);
         assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.9 — deck-options settings screen (view a preset)
+    // --------------------------------------------------------------------
+
+    use anjuman_contracts::deck_options::DeckOptions;
+
+    fn deck_options(id: i64, name: &str) -> DeckOptions {
+        DeckOptions {
+            id,
+            school_id: 1,
+            name: name.to_string(),
+            learning_steps: vec![60, 600],
+            relearning_steps: vec![600],
+            desired_retention: 0.9,
+            bury_new: false,
+            bury_review: false,
+            bury_interday: false,
+            new_per_day: 20,
+            review_per_day: 200,
+            leech_threshold: 8,
+            leech_action: anjuman_contracts::deck_options::LeechAction::SuspendCard,
+            new_gather_order: anjuman_contracts::deck_options::NewGatherOrder::Deck,
+            new_sort_order: anjuman_contracts::deck_options::NewSortOrder::CardTypeThenGathered,
+            new_review_order: anjuman_contracts::deck_options::NewReviewOrder::Mix,
+            interday_order: anjuman_contracts::deck_options::InterdayOrder::Mix,
+            review_sort_order: anjuman_contracts::deck_options::ReviewSortOrder::DueThenRandom,
+            show_on_screen_timer: false,
+            stop_timer_on_answer: false,
+            dont_play_audio_automatically: false,
+            skip_question_when_replaying_answer: false,
+            auto_advance_seconds_show_question: 0.0,
+            auto_advance_seconds_show_answer: 0.0,
+            auto_advance_wait_for_audio: true,
+            auto_advance_question_action:
+                anjuman_contracts::deck_options::AutoAdvanceQuestionAction::ShowAnswer,
+            auto_advance_answer_action:
+                anjuman_contracts::deck_options::AutoAdvanceAnswerAction::BuryCard,
+            maximum_answer_seconds: 60,
+            maximum_interval: 36500,
+            easy_days: vec![anjuman_contracts::deck_options::EasyDayStrength::Normal; 7],
+            insertion_order: anjuman_contracts::deck_options::InsertionOrder::Sequential,
+            fsrs_parameters: vec![],
+        }
+    }
+
+    /// `DeckOptionsRequested` resolves the deck's `options_id` and emits
+    /// `GET /deck-options/{id}` with the bearer header.
+    #[test]
+    fn deck_options_requested_emits_get_with_bearer() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")]; // fixture has options_id: 0
+
+        let effects = update(Event::DeckOptionsRequested { deck_id: 1 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/deck-options/0"
+                );
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A deck with a concrete `options_id` (not the 0 default) targets that id.
+    #[test]
+    fn deck_options_requested_uses_effective_id() {
+        let mut model = authenticated_model();
+        let mut d = deck(1, "Spanish");
+        d.options_id = 42;
+        model.decks = vec![d];
+
+        let effects = update(Event::DeckOptionsRequested { deck_id: 1 }, &mut model);
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/deck-options/42"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// Requesting options for an unknown deck is a no-op (no request emitted).
+    #[test]
+    fn deck_options_requested_unknown_deck_is_noop() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+
+        let effects = update(Event::DeckOptionsRequested { deck_id: 999 }, &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// A canned `DeckOptions` response populates the model and exposes its
+    /// values in the view (enums mapped to their snake_case wire names).
+    #[test]
+    fn deck_options_result_populates_model_and_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(deck_options(0, "Default"))
+            .build();
+        let _ = update(Event::DeckOptionsResult(Ok(response)), &mut model);
+
+        assert!(model.deck_options_error.is_none());
+        let vm = Anjuman.view(&model);
+        let opts = vm.deck_options.as_ref().expect("deck options in view");
+        assert_eq!(opts.name, "Default");
+        assert_eq!(opts.new_per_day, 20);
+        assert_eq!(opts.review_per_day, 200);
+        assert_eq!(opts.learning_steps, vec![60, 600]);
+        // Enums map to their serde snake_case names.
+        assert_eq!(opts.new_gather_order, "deck");
+        assert_eq!(opts.review_sort_order, "due_then_random");
+        assert_eq!(opts.leech_action, "suspend_card");
+        assert_eq!(
+            opts.auto_advance_question_action,
+            "show_answer"
+        );
+    }
+
+    /// A deck-options rejection surfaces an error (model + view) without
+    /// crashing.
+    #[test]
+    fn deck_options_rejection_sets_error() {
+        let mut model = authenticated_model();
+        let err = crux_http::testing::rejection::<DeckOptions>(500, "boom").unwrap_err();
+        let _ = update(Event::DeckOptionsResult(Err(err)), &mut model);
+
+        assert!(model.deck_options.is_none());
+        assert!(model.deck_options_error.is_some());
+        let vm = Anjuman.view(&model);
+        assert!(vm.deck_options_error.is_some());
+    }
+
+    /// `CloseDeck` clears the fetched preset (back-navigation resets state).
+    #[test]
+    fn close_deck_clears_deck_options() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(deck_options(0, "Default")).build();
+        let _ = update(Event::DeckOptionsResult(Ok(response)), &mut model);
+        assert!(model.deck_options.is_some());
+
+        let _ = update(Event::CloseDeck, &mut model);
+        assert!(model.deck_options.is_none());
     }
 }

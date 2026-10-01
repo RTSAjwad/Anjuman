@@ -97,3 +97,40 @@ async fn teacher_admin_deck_counts_are_real() {
     let deck = &json["decks"][0];
     assert_eq!(deck["new_count"].as_i64().unwrap() >= 1, true, "per-state new count is real");
 }
+
+/// `DeckResponse.options_id` is the *effective* preset id (US-4.9): a deck with
+/// no preset (`decks.options_id = NULL`) reports `0` (the global default), and a
+/// deck assigned a preset reports that preset's id.
+#[tokio::test]
+async fn deck_options_id_resolves_to_effective_preset() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    // A deck with no preset (seed_studiable_card inserts a deck with NULL
+    // options_id) -> options_id reports 0.
+    seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+    let decks = list_decks(&app, &token).await;
+    assert_eq!(decks.len(), 1);
+    assert_eq!(decks[0]["options_id"].as_i64(), Some(0), "no preset resolves to 0");
+
+    // Assign a concrete preset to a second deck and assert it is reported.
+    let preset_id = common::seed_preset(&app, 1, 8, "suspend_card").await;
+    let deck_id = sqlx::query!(
+        "INSERT INTO decks (school_id, title, created_by, options_id) VALUES (1, 'Preset Deck', $1, $2) RETURNING id",
+        teacher_id,
+        preset_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert deck with preset")
+    .id;
+
+    let decks = list_decks(&app, &token).await;
+    let assigned = decks.iter().find(|d| d["id"].as_i64() == Some(deck_id)).expect("preset deck listed");
+    assert_eq!(
+        assigned["options_id"].as_i64(),
+        Some(preset_id),
+        "assigned preset is reported as the effective id"
+    );
+}

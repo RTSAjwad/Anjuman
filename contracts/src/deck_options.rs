@@ -331,7 +331,7 @@ pub struct UpdateDeckOptions {
 ///
 /// Steps are stored normalized (one row per step) and re-assembled here into
 /// `Vec<i64>` (seconds).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeckOptions {
     pub id: i64,

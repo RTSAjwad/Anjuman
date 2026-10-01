@@ -807,8 +807,10 @@ injected `HttpResponse`s, never a running server).
       popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
       (see [`docs/support/screens.md`](../support/screens.md)). Each gets its own story.
 - [ ] **Deck-options/preferences UI** — the settings screens that CRUD
-      `deck-options` and `/preferences`. Deck-options: US-4.9 (view a preset) and
-      US-4.10 (edit + save a preset) below. Preferences UI not yet drafted.
+      `deck-options` and `/preferences`. Deck-options: US-4.9 (view a preset,
+      done) and US-4.10 (edit + save a preset) below. Preferences UI not yet
+      drafted (and the US-4.9 shell contract — rendering the preset read-only —
+      is pending the shell agent).
 - [ ] Keep the FFI `Bridge`/`codegen` surface working as the model grows;
       regenerate bindings.
 
@@ -1351,26 +1353,26 @@ interface change before client work.
 
 **Acceptance criteria**
 
-- [ ] `DeckResponse` carries `options_id: i64` (`Serialize` + `Deserialize`);
+- [x] `DeckResponse` carries `options_id: i64` (`Serialize` + `Deserialize`);
       the server populates it in `list_decks`/`get_deck` as the **effective** id
       (`decks.options_id.unwrap_or(0)`), so a deck with no preset reports `0`
       (no behaviour change otherwise; OpenAPI still generates).
-- [ ] `Model` gains deck-options state for the selected deck: the resolved
+- [x] `Model` gains deck-options state for the selected deck: the resolved
       preset id + an `Option<DeckOptions>` (and an error flag), cleared on
       `CloseDeck`/logout.
-- [ ] `Event::DeckOptionsRequested { deck_id }` (fired from the selected deck's
+- [x] `Event::DeckOptionsRequested { deck_id }` (fired from the selected deck's
       context) emits `GET /deck-options/{options_id}` with the bearer header,
       where `{options_id}` is the deck's effective `options_id` (no client-side
       fallback).
-- [ ] A canned `DeckOptions` response (success) populates the model and exposes
+- [x] A canned `DeckOptions` response (success) populates the model and exposes
       the preset's values in the `ViewModel` (name + the field inventory from
       `docs/support/deck-options.md`, including enums serialized as their wire
       forms).
-- [ ] A deck with no assigned preset (server reports `options_id: 0`) resolves
+- [x] A deck with no assigned preset (server reports `options_id: 0`) resolves
       to the global default preset — the core requests `GET /deck-options/0` and
       renders it, rather than treating it as absent.
-- [ ] A rejection (403/500) sets an error in the `ViewModel` without crashing.
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+- [x] A rejection (403/500) sets an error in the `ViewModel` without crashing.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes.
 
 **Shell contract**
 

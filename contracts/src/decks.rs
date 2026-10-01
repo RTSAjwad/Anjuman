@@ -127,6 +127,10 @@ pub struct DeckResponse {
     pub owner_last_name: String,
     pub parent_id: Option<i64>,
     pub created_at: DateTime<Utc>,
+    /// The deck's effective scheduling preset id (the server resolves a null
+    /// `decks.options_id` to the global default, id 0, before serialising — see
+    /// US-4.9). Always a concrete, live preset id on the wire.
+    pub options_id: i64,
     /// Per-deck daily-limit configuration (see `LimitMode`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_per_day_mode: Option<LimitMode>,

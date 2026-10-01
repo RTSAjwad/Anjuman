@@ -217,6 +217,7 @@ async fn fetch_deck(
         r#"
         SELECT d.id, d.school_id, d.title, d.description,
                d.created_by, d.parent_id, d.created_at,
+               d.options_id,
                u.email as owner_email,
                u.first_name as owner_first_name,
                u.last_name as owner_last_name,
@@ -247,6 +248,7 @@ async fn fetch_deck(
         owner_last_name: row.owner_last_name,
         parent_id: row.parent_id,
         created_at: row.created_at,
+        options_id: row.options_id.unwrap_or(0),
         new_per_day_mode: Some(row.new_per_day_mode.into()),
         review_per_day_mode: Some(row.review_per_day_mode.into()),
         new_per_day_override: row.new_per_day_override,
@@ -1062,6 +1064,7 @@ pub async fn list_decks(
             r#"
             SELECT d.id, d.school_id, d.title, d.description,
                    d.created_by, d.parent_id, d.created_at,
+                   d.options_id,
                    u.email as owner_email,
                    u.first_name as owner_first_name,
                    u.last_name as owner_last_name,
@@ -1097,6 +1100,7 @@ pub async fn list_decks(
                 owner_last_name: r.owner_last_name,
                 parent_id: r.parent_id,
                 created_at: r.created_at,
+                options_id: r.options_id.unwrap_or(0),
                 new_per_day_mode: None,
                 review_per_day_mode: None,
                 new_per_day_override: None,
@@ -1119,6 +1123,7 @@ pub async fn list_decks(
             r#"
             SELECT DISTINCT d.id, d.school_id, d.title, d.description,
                    d.created_by, d.parent_id, d.created_at,
+                   d.options_id,
                    u.email as owner_email,
                    u.first_name as owner_first_name,
                    u.last_name as owner_last_name,
@@ -1157,6 +1162,7 @@ pub async fn list_decks(
                 owner_last_name: r.owner_last_name,
                 parent_id: r.parent_id,
                 created_at: r.created_at,
+                options_id: r.options_id.unwrap_or(0),
                 new_per_day_mode: None,
                 review_per_day_mode: None,
                 new_per_day_override: None,
@@ -1221,7 +1227,7 @@ pub async fn list_decks(
                 WHERE d.parent_id IS NOT NULL
         ),
         expanded AS (SELECT id FROM descendants UNION SELECT id FROM ancestors)
-        SELECT d.id, d.school_id, d.title, d.description, d.created_by, d.parent_id, d.created_at,
+        SELECT d.id, d.school_id, d.title, d.description, d.created_by, d.parent_id, d.created_at, d.options_id,
                u.email as owner_email, u.first_name as owner_first_name, u.last_name as owner_last_name,
                (d.id IN (SELECT id FROM descendants)) AS "studyable!: bool"
         FROM decks d
@@ -1275,6 +1281,7 @@ pub async fn list_decks(
             owner_last_name: r.owner_last_name,
             parent_id: r.parent_id,
             created_at: r.created_at,
+            options_id: r.options_id.unwrap_or(0),
             new_per_day_mode: None,
             review_per_day_mode: None,
             new_per_day_override: None,
