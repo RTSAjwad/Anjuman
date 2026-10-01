@@ -1601,6 +1601,72 @@ options belong to the single user). This stage makes the personalisation model
 
 ---
 
+## 8. History / Undo   `[ ]`
+
+Let users see what changed and (optionally) reverse their actions. **This stage
+is scoped but *not* decided** — the design questions below are deliberately left
+open until the stage is tackled, so no commitment is made here beyond the
+boundary of the feature and the shape of the work. Add this to the stage and
+plan it properly (story list + acceptance criteria) when it becomes current work.
+
+### Scope (the boundary, fixed)
+
+- **What it covers:** recording user actions and, if pursued, reversing them. The
+  obvious candidates are deck management (rename/delete/assign/options), note/card
+  editing, card actions (flag/suspend/bury/reschedule), preset edits, class/roster
+  changes, and study reviews.
+- **What it is *not*:** a generic event-sourcing rewrite of the domain. The
+  existing row-per-entity model (`decks`, `notes`, `cards`, `student_card_states`,
+  `deck_options`, …) stays; history is a *side table*, not a replacement.
+- **Existing assets to build on:** `reviews` already records `rating` /
+  `state_before` / `reviewed_at`, and `student_card_states` holds the per-student
+  scheduling row (`stability`, `difficulty`, `due_at`, `reps`, `lapses`,
+  `step_index`, `suspended`, `buried_at`) — the raw material for reversing study.
+  There is currently **no** audit/history table anywhere.
+
+### Design questions to settle (deferred — do not decide now)
+
+- [ ] **Undo vs. browse** — is the goal Anki-style shallow *undo*, a browsable
+      *activity log*, or full multi-step *rollback*? These are different features
+      with very different cost; do not conflate them.
+- [ ] **Which actions are reversible?** In particular: **does undo include
+      study/reviews?** Reversing an FSRS review is the hard, risky case (must
+      restore the exact prior `student_card_states` row and delete the matching
+      `reviews` row, and a mid-stream delete can perturb downstream scheduling).
+      Descoping review-undo initially is the cheap path.
+- [ ] **Persistence vs. ephemeral** — persistent (history table, survives
+      reload) vs. Anki-style in-session undo (ring buffer, gone on reload).
+- [ ] **Scope/permission** — personal history only, or school/class history
+      visible via the existing grant model? Should reuse the US-4.7/2.19 deck
+      access predicate rather than invent a second one.
+- [ ] **Granularity** — whole-entity `before`/`after` snapshots (cheap) vs.
+      per-field diffs (nicer UI, more code).
+
+### Likely decomposition (tentative — refine when planning the stage)
+
+- [ ] `US-8.1` — `history` append-only table (id, school/user, entity type + id,
+      action, `before`/`after` JSONB, `created_at TIMESTAMPTZ`), written in the
+      *same transaction* as each mutation.
+- [ ] `US-8.2` — `GET /history` read endpoint (filter by user/entity/time) +
+      the client history screen (core first, then shell).
+- [ ] `US-8.3` — undo for *non-scheduling* mutations (restore the `before`
+      snapshot).
+- [ ] `US-8.4` — undo for a single review (only if the "include reviews" decision
+      is yes; needs a prior-states snapshot + a documented FSRS caveat).
+- [ ] `US-8.5` — diff/rendering polish (what changed, per-field).
+
+### Reference / divergence notes (record when implementing)
+
+- Anki exposes *undo* as single-level and in-memory; a persistent, multi-tenant,
+  stepped history is a deliberate divergence (same class as the deck-options
+  per-school vs. per-user split) and must be documented against an Anki reference.
+- FSRS scheduling is stateful — document any limitation that multi-step review
+  undo is not reconstructable for free, the same way the stateless-gather/sort
+  and deterministic-seed divergences are recorded in
+  [`docs/support/deck-options.md`](../support/deck-options.md).
+
+---
+
 ## Notes
 
 - **Ordering rationale:** task 1 is invisible-but-risky infrastructure (no API
