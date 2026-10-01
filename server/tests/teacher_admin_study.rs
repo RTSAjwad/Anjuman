@@ -134,3 +134,26 @@ async fn deck_options_id_resolves_to_effective_preset() {
         "assigned preset is reported as the effective id"
     );
 }
+
+/// The global default preset (id 0, owned by the system school) is fetchable
+/// from any school (US-4.9 carve-out): `GET /deck-options/0` must not 404 for a
+/// real-school caller, since a deck with no `options_id` resolves to it.
+#[tokio::test]
+async fn get_global_default_preset_is_cross_school() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (_teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    let res = app
+        .app
+        .clone()
+        .oneshot(get("/deck-options/0", &token))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "id 0 resolves across schools");
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["id"].as_i64(), Some(0));
+    assert_eq!(json["name"].as_str(), Some("Default"));
+}

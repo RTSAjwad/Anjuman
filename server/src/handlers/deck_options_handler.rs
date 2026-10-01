@@ -75,7 +75,11 @@ pub async fn get_deck_options(
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "Deck options not found"))?;
 
-    if opt.school_id != claims.school_id {
+    // The global default preset (id 0) is owned by the system school and shared
+    // across every school (a deck with no explicit `options_id` resolves to it —
+    // see US-4.9). It is therefore exempt from the per-school scoping check;
+    // every other preset is only visible within its own school.
+    if id != 0 && opt.school_id != claims.school_id {
         return Err((StatusCode::NOT_FOUND, "Deck options not found"));
     }
 
