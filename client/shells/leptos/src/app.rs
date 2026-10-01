@@ -10,7 +10,9 @@
 //! `IntoFragment` error).
 
 use leptos::prelude::*;
-use shared::app::{DeckOptionsEdit, DeckOptionsView, DeckSummary, StudyCardView, StudyCountsView};
+use shared::app::{
+    DeckOptionsEdit, DeckOptionsView, DeckSummary, PresetSummary, StudyCardView, StudyCountsView,
+};
 use shared::{Event, ViewModel};
 use std::collections::HashSet;
 use thaw::{
@@ -192,8 +194,11 @@ pub fn RootComponent() -> impl IntoView {
                                             }.into_any(),
                                             DeckView::Options => view! {
                                                 <DeckOptionsPanel
+                                                    deck_id=deck.id
                                                     options=deck_options_view
                                                     error=deck_options_error
+                                                    presets=vm.presets.clone()
+                                                    presets_error=vm.presets_error.clone()
                                                     set_event=set_event />
                                             }.into_any(),
                                         }}
@@ -396,8 +401,11 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
 /// on each entry to Options.
 #[component]
 fn deck_options_panel(
+    deck_id: i64,
     options: Option<DeckOptionsView>,
     error: Option<String>,
+    presets: Vec<PresetSummary>,
+    presets_error: Option<String>,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     let options = match options {
@@ -431,6 +439,32 @@ fn deck_options_panel(
     // `error` above carries the core-set fetch/save error; this is separate.
     let local_error = RwSignal::new(None::<String>);
 
+    // US-4.11: request the school's preset list once, on entry to the screen, so
+    // the assign picker can render it (the server's `GET /deck-options` does not
+    // include the system default id 0, so the shell synthesizes that entry).
+    Effect::new(move |_| {
+        set_event.set(Event::DeckOptionsListRequested);
+    });
+
+    // The assign picker: a `Select` bound to the deck's current preset id. On a
+    // user change, forward `Event::DeckOptionsAssign`. `last_assigned` guards
+    // against firing on the initial render (the core re-fetches after assignment,
+    // so `options.id` then matches the newly-assigned id).
+    let assign_selection = RwSignal::new(options.id.to_string());
+    let last_assigned = StoredValue::new(options.id);
+    Effect::new(move |_| {
+        let sel = assign_selection.get();
+        if let Ok(id) = sel.parse::<i64>() {
+            if last_assigned.get_value() != id {
+                last_assigned.set_value(id);
+                set_event.set(Event::DeckOptionsAssign {
+                    deck_id,
+                    options_id: id,
+                });
+            }
+        }
+    });
+
     let on_save = move |_| {
         local_error.set(None);
         match state.to_edit() {
@@ -459,6 +493,21 @@ fn deck_options_panel(
             } else {
                 ().into_any()
             }}
+
+            <div class="deck-options-assign">
+                <span class="deck-options-assign__label">"Preset"</span>
+                <Select value=assign_selection size=SelectSize::Medium>
+                    <option value="0">"Default"</option>
+                    {presets.iter().map(|p| {
+                        let id = p.id.to_string();
+                        let name = p.name.clone();
+                        view! { <option value=id>{name}</option> }
+                    }).collect_view()}
+                </Select>
+                {presets_error.map(|err| view! {
+                    <span class="deck-options__error">{err}</span>
+                })}
+            </div>
 
             <OptionsGroup title="Daily limits">
                 <NumberField label="New cards/day" value=state.new_per_day placeholder="20" />
