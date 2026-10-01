@@ -303,6 +303,17 @@
       .deck-options__preset {
         color: var(--colorNeutralForeground3);
       }
+      .deck-options__readonly-notice {
+        color: var(--colorNeutralForeground3);
+        border-left: 3px solid var(--colorNeutralStroke2);
+        padding-left: 0.75rem;
+      }
+      /* The global default preset is read-only: disable all controls and remove
+         the save affordance (the Save button is omitted by the component). */
+      .deck-options--readonly .deck-options-group {
+        pointer-events: none;
+        opacity: 0.7;
+      }
       .deck-options__error {
         color: var(--colorPaletteRedForeground1, #c00);
       }

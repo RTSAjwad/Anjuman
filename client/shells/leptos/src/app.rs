@@ -420,6 +420,9 @@ fn deck_options_panel(
     };
 
     let name = options.name.clone();
+    // The system-owned global default (id 0) is read-only — see US-4.10 and the
+    // server report. Editing/saving is disabled for it.
+    let read_only = options.id == 0;
     // Editable draft state, initialized from the loaded preset. Rebuilt on each
     // entry to Options (see `RootComponent`, which mounts this only on the
     // Options route).
@@ -437,11 +440,25 @@ fn deck_options_panel(
     };
 
     view! {
-        <section class="deck-options">
+        <section class="deck-options" class:deck-options--readonly=read_only>
             <header class="deck-options__header">
                 <h2 class="deck-options__title">"Deck options"</h2>
-                <span class="deck-options__preset">{name}</span>
+                <span class="deck-options__preset">
+                    {name}
+                    {if read_only { " — read-only" } else { "" }}
+                </span>
             </header>
+
+            {if read_only {
+                view! {
+                    <p class="deck-options__readonly-notice">
+                        "This is the shared default preset. It can't be edited — create your own preset to customise scheduling."
+                    </p>
+                }
+                .into_any()
+            } else {
+                ().into_any()
+            }}
 
             <OptionsGroup title="Daily limits">
                 <NumberField label="New cards/day" value=state.new_per_day placeholder="20" />
@@ -523,9 +540,16 @@ fn deck_options_panel(
                         ().into_any()
                     }
                 }}
-                <Button appearance=ButtonAppearance::Primary on_click=on_save>
-                    "Save"
-                </Button>
+                {if read_only {
+                    ().into_any()
+                } else {
+                    view! {
+                        <Button appearance=ButtonAppearance::Primary on_click=on_save>
+                            "Save"
+                        </Button>
+                    }
+                    .into_any()
+                }}
             </footer>
         </section>
     }
