@@ -299,6 +299,13 @@ remain **separate Cargo workspaces**, not one top-level workspace:
   one card; answering POSTs and replaces it with the response's `next_card`
   (`None` ⇒ "nothing due"). No client-side queue — mirrors the server's
   sessionless contract, so core state never drifts from server state.
+- **Routing is core-owned, not per-shell.** The current route is `ViewModel`
+  state — `selected_deck` plus the core-local `DeckView::{Study, Options}` enum
+  exposed as `selected_deck_view`; shells forward `Event::OpenDeck`/
+  `Event::OpenDeckOptions`, and the core chains `StartStudy`/
+  `DeckOptionsRequested` and resets the route on `CloseDeck`. No `leptos_router`
+  or URL routing — web-only tooling that would duplicate state the core already
+  owns (and the four native shells can't share). See [`SHELLS.md`](./SHELLS.md) §3.
 - Client workspace layout (workspace + `shared` + `shells/`).
 
 ### Open questions
