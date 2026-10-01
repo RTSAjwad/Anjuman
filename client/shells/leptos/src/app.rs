@@ -341,6 +341,7 @@ fn study_card_view(
 
     let front = card.front;
     let back = card.back;
+    let styling = card.styling;
 
     view! {
         <div class="study-card-view">
@@ -349,9 +350,9 @@ fn study_card_view(
                 sandbox=""
                 srcdoc=move || {
                     if revealed.get() {
-                        card_html(&back)
+                        card_html(&back, &styling)
                     } else {
-                        card_html(&front)
+                        card_html(&front, &styling)
                     }
                 }
             ></iframe>
@@ -389,10 +390,11 @@ fn study_card_view(
 }
 
 /// Wrap a card-side HTML fragment (the template-rendered front/back) in a
-/// minimal HTML document so it renders standalone in the sandboxed iframe.
-fn card_html(body: &str) -> String {
+/// minimal HTML document so it renders standalone in the sandboxed iframe,
+/// injecting the note type's shared styling CSS so the card is self-contained.
+fn card_html(body: &str, styling: &str) -> String {
     format!(
-        "<!DOCTYPE html><html><head><meta charset=\"utf-8\" /></head><body>{body}</body></html>"
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\" /><style>{styling}</style></head><body>{body}</body></html>"
     )
 }
 
