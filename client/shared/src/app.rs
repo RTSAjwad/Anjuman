@@ -16,7 +16,7 @@ use facet::Facet;
 use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
-use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse};
+use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 
@@ -59,6 +59,11 @@ pub struct Model {
     pub deck_options: Option<DeckOptions>,
     /// A human-readable error from the last deck-options fetch, if any.
     pub deck_options_error: Option<String>,
+    /// The school's reusable presets (from `GET /deck-options`), for the
+    /// US-4.11 assign-preset affordance.
+    pub presets: Vec<DeckOptions>,
+    /// A human-readable error from the last preset-list fetch, if any.
+    pub presets_error: Option<String>,
 }
 
 /// Authentication state.
@@ -105,6 +110,14 @@ pub enum Event {
     },
     /// Save edits to the selected deck's preset (only `Some` fields are changed).
     DeckOptionsSave(DeckOptionsEdit),
+    /// Assign the selected deck's scheduling preset (US-4.11). `options_id: 0`
+    /// means "use the default".
+    DeckOptionsAssign {
+        deck_id: i64,
+        options_id: i64,
+    },
+    /// Fetch the school's reusable presets (for the assign-preset affordance).
+    DeckOptionsListRequested,
     /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
     Answer {
         rating: i32,
@@ -126,6 +139,14 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     DeckOptionsSaved(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckOptions>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckOptionsListResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<DeckOptions>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckOptionsAssigned(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -204,6 +225,11 @@ pub struct ViewModel {
     pub deck_options: Option<DeckOptionsView>,
     /// A human-readable error from the last deck-options fetch, if any.
     pub deck_options_error: Option<String>,
+    /// The school's reusable presets (id + name) for the assign-preset
+    /// affordance (US-4.11).
+    pub presets: Vec<PresetSummary>,
+    /// A human-readable error from the last preset-list fetch, if any.
+    pub presets_error: Option<String>,
 }
 
 /// The shell-facing view of a card during study (a Facet/FFI-friendly mirror of
@@ -426,6 +452,24 @@ impl From<&DeckOptions> for DeckOptionsView {
             auto_advance_answer_action: serde_name(&o.auto_advance_answer_action),
             easy_days: o.easy_days.iter().map(serde_name).collect(),
             fsrs_parameters: o.fsrs_parameters.clone(),
+        }
+    }
+}
+
+/// A shell-facing summary of a reusable preset (id + name) for the US-4.11
+/// assign-preset affordance. Mirrors `DeckSummary`; `DeckOptions` itself isn't
+/// `Facet`-derived, so this carries just the fields the picker needs.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct PresetSummary {
+    pub id: i64,
+    pub name: String,
+}
+
+impl From<&DeckOptions> for PresetSummary {
+    fn from(o: &DeckOptions) -> Self {
+        PresetSummary {
+            id: o.id,
+            name: o.name.clone(),
         }
     }
 }
@@ -801,6 +845,67 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::DeckOptionsAssign { deck_id, options_id } => {
+                // Requires an authenticated token; otherwise a no-op.
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let body = SetDeckOptions { options_id };
+                Http::patch(format!("{API_URL}/decks/{deck_id}/options"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize set deck options")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckOptionsAssigned)
+            }
+
+            Event::DeckOptionsAssigned(Ok(mut response)) => {
+                let deck = response.take_body().expect("set options response has a body");
+                // Reflect the new effective `options_id` back into the deck list
+                // (so subsequent fetches target the right preset).
+                if let Some(existing) = model.decks.iter_mut().find(|d| d.id == deck.id) {
+                    existing.options_id = deck.options_id;
+                }
+                model.deck_options_error = None;
+                // Re-fetch the (possibly changed) preset for the updated deck so
+                // the shell re-renders the newly-assigned options.
+                render::render().and(Command::event(Event::DeckOptionsRequested {
+                    deck_id: deck.id,
+                }))
+            }
+
+            Event::DeckOptionsAssigned(Err(e)) => {
+                model.deck_options_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::DeckOptionsListRequested => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.presets_error = None;
+                Http::get(format!("{API_URL}/deck-options"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckOptionsListResult)
+            }
+
+            Event::DeckOptionsListResult(Ok(mut response)) => {
+                model.presets =
+                    response.take_body().expect("deck-options list response has a body");
+                model.presets_error = None;
+                render::render()
+            }
+
+            Event::DeckOptionsListResult(Err(e)) => {
+                model.presets_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::StartStudy => {
                 // Requires a selected deck (and a token); otherwise a no-op.
                 let Some(deck) = &model.selected_deck else {
@@ -949,6 +1054,8 @@ impl crux_core::App for Anjuman {
                 study_error: model.study_error.clone(),
                 deck_options: model.deck_options.as_ref().map(DeckOptionsView::from),
                 deck_options_error: model.deck_options_error.clone(),
+                presets: model.presets.iter().map(PresetSummary::from).collect(),
+                presets_error: model.presets_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -964,6 +1071,8 @@ impl crux_core::App for Anjuman {
                 study_error: None,
                 deck_options: None,
                 deck_options_error: None,
+                presets: Vec::new(),
+                presets_error: None,
             },
         }
     }
@@ -1960,5 +2069,103 @@ mod tests {
         };
         let ok_effects = update(Event::DeckOptionsSave(good), &mut model4);
         assert!(ok_effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.11 — assign a deck's preset
+    // --------------------------------------------------------------------
+
+    /// `DeckOptionsAssign` emits a `PATCH /decks/{id}/options` with a JSON
+    /// `SetDeckOptions { options_id }` body + bearer header.
+    #[test]
+    fn deck_options_assign_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+
+        let effects = update(
+            Event::DeckOptionsAssign {
+                deck_id: 1,
+                options_id: 42,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/1/options"
+                );
+                let body: SetDeckOptions =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.options_id, 42);
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckOptionsListRequested` emits `GET /deck-options` with the bearer
+    /// header.
+    #[test]
+    fn deck_options_list_requested_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(Event::DeckOptionsListRequested, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/deck-options"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A canned preset list populates the model and is exposed in the view.
+    #[test]
+    fn deck_options_list_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(vec![deck_options(5, "Medical"), deck_options(6, "Language")])
+            .build();
+        let _ = update(Event::DeckOptionsListResult(Ok(response)), &mut model);
+
+        assert!(model.presets_error.is_none());
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.presets.len(), 2);
+        assert_eq!(vm.presets[0].id, 5);
+        assert_eq!(vm.presets[0].name, "Medical");
+        assert_eq!(vm.presets[1].name, "Language");
+    }
+
+    /// Assignment success updates the deck's effective `options_id` in the model
+    /// and re-renders (the preset re-fetch is chained as a follow-up event).
+    #[test]
+    fn deck_options_assign_success_updates_deck_and_refetches() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")]; // options_id: 0
+
+        // The server responds with the updated deck (now preset 42).
+        let mut updated_deck = deck(1, "Spanish");
+        updated_deck.options_id = 42;
+        let response = ResponseBuilder::ok().body(updated_deck).build();
+        let effects = update(Event::DeckOptionsAssigned(Ok(response)), &mut model);
+
+        // The deck's effective options_id is now 42.
+        assert_eq!(model.decks[0].options_id, 42);
+        assert!(model.deck_options_error.is_none());
+        // A render is emitted; the preset re-fetch is chained as a follow-up
+        // event (`DeckOptionsRequested`), not an effect in this call.
+        assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
     }
 }

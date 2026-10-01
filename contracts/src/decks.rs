@@ -83,7 +83,7 @@ pub struct UpdateDeck {
 /// `options_id: 0` means "use the default" (the server stores `NULL`, which the
 /// read path resolves back to the effective id 0); any non-zero id must be a
 /// preset in the caller's school.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SetDeckOptions {
     pub options_id: i64,
