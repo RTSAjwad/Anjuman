@@ -466,6 +466,31 @@ fn find_deck(decks: &[DeckResponse], deck_id: i64) -> Option<DeckSummary> {
     })
 }
 
+/// Fold the latest study-screen counts back into the selected deck's entry in
+/// the flat deck list, so the deck-list badges and the study-screen badges are
+/// one source of truth (write-through — no extra `/decks/counts` fetch).
+///
+/// Maps `StudyCounts`' `new/learning/review/relearning` into the matching
+/// `DeckResponse` `Option<i64>` fields. `total_count` is **left untouched**: it
+/// is a card count (not a due count), and `StudyCounts` does not carry it, so a
+/// completed card must not reduce it.
+fn fold_study_counts_into_decks(
+    decks: &mut [DeckResponse],
+    selected_deck: Option<&DeckSummary>,
+    counts: StudyCounts,
+) {
+    let Some(selected) = selected_deck else {
+        return;
+    };
+    let Some(deck) = decks.iter_mut().find(|d| d.id == selected.id) else {
+        return;
+    };
+    deck.new_count = Some(counts.new_count);
+    deck.learning_count = Some(counts.learning_count);
+    deck.review_count = Some(counts.review_count);
+    deck.relearning_count = Some(counts.relearning_count);
+}
+
 /// The shell-facing view of a deck-options preset (a `Facet`/`PartialEq`-friendly
 /// mirror of the contracts `DeckOptions`, following the same pattern as
 /// `DeckSummary`/`StudyCardView`). Enums are exposed as their serde `snake_case`
@@ -1155,6 +1180,11 @@ impl crux_core::App for Anjuman {
                 let advance = response.take_body().expect("study response has a body");
                 model.current_card = advance.next_card;
                 model.counts = advance.counts;
+                // Fold the fresh per-state due counts back into the selected
+                // deck's entry in `model.decks`, so the deck-list badges and the
+                // study-screen badges are the *same* number (write-through; no
+                // extra `/decks/counts` round-trip).
+                fold_study_counts_into_decks(&mut model.decks, model.selected_deck.as_ref(), model.counts);
                 model.busy = false;
                 model.study_error = None;
                 render::render()
@@ -1170,6 +1200,9 @@ impl crux_core::App for Anjuman {
                 let advance = response.take_body().expect("study response has a body");
                 model.current_card = advance.next_card;
                 model.counts = advance.counts;
+                // Same write-through as `StudyStarted`: keep the deck-list
+                // badges in sync with the latest study counts.
+                fold_study_counts_into_decks(&mut model.decks, model.selected_deck.as_ref(), model.counts);
                 model.busy = false;
                 model.study_error = None;
                 render::render()
@@ -2127,6 +2160,75 @@ mod tests {
         let vm = Anjuman.view(&model);
         assert_eq!(vm.current_card.as_ref().map(|c| c.card_id), Some(7));
         assert_eq!(vm.counts.review_count, 5);
+    }
+
+    /// `StudyStarted(Ok)` folds the fresh counts back into the selected deck's
+    /// entry in `model.decks` (write-through), so deck-list badges match the
+    /// study-screen badges.
+    #[test]
+    fn study_started_updates_current_deck_counts() {
+        let mut model = study_ready_model();
+        // The deck list starts with new=3/learning=1/review=5/relearning=0.
+        assert_eq!(model.decks[0].review_count, Some(5));
+
+        // A study response carrying *different* counts (e.g. one card answered).
+        let mut advance = study_advance(Some(study_card(7)));
+        advance.counts = StudyCounts {
+            new_count: 2,
+            learning_count: 3,
+            review_count: 4,
+            relearning_count: 1,
+        };
+        let response = ResponseBuilder::ok().body(advance).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        // The study counts are the new authoritative source.
+        assert_eq!(model.counts.review_count, 4);
+        // ...and the deck-list entry now reflects the same numbers.
+        assert_eq!(model.decks[0].new_count, Some(2));
+        assert_eq!(model.decks[0].learning_count, Some(3));
+        assert_eq!(model.decks[0].review_count, Some(4));
+        assert_eq!(model.decks[0].relearning_count, Some(1));
+        // total_count is a card count, not a due count — untouched.
+        assert_eq!(model.decks[0].total_count, Some(9));
+    }
+
+    /// `StudyAdvanced(Ok)` (after answering) also folds the new counts into the
+    /// selected deck, keeping deck-list badges fresh without a refetch.
+    #[test]
+    fn study_advanced_updates_current_deck_counts() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+
+        let mut advance = study_advance(Some(study_card(43)));
+        advance.counts = StudyCounts {
+            new_count: 0,
+            learning_count: 0,
+            review_count: 3,
+            relearning_count: 0,
+        };
+        let response = ResponseBuilder::ok().body(advance).build();
+        let _ = update(Event::StudyAdvanced(Ok(response)), &mut model);
+
+        assert_eq!(model.decks[0].new_count, Some(0));
+        assert_eq!(model.decks[0].learning_count, Some(0));
+        assert_eq!(model.decks[0].review_count, Some(3));
+        assert_eq!(model.decks[0].relearning_count, Some(0));
+        // total_count unchanged.
+        assert_eq!(model.decks[0].total_count, Some(9));
+    }
+
+    /// When no deck is selected (or the selected id is absent from the list),
+    /// folding is a no-op — the study counts update but nothing panics.
+    #[test]
+    fn fold_study_counts_noop_without_matching_deck() {
+        let mut model = authenticated_model(); // no selected_deck
+        let advance = study_advance(Some(study_card(7)));
+        let response = ResponseBuilder::ok().body(advance).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        assert_eq!(model.counts.new_count, 3);
+        assert!(model.decks.is_empty());
     }
 
     /// `StudyCard.predicted_interval` (rating→seconds, string-keyed on the wire)

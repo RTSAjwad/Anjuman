@@ -1128,7 +1128,24 @@ needs the mirror direction (same as auth/decks).
       distinguish "fetching" from "nothing due" (carve-out).
 - [x] The contracts prerequisite is done: study DTOs round-trip
       (`Serialize`/`Deserialize` on the response types and `StudyAdvanceBody`).
+- [x] **Deck-list counts stay in sync with study progress (write-through).**
+      `StudyStarted(Ok)` and `StudyAdvanced(Ok)` fold `StudyAdvance.counts`
+      (`new/learning/review/relearning`) back into the selected deck's entry in
+      `model.decks`, so the deck-list badges and study-screen badges are one
+      source of truth. `total_count` is left untouched (it's a card count, not a
+      due count; `StudyCounts` doesn't carry it). No extra `/decks/counts`
+      round-trip per answer.
 - [x] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Count-sync decision (settled)**
+
+Study progress updates the deck list **by write-through** from
+`StudyAdvance.counts` (the authoritative per-deck count for the deck in hand),
+not by re-fetching `/decks/counts` after each answer. Rationale: it's free (no
+extra round-trip per card) and it's already the exact number the study screen
+shows. The one field the study counts can't supply — `total_count` (a card
+count, not a due count) — is preserved from the last `GET /decks`, which is
+still correct because answer/bury/suspend don't change how many cards exist.
 
 **Shell contract**
 
