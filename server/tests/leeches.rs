@@ -60,7 +60,7 @@ async fn lapse_counts_review_card_again_only() {
     assert_eq!(review_lapses, 1, "review 'Again' must increment the lapse count");
 }
 
-/// US-2.3 — `SuspendCard` suspends the card once the threshold is reached.
+/// US-2.20 — `SuspendCard` suspends the card once the threshold is reached.
 #[tokio::test]
 async fn suspend_card_action_suspends_at_threshold() {
     let _guard = common::db_guard().await;
@@ -71,7 +71,7 @@ async fn suspend_card_action_suspends_at_threshold() {
     let card_id = seed_studiable_card(&app, student_id, "review", 0, 1, 0).await;
     attach_preset(&app, card_id, preset).await;
 
-    let _ = apply_review(&app.db, student_id, card_id, 1, None)
+    let reviewed = apply_review(&app.db, student_id, card_id, 1, None)
         .await
         .expect("apply review");
 
@@ -85,6 +85,49 @@ async fn suspend_card_action_suspends_at_threshold() {
     .expect("read suspended");
 
     assert!(suspended, "leech card should be suspended at threshold");
+
+    // SuspendCard also marks the leech (suspend + mark).
+    let marked = sqlx::query_scalar!(
+        "SELECT leech_at IS NOT NULL FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        student_id,
+        card_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("read leech marker")
+    .unwrap_or(false);
+    assert!(marked, "SuspendCard must mark the card a leech");
+    assert!(reviewed.leech, "ReviewedCardState.leech should be true");
+}
+
+/// US-2.20 — an "Again" on a review card that reaches the threshold marks the
+/// card as a leech (regardless of the configured action).
+#[tokio::test]
+async fn reaching_threshold_marks_card_as_leech() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (student_id, _token) = create_user(&app, UserRole::Student).await;
+
+    // Threshold 1: a single review-card "Again" crosses it immediately.
+    let preset = seed_preset(&app, 1, 1, "tag_only").await;
+    let card_id = seed_studiable_card(&app, student_id, "review", 0, 1, 0).await;
+    attach_preset(&app, card_id, preset).await;
+
+    let _ = apply_review(&app.db, student_id, card_id, 1, None)
+        .await
+        .expect("apply review");
+
+    let marked = sqlx::query_scalar!(
+        "SELECT leech_at IS NOT NULL FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        student_id,
+        card_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("read leech marker")
+    .unwrap_or(false);
+
+    assert!(marked, "a card lapsing to the threshold is marked as a leech");
 }
 
 /// US-2.3 — `TagOnly` does not suspend, but marks the student's card a leech.
