@@ -27,3 +27,12 @@ pub struct AddTags {
 pub struct RemoveTags {
     pub tags: Vec<String>,
 }
+
+/// Expected JSON body for renaming a tag (its `::` hierarchy may change with the
+/// name). Only the canonical `tags` row is updated; `note_tags` keeps referencing
+/// the same id.
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RenameTag {
+    pub name: String,
+}

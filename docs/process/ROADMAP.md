@@ -1667,7 +1667,7 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
 - [x] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags on a note
       (teacher/admin-gated); a distinct-tags list endpoint (the sidebar tree
       source). `server/tests/` per criterion.
-- [ ] `US-6.3` — **Rename/move.** Rename a tag (updates the one `tags` row;
+- [x] `US-6.3` — **Rename/move.** Rename a tag (updates the one `tags` row;
       `note_tags` unaffected since it references the tag id). Teacher/admin-gated.
       (Clear-unused is done here: `DELETE /tags` removes orphaned tags.)
 - [ ] `US-6.4` — **Distinct-tags list + hierarchy.** Expose the distinct tag

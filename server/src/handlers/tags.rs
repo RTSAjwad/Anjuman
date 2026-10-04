@@ -14,7 +14,7 @@ use axum::{
     http::StatusCode,
 };
 
-use anjuman_contracts::tags::{AddTags, RemoveTags, Tag};
+use anjuman_contracts::tags::{AddTags, RemoveTags, RenameTag, Tag};
 use anjuman_contracts::{MessageResponse, UserRole};
 
 use crate::{
@@ -151,5 +151,49 @@ pub async fn clear_unused_tags(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     Ok(Json(MessageResponse {
         message: format!("Removed {removed} unused tag(s)"),
+    }))
+}
+
+/// `PATCH /tags/{id}` — rename a tag (its `::` hierarchy may change with the
+/// name). Only the canonical `tags` row is updated; all notes keep the tag via
+/// their `note_tags` id.
+pub async fn rename_tag(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Path(tag_id): Path<i64>,
+    Json(body): Json<RenameTag>,
+) -> Result<Json<Tag>, (StatusCode, String)> {
+    check_teacher_or_admin(&claims).map_err(|(s, m)| (s, m.to_string()))?;
+
+    let normalized = tags::normalize_name(&body.name);
+    if normalized.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Tag name cannot be empty".to_string()));
+    }
+
+    // Rename = one row update; the UNIQUE(name) constraint rejects a rename onto
+    // an existing name (400), so a caller must merge/delete first rather than
+    // silently overwriting another tag's name.
+    let updated = sqlx::query!(
+        "UPDATE tags SET name = $1 WHERE id = $2 RETURNING id, name",
+        normalized,
+        tag_id
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        if e.to_string().contains("UNIQUE") || e.to_string().contains("duplicate key") {
+            (StatusCode::CONFLICT, "A tag with that name already exists".to_string())
+        } else {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        }
+    })?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Tag not found".to_string()))?;
+
+    Ok(Json(Tag {
+        id: updated.id,
+        name: updated.name,
     }))
 }

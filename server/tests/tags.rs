@@ -259,3 +259,73 @@ async fn clear_unused_tags_removes_orphans() {
         .collect();
     assert_eq!(names, vec!["keep"], "orphan tag should be cleared");
 }
+
+/// Renaming a tag updates the one `tags` row and persists to the note.
+#[tokio::test]
+async fn rename_tag_updates_name() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_id = seed_note(&app, teacher_id).await;
+
+    let (_, added) = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_id}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["bio"] }),
+    )
+    .await;
+    let tag_id = added[0]["id"].as_i64().unwrap();
+
+    // Rename "bio" -> "biology::cells".
+    let (status, renamed) = send(
+        &app,
+        "PATCH",
+        &format!("/tags/{tag_id}"),
+        &token,
+        serde_json::json!({ "name": "Biology::Cells" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(renamed["name"].as_str(), Some("biology::cells"), "normalised rename");
+
+    // The note now reports the renamed tag under the same id.
+    let (_, note_json) = get(&app, &format!("/notes/{note_id}"), &token).await;
+    let names: Vec<String> = note_json["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(names, vec!["biology::cells"]);
+}
+
+/// Renaming onto an existing tag name is a conflict, not a silent overwrite.
+#[tokio::test]
+async fn rename_tag_conflict_on_existing_name() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_id = seed_note(&app, teacher_id).await;
+
+    let (_, added) = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_id}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["a", "b"] }),
+    )
+    .await;
+    let tag_a = added[0]["id"].as_i64().unwrap();
+
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        &format!("/tags/{tag_a}"),
+        &token,
+        serde_json::json!({ "name": "b" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "rename onto existing name is a conflict");
+}
