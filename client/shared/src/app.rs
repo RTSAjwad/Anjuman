@@ -16,8 +16,10 @@ use facet::Facet;
 use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
+use anjuman_contracts::cards::{CardModResponse, NoteModResponse, RescheduleBody};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
+use anjuman_contracts::reviews::{FlagResponse, SetFlag};
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 use anjuman_contracts::tags::{Tag, TagNode};
 
@@ -84,6 +86,9 @@ pub struct Model {
     pub tag_tree: Vec<TagNode>,
     /// A human-readable error from the last tag-list fetch, if any.
     pub tags_error: Option<String>,
+    /// A human-readable error from the last card action (bury/suspend/
+    /// reschedule/flag) during study, if any.
+    pub card_action_error: Option<String>,
 }
 
 /// Authentication state.
@@ -150,6 +155,22 @@ pub enum Event {
     Answer {
         rating: i32,
     },
+    /// Bury the current card until the next day-start.
+    BuryCard,
+    /// Bury all cards of the current card's note until the next day-start.
+    BuryNote,
+    /// Suspend the current card.
+    SuspendCard,
+    /// Suspend all cards of the current card's note.
+    SuspendNote,
+    /// Reschedule the current card to `days` days from now (Anki "set due date").
+    RescheduleCard {
+        days: i64,
+    },
+    /// Set the current card's flag (0-7; 0 clears the flag).
+    FlagCard {
+        flag: i32,
+    },
     /// Leave the study screen and return to the deck list: clear the selection
     /// and reset in-flight study state (keeps auth + deck data intact).
     CloseDeck,
@@ -215,6 +236,22 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     TagTreeResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<TagNode>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    CardActionDone(#[facet(opaque)] crux_http::Result<crux_http::Response<CardModResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteActionDone(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteModResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    RescheduleDone(#[facet(opaque)] crux_http::Result<crux_http::Response<CardModResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    FlagDone(#[facet(opaque)] crux_http::Result<crux_http::Response<FlagResponse>>),
 }
 
 /// Side effects the core requests from the shell.
@@ -274,6 +311,9 @@ pub struct ViewModel {
     pub tag_tree: Vec<TagNodeView>,
     /// A human-readable error from the last tag-list fetch, if any.
     pub tags_error: Option<String>,
+    /// A human-readable error from the last card action (bury/suspend/
+    /// reschedule/flag) during study, if any.
+    pub card_action_error: Option<String>,
 }
 
 /// The shell-facing view of a card during study (a Facet/FFI-friendly mirror of
@@ -282,6 +322,8 @@ pub struct ViewModel {
 #[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
 pub struct StudyCardView {
     pub card_id: i64,
+    /// The note this card was generated from (for note-level bury/suspend).
+    pub note_id: i64,
     pub front: String,
     pub back: String,
     /// The scheduling state label (`new`, `learning`, `review`, `relearning`).
@@ -295,6 +337,8 @@ pub struct StudyCardView {
     /// The note type's shared styling CSS; injected into the card so it renders
     /// self-contained (empty string when the note type has no styling).
     pub styling: String,
+    /// Anki-style card flag (0-7; 0 = no flag).
+    pub flag: i64,
 }
 
 /// The shell-facing per-state counts for a study session (a Facet-friendly
@@ -322,6 +366,7 @@ impl From<&StudyCard> for StudyCardView {
     fn from(c: &StudyCard) -> Self {
         StudyCardView {
             card_id: c.card_id,
+            note_id: c.note_id,
             front: c.front.clone(),
             back: c.back.clone(),
             state: c.state.clone(),
@@ -332,6 +377,7 @@ impl From<&StudyCard> for StudyCardView {
                     .collect()
             }),
             styling: c.styling.clone(),
+            flag: c.flag,
         }
     }
 }
@@ -818,6 +864,7 @@ impl crux_core::App for Anjuman {
                 model.tags.clear();
                 model.tag_tree.clear();
                 model.tags_error = None;
+                model.card_action_error = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
             }
@@ -858,6 +905,7 @@ impl crux_core::App for Anjuman {
                 model.study_error = None;
                 model.deck_options = None;
                 model.deck_options_error = None;
+                model.card_action_error = None;
                 render::render()
             }
 
@@ -1133,6 +1181,171 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::BuryCard => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let card_id = card.card_id;
+                model.card_action_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/bury"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::CardActionDone)
+            }
+
+            Event::BuryNote => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let note_id = card.note_id;
+                model.card_action_error = None;
+                Http::post(format!("{API_URL}/notes/{note_id}/bury"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteActionDone)
+            }
+
+            Event::SuspendCard => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let card_id = card.card_id;
+                model.card_action_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/suspend"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::CardActionDone)
+            }
+
+            Event::SuspendNote => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let note_id = card.note_id;
+                model.card_action_error = None;
+                Http::post(format!("{API_URL}/notes/{note_id}/suspend"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteActionDone)
+            }
+
+            Event::RescheduleCard { days } => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let card_id = card.card_id;
+                model.card_action_error = None;
+                let body = RescheduleBody {
+                    due_at: None,
+                    days: Some(days),
+                };
+                Http::patch(format!("{API_URL}/cards/{card_id}/reschedule"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize reschedule body")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::RescheduleDone)
+            }
+
+            Event::FlagCard { flag } => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                if !(0..=7).contains(&flag) {
+                    return render::render();
+                }
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let card_id = card.card_id;
+                model.card_action_error = None;
+                let body = SetFlag { flag };
+                Http::patch(format!("{API_URL}/cards/{card_id}/flag"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize set flag")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::FlagDone)
+            }
+
+            // After a card-level bury/suspend/reschedule, the affected card is no
+            // longer due (bury/suspend) or has moved (reschedule) — advance by
+            // re-fetching the next due card from the study endpoint.
+            Event::CardActionDone(Ok(_)) => {
+                model.card_action_error = None;
+                render::render().and(Command::event(Event::StartStudy))
+            }
+
+            Event::CardActionDone(Err(e)) => {
+                model.card_action_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteActionDone(Ok(_)) => {
+                model.card_action_error = None;
+                render::render().and(Command::event(Event::StartStudy))
+            }
+
+            Event::NoteActionDone(Err(e)) => {
+                model.card_action_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::RescheduleDone(Ok(_)) => {
+                model.card_action_error = None;
+                render::render().and(Command::event(Event::StartStudy))
+            }
+
+            Event::RescheduleDone(Err(e)) => {
+                model.card_action_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::FlagDone(Ok(mut response)) => {
+                let flag = response.take_body().expect("flag response has a body");
+                // Update the shown card's flag in place (flag does not remove the
+                // card from the queue, so no re-fetch).
+                if let Some(card) = &mut model.current_card {
+                    if card.card_id == flag.card_id {
+                        card.flag = flag.flag;
+                    }
+                }
+                model.card_action_error = None;
+                render::render()
+            }
+
+            Event::FlagDone(Err(e)) => {
+                model.card_action_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::DecksRequested => {
                 model.decks_error = None;
                 // Needs the current token; only reachable when authenticated.
@@ -1209,6 +1422,7 @@ impl crux_core::App for Anjuman {
                 tags: model.tags.iter().map(TagView::from).collect(),
                 tag_tree: model.tag_tree.iter().map(TagNodeView::from).collect(),
                 tags_error: model.tags_error.clone(),
+                card_action_error: model.card_action_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -1230,6 +1444,7 @@ impl crux_core::App for Anjuman {
                 tags: Vec::new(),
                 tag_tree: Vec::new(),
                 tags_error: None,
+                card_action_error: None,
             },
         }
     }
@@ -1778,6 +1993,32 @@ mod tests {
         model.decks = vec![deck(1, "Spanish")];
         model.selected_deck = Some(find_deck(&model.decks.clone(), 1).expect("deck 1"));
         model
+    }
+
+    fn card_mod_response() -> CardModResponse {
+        CardModResponse {
+            card_id: 42,
+            suspended: false,
+            buried_at: Some(chrono::Utc::now()),
+            bury_reason: Some("user_card".to_string()),
+            due_at: None,
+            state: "review".to_string(),
+        }
+    }
+
+    fn note_mod_response() -> NoteModResponse {
+        NoteModResponse {
+            note_id: 1,
+            cards_affected: 1,
+            card_ids: vec![42],
+            suspended: false,
+            buried_at: Some(chrono::Utc::now()),
+            bury_reason: Some("user_note".to_string()),
+        }
+    }
+
+    fn flag_response(flag: i64) -> FlagResponse {
+        FlagResponse { card_id: 42, flag }
     }
 
     /// `StartStudy` emits `GET /decks/{id}/study` with the bearer header.
@@ -2503,5 +2744,200 @@ mod tests {
         assert!(model.tags.is_empty());
         assert!(model.tag_tree.is_empty());
         assert!(model.tags_error.is_none());
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.5b — study actions (bury / suspend / reschedule / flag)
+    // --------------------------------------------------------------------
+
+    /// `BuryCard` emits `POST /cards/{id}/bury` with the bearer header.
+    #[test]
+    fn bury_card_emits_post() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::BuryCard, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/bury"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BuryNote` emits `POST /notes/{note_id}/bury` (using the current card's
+    /// note id).
+    #[test]
+    fn bury_note_emits_post() {
+        let mut model = study_ready_model();
+        let mut card = study_card(42);
+        card.note_id = 7;
+        model.current_card = Some(card);
+        let effects = update(Event::BuryNote, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/bury"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `SuspendCard` emits `POST /cards/{id}/suspend`.
+    #[test]
+    fn suspend_card_emits_post() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::SuspendCard, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/suspend"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `SuspendNote` emits `POST /notes/{note_id}/suspend`.
+    #[test]
+    fn suspend_note_emits_post() {
+        let mut model = study_ready_model();
+        let mut card = study_card(42);
+        card.note_id = 7;
+        model.current_card = Some(card);
+        let effects = update(Event::SuspendNote, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/suspend"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `RescheduleCard { days }` emits `PATCH /cards/{id}/reschedule` with a
+    /// `RescheduleBody { days }` body.
+    #[test]
+    fn reschedule_card_emits_patch_with_body() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::RescheduleCard { days: 3 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/reschedule"
+                );
+                let body: RescheduleBody =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.days, Some(3));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `FlagCard { flag }` emits `PATCH /cards/{id}/flag` with a `SetFlag` body.
+    #[test]
+    fn flag_card_emits_patch_with_body() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::FlagCard { flag: 3 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/flag"
+                );
+                let body: SetFlag =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.flag, 3);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A card-level action has no-op (no request) when no card is shown, or the
+    /// rating/flag is out of range.
+    #[test]
+    fn card_action_without_current_card_is_noop() {
+        let mut model = study_ready_model(); // current_card: None
+        for ev in [
+            Event::BuryCard,
+            Event::BuryNote,
+            Event::SuspendCard,
+            Event::SuspendNote,
+            Event::RescheduleCard { days: 1 },
+        ] {
+            let effects = update(ev, &mut model);
+            assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+        }
+
+        // Flag out of range is ignored even with a current card.
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::FlagCard { flag: 8 }, &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// `FlagDone(Ok)` updates the current card's flag in place and re-renders.
+    #[test]
+    fn flag_done_updates_current_card_flag() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42)); // flag 0
+        let response = ResponseBuilder::ok().body(flag_response(3)).build();
+        let effects = update(Event::FlagDone(Ok(response)), &mut model);
+
+        assert_eq!(model.current_card.as_ref().map(|c| c.flag), Some(3));
+        assert!(model.card_action_error.is_none());
+        assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
+    }
+
+    /// A card action error surfaces in `card_action_error` (and the view).
+    #[test]
+    fn card_action_error_surfaces() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let err = crux_http::testing::rejection::<CardModResponse>(500, "boom").unwrap_err();
+        let _ = update(Event::CardActionDone(Err(err)), &mut model);
+
+        assert!(model.card_action_error.is_some());
+        let vm = Anjuman.view(&model);
+        assert!(vm.card_action_error.is_some());
+    }
+
+    /// `note_id` and `flag` are mapped into `StudyCardView` for the shell.
+    #[test]
+    fn study_maps_note_id_and_flag() {
+        let mut model = study_ready_model();
+        let mut card = study_card(7);
+        card.note_id = 99;
+        card.flag = 4;
+        let response = ResponseBuilder::ok().body(study_advance(Some(card))).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+        let card_view = vm.current_card.as_ref().expect("current card");
+        assert_eq!(card_view.note_id, 99);
+        assert_eq!(card_view.flag, 4);
     }
 }

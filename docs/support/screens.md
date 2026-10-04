@@ -30,7 +30,7 @@ Legend:
 | Decks (list/detail) | 🟡 | US-4.3 core done (list + nested tree + counts); shell rendering pending the shell agent. Detail is a later story. |
 | Notes (browser/edit) | ❌ | Consumes `GET /notes`, note-type/template UI later. |
 | Cards / browser | ❌ | Consumes `GET /cards`; flag/suspend/bury actions. |
-| Study session | ❌ | Consumes `GET/POST /decks/{id}/study`; the single-card loop. |
+| Study session | ❌ | Consumes `GET/POST /decks/{id}/study`; the single-card loop. Bury/suspend/reschedule/flag actions are US-4.5b (core done). |
 | Deck options settings | 🟡 | US-4.9 (view) + US-4.10 (edit/save) core done; read-only shell view done (Leptos), edit/save pending the shell agent. Preferences settings not yet drafted. |
 | Classes / dashboard (teacher) | ❌ | Consumer of `/classes`, `/dashboard`; lower priority. |
 | Tagging / search | 🟡 | US-6.5a core done (distinct tag list + `::` tree exposed via `ViewModel.tags`/`tag_tree`); shell render pending. Per-note tag CRUD (US-6.5b) and `tag:` search deferred to the notes/browser + search stages. |
@@ -52,6 +52,7 @@ tracked here only.
 | Cards / browser | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Tagging (list/tree) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Study session | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Study actions (bury/suspend/resched/flag) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Deck options settings | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Classes / dashboard | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | On-screen timer | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |

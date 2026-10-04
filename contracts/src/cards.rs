@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// Request body for rescheduling a card.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RescheduleBody {
     /// Absolute due timestamp.
@@ -38,7 +38,7 @@ pub struct UnburyQuery {
 }
 
 /// Response after a card-level modification (suspend/unsuspend/bury/unbury).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CardModResponse {
     pub card_id: i64,
@@ -51,7 +51,7 @@ pub struct CardModResponse {
 }
 
 /// Response after a note-level modification.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NoteModResponse {
     pub note_id: i64,

@@ -1140,10 +1140,77 @@ needs the mirror direction (same as auth/decks).
 
 **Out of scope**
 
-- Flip/reveal animation, bury/suspend-from-study, flags, and any
-  offline/queueing. Predicted-interval labels are now in scope: `StudyCardView`
-  exposes `predicted_interval` (rating→seconds) for the shell to format under
-  each answer button (formatting itself is shell polish).
+- Flip/reveal animation, and any offline/queueing. Predicted-interval labels
+  are now in scope: `StudyCardView` exposes `predicted_interval` (rating→seconds)
+  for the shell to format under each answer button (formatting itself is shell
+  polish). Bury/suspend/reschedule/flag-from-study are US-4.5b.
+
+---
+
+### US-4.5b — Study actions (bury / suspend / reschedule / flag)
+
+**As** a student mid-study,
+**I want** to bury or suspend the current card (or its whole note), reschedule
+it, or flag it,
+**so that** I can act on a single card without leaving the study loop — matching
+Anki's card/note action menus.
+
+**Background**
+
+The server already exposes all six actions (they were built for the card
+browser, but are card/note-scoped and sessionless, so the study screen can drive
+them with no server change):
+
+- `POST /cards/{id}/bury` · `POST /cards/{id}/suspend` ·
+  `PATCH /cards/{id}/reschedule` (`RescheduleBody { due_at?, days? }`)
+- `POST /notes/{note_id}/bury` · `POST /notes/{note_id}/suspend`
+- `PATCH /cards/{id}/flag` (`SetFlag { flag }`)
+
+The client core was missing the *surface* to drive them from the study screen,
+and `StudyCardView` was missing `note_id`/`flag` (both already on the wire
+`StudyCard`). This story adds that surface only; the shell renders the buttons.
+
+**Advance semantics (decision)**
+
+- **Bury** and **suspend** (card *and* note) remove the card from the queue, so
+  after a successful action the core re-fetches the next due card (chain
+  `Event::StartStudy`), advancing past the affected card.
+- **Reschedule** moves the card's due date into the future (out of the current
+  queue), so it also advances via the same re-fetch.
+- **Flag** does *not* remove the card — the core updates `current_card.flag` in
+  place from the `FlagResponse` and re-renders only.
+
+**Prerequisite (contracts)** — request/response bodies now round-trip:
+`RescheduleBody` + `SetFlag` gained `Serialize`; `CardModResponse`,
+`NoteModResponse`, `FlagResponse` gained `Deserialize` (they were wire-response
+`Serialize`-only).
+
+**Acceptance criteria**
+
+- [x] `StudyCardView` carries `note_id` (note-level actions) and `flag`.
+- [x] `Event::BuryCard`/`BuryNote`/`SuspendCard`/`SuspendNote` emit the matching
+      `POST /cards/{id}/…` / `POST /notes/{note_id}/…` request with the bearer
+      header, using the current card's id/note id.
+- [x] `Event::RescheduleCard { days }` emits `PATCH /cards/{id}/reschedule` with
+      a `RescheduleBody { days }` body; `Event::FlagCard { flag }` emits
+      `PATCH /cards/{id}/flag` with `SetFlag { flag }`.
+- [x] `flag` is constrained to 0–7; out-of-range (and actions with no current
+      card) are ignored (no request emitted).
+- [x] On success, bury/suspend/reschedule chain `StartStudy` (advance to the next
+      card); `FlagDone(Ok)` updates `current_card.flag` in place.
+- [x] Failures surface in `Model`/`ViewModel.card_action_error`.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] Render bury/suspend (card + note), reschedule, and flag affordances on the
+      study screen, forwarding the events above. Reschedule likely prompts for a
+      day offset; flag offers 0–7 (colors match Anki).
+- [ ] Show `ViewModel.card_action_error` when an action fails.
+
+**Out of scope**
+
+- Undo/history, and the card-browser UI for these same actions (separate story).
 
 ---
 

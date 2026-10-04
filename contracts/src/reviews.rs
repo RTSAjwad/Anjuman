@@ -49,7 +49,7 @@ pub struct ReviewedCardState {
 }
 
 /// Request body for setting a card flag.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SetFlag {
     /// Flag value 0-7. 0 clears the flag.
@@ -57,7 +57,7 @@ pub struct SetFlag {
 }
 
 /// Response after setting a card flag.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlagResponse {
     pub card_id: i64,
