@@ -76,7 +76,7 @@ matrix's "Summary of the biggest gaps" is the working list:
       deck covers its subtree, ancestors are read-only context, and the
       student's list stays a tree. Added `DeckResponse.studyable` + recursive
       access + `server/tests/deck_sharing.rs`.
-- [ ] **Leech action (per-student state)** — the leech *action* completes as
+- [x] **Leech action (per-student state)** — the leech *action* completes as
       US-2.20 (per-student `leech_at`, not a tag). Threshold + empty relearning
       steps are already done (US-2.2–US-2.4); minimum interval is SM-2 — out
       of scope.
@@ -650,19 +650,19 @@ Decisions recorded so implementation is unambiguous:
 
 **Acceptance criteria**
 
-- [ ] Migration: add `leech_at TIMESTAMPTZ` to `student_card_states` (new
-      migration; never edit `0001`). Drop `notes.leech_tagged_at` (and its
-      write in `apply_review`).
-- [ ] `apply_review` sets `leech_at = now` for *that* `(student, card)` when a
+- [x] Migration: add `leech_at TIMESTAMPTZ` to `student_card_states` (new
+      migration `0024_leech_per_student.sql`; never edit `0001`). Drop
+      `notes.leech_tagged_at` (and its write in `apply_review`).
+- [x] `apply_review` sets `leech_at = now` for *that* `(student, card)` when a
       review "Again" reaches the threshold; `TagOnly` marks without suspending,
       `SuspendCard` marks **and** sets `suspended = TRUE`.
-- [ ] Per-student isolation: student A leeching card X leaves student B's
+- [x] Per-student isolation: student A leeching card X leaves student B's
       `student_card_states` row for X (`leech_at`, `suspended`) untouched, and
       the shared `notes` row is never mutated.
-- [ ] `StudyCard` (and `ReviewedCardState`) expose a `leech: bool` so the
+- [x] `StudyCard` (and `ReviewedCardState`) expose a `leech: bool` so the
       client can render the marker (`leech_at.is_some()`). Contracts + OpenAPI
       regenerated.
-- [ ] Each criterion has a `server/tests/` test named after it; `cargo test`
+- [x] Each criterion has a `server/tests/` test named after it; `cargo test`
       passes and OpenAPI still generates.
 
 **Out of scope / related**

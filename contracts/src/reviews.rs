@@ -41,6 +41,8 @@ pub struct ReviewedCardState {
     pub reps: i64,
     pub lapses: i64,
     pub step_index: i64,
+    /// True when this card reached the leech threshold on this review (per-student).
+    pub leech: bool,
     /// The exact time (in seconds) until this card is due again, regardless
     /// of whether it came from an FSRS interval or a learning/relearning step.
     pub applied_interval_secs: i64,

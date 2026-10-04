@@ -27,6 +27,9 @@ pub struct StudyCard {
     pub difficulty: f64,
     pub reps: i64,
     pub lapses: i64,
+    /// True when this card has been marked a leech (per-student scheduling
+    /// state; `student_card_states.leech_at` is set).
+    pub leech: bool,
     /// Anki-style card flag (0-7). 0 means no flag.
     pub flag: i64,
     /// True if suspended.

@@ -262,7 +262,7 @@ pub async fn apply_review(
     let current = sqlx::query!(
         r#"
         SELECT scs.state as "state!: DbCardState", scs.stability, scs.difficulty, scs.last_reviewed_at,
-               scs.reps, scs.lapses, scs.step_index, c.deck_id, c.note_id
+               scs.reps, scs.lapses, scs.step_index, scs.leech_at, c.deck_id, c.note_id
         FROM student_card_states scs
         JOIN cards c ON c.id = scs.card_id
         WHERE scs.student_id = $1 AND scs.card_id = $2
@@ -490,9 +490,12 @@ pub async fn apply_review(
     };
 
     // Leech detection: when a review card's lapse count reaches the preset's
-    // threshold, suspend it (and, for SuspendCard, mark the note as a leech).
-    // Tag-only is a no-op until the tags system lands (ROADMAP stage 6).
+    // threshold, mark it a leech for this student (per-(student, card) state).
+    // The action decides whether to also suspend (Anonymous/SuspendCard).
     let reached_leech = is_review_lapse && new_lapses >= options.leech_threshold;
+    // The newly-reached leech flag for this review (only flips on the crossing
+    // review; a card already a leech stays marked via its existing `leech_at`).
+    let new_leech = reached_leech || current.leech_at.is_some();
 
     // Wrap the review's writes (scheduling state, review record, and any
     // sibling buries) in a single IMMEDIATE transaction so the action is
@@ -552,8 +555,22 @@ pub async fn apply_review(
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    // Leech handling: suspend the card at the threshold, and mark the note.
+    // Leech handling: mark the card a leech for this student at the threshold;
+    // `SuspendCard` additionally suspends it. Both are per-(student, card) — no
+    // shared-note mutation, so one student's leech cannot leak to others.
     if reached_leech {
+        // Always mark the leech (this is the `TagOnly` effect; `SuspendCard` is
+        // the same plus suspension).
+        sqlx::query!(
+            "UPDATE student_card_states SET leech_at = $1 WHERE student_id = $2 AND card_id = $3",
+            now,
+            student_id,
+            card_id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
         if options.leech_action == anjuman_contracts::deck_options::LeechAction::SuspendCard {
             sqlx::query!(
                 "UPDATE student_card_states SET suspended = TRUE WHERE student_id = $1 AND card_id = $2",
@@ -564,17 +581,6 @@ pub async fn apply_review(
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
         }
-
-        // Mark the note as a leech (minimal marker; a full tag system replaces
-        // this in ROADMAP stage 6).
-        sqlx::query!(
-            "UPDATE notes SET leech_tagged_at = $1 WHERE id = $2",
-            now,
-            current.note_id
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     }
 
     // Bury siblings (same note) as appropriate, per the deck's sibling-bury
@@ -605,6 +611,7 @@ pub async fn apply_review(
         reps: new_reps,
         lapses: new_lapses,
         step_index,
+        leech: new_leech,
         applied_interval_secs: (due_at - now).num_seconds().max(0),
     })
 }

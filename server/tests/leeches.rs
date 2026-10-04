@@ -87,7 +87,7 @@ async fn suspend_card_action_suspends_at_threshold() {
     assert!(suspended, "leech card should be suspended at threshold");
 }
 
-/// US-2.3 — `TagOnly` does not suspend (a documented no-op until tags land).
+/// US-2.3 — `TagOnly` does not suspend, but marks the student's card a leech.
 #[tokio::test]
 async fn tag_only_action_does_not_suspend() {
     let _guard = common::db_guard().await;
@@ -98,7 +98,7 @@ async fn tag_only_action_does_not_suspend() {
     let card_id = seed_studiable_card(&app, student_id, "review", 0, 1, 0).await;
     attach_preset(&app, card_id, preset).await;
 
-    let _ = apply_review(&app.db, student_id, card_id, 1, None)
+    let reviewed = apply_review(&app.db, student_id, card_id, 1, None)
         .await
         .expect("apply review");
 
@@ -113,9 +113,10 @@ async fn tag_only_action_does_not_suspend() {
 
     assert!(!suspended, "TagOnly must not suspend the card");
 
-    // The note should still be marked as a leech (leech_tagged_at set).
+    // The student's card is marked a leech (per-student `leech_at` set).
     let marked = sqlx::query_scalar!(
-        "SELECT leech_tagged_at IS NOT NULL FROM notes WHERE id = (SELECT note_id FROM cards WHERE id = $1)",
+        "SELECT leech_at IS NOT NULL FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        student_id,
         card_id
     )
     .fetch_one(&app.db)
@@ -123,5 +124,58 @@ async fn tag_only_action_does_not_suspend() {
     .expect("read leech marker")
     .unwrap_or(false);
 
-    assert!(marked, "note should be marked as a leech at threshold");
+    assert!(marked, "TagOnly must mark the card a leech without suspending");
+    // The review response reports the leech flag.
+    assert!(reviewed.leech, "ReviewedCardState.leech should be true");
+}
+
+/// US-2.20 — a student's leech is per-student: student A leeching a card does
+/// not mark student B's state for that card, and the shared note is untouched.
+#[tokio::test]
+async fn leech_is_per_student_not_shared() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (student_a, _atoken) = create_user(&app, UserRole::Student).await;
+    let (student_b, _btoken) = create_user(&app, UserRole::Student).await;
+
+    let preset = seed_preset(&app, 1, 1, "suspend_card").await;
+    let card_id = seed_studiable_card(&app, student_a, "review", 0, 1, 0).await;
+    attach_preset(&app, card_id, preset).await;
+
+    // Give student B a state row for the same card (unleached).
+    sqlx::query!(
+        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses) VALUES ($1, $2, 'review', 0.0, 0.0, 1, 0)",
+        student_b,
+        card_id
+    )
+    .execute(&app.db)
+    .await
+    .expect("seed student B state");
+
+    // Student A lapses to the threshold, becoming a leech.
+    let _ = apply_review(&app.db, student_a, card_id, 1, None)
+        .await
+        .expect("apply review for A");
+
+    let a_leech = sqlx::query_scalar!(
+        "SELECT leech_at IS NOT NULL FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        student_a,
+        card_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("read A leech")
+    .unwrap_or(false);
+    assert!(a_leech, "student A's card is marked a leech");
+
+    let b_leech = sqlx::query_scalar!(
+        "SELECT leech_at IS NOT NULL FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        student_b,
+        card_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("read B leech")
+    .unwrap_or(false);
+    assert!(!b_leech, "student B's card is NOT marked — leech is per-student");
 }

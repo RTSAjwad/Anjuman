@@ -62,6 +62,7 @@ struct CardRow {
     difficulty: f64,
     reps: i64,
     lapses: i64,
+    leech_at: Option<DateTime<Utc>>,
     flag: i64,
     suspended: bool,
     buried_at: Option<DateTime<Utc>>,
@@ -743,7 +744,7 @@ async fn next_due_card(
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
                scs.state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses,
-               scs.flag, scs.suspended, scs.buried_at, scs.bury_reason, scs.step_index
+               scs.leech_at, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason, scs.step_index
         FROM cards c
         JOIN notes n ON n.id = c.note_id
         JOIN decks cd ON cd.id = c.deck_id
@@ -809,6 +810,7 @@ async fn next_due_card(
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
                scs.state as "state!: DbCardState", scs.due_at, scs.stability as "stability: f64",
                scs.difficulty as "difficulty: f64", scs.reps, scs.lapses,
+               scs.leech_at,
                scs.flag as "flag: i64", scs.suspended as "suspended: bool",
                scs.buried_at, scs.bury_reason, scs.step_index as "step_index: i64"
         FROM cards c
@@ -1058,6 +1060,7 @@ async fn row_to_study_card(
         difficulty: c.difficulty,
         reps: c.reps,
         lapses: c.lapses,
+        leech: c.leech_at.is_some(),
         flag: c.flag,
         suspended: c.suspended,
         buried_at: c.buried_at,

@@ -1630,6 +1630,7 @@ mod tests {
             difficulty: 0.0,
             reps: 0,
             lapses: 0,
+            leech: false,
             flag: 0,
             suspended: false,
             buried_at: None,
