@@ -1603,14 +1603,10 @@ should still ship *their own* stories + tests inline, not wait for this stage.
 
 ## 6. Tags — note/collection tagging   `[ ]`
 
-Two related but distinct deliverables:
-
-1. **A teacher/admin-controlled tag system** — note-level tags (add, remove,
-   rename, browse, filter/search) matching Anki's model, authored only by
-   teachers/admins on shared notes.
-2. **A dedicated per-student leech functionality** — leech is scheduling state
-   owned by the scheduler for that student, **not** a tag (see `US-6.6`), so it
-   is delivered here as its own mechanism, decoupled from the tag system.
+A teacher/admin-controlled note-level tag system (add, remove, rename, browse,
+filter/search) matching Anki's model. The per-student leech work that this stage
+originally bundled is **already complete** via US-2.20 (leech is per-student
+scheduling state, not a tag) — so stage 6 is now purely the tag system.
 
 ### Grounding (Anki reference)
 
@@ -1643,39 +1639,47 @@ Two related but distinct deliverables:
   Anjuman restricts tag *authoring* to teachers/admins because notes are shared
   (same class of divergence as deck-options per-school vs. per-user).
 
-### Design decision to settle (before implementing)
+### Design decisions (settled)
 
-- [ ] **Tag storage shape** — Anki stores tags as a single delimited string per
-      note with `::` hierarchy. Options to record once decided:
-      (a) **`note_tags(note_id, tag)` join table + a canonical `tags` table**
-          (normalised; rename = one UPDATE; but hierarchy must be materialised or
-          computed), or
-      (b) **`notes.tags TEXT[]` (array) or a JSONB/text blob** matching Anki's
-          "one delimited string" more literally (simpler round-trip; rename =
-          an UPDATE across notes).
-      Flag which we choose and **why**; this determines the migration and every
-      endpoint.
+- **Storage shape: normalised join table + canonical `tags` table (option a).**
+  `tags(id, name)` + `note_tags(note_id, tag_id)`, with the `::` hierarchy carried
+  *in the tag name* (so `biology::cells` is one `name` containing `::`). Rename is
+  a single row update; prefix/subtag matching (`tag:animal` → `animal` + `animal::*`)
+  is `name = x OR name LIKE 'x::%'`. This is chosen over Anki's literal
+  space-delimited string per note because it gives cheap rename, a clean distinct-tag
+  list, and no per-note string rewrite on renames.
+- **Tags are note-scoped (not school-scoped).** A tag attaches to a *note*. If a
+  deck's notes are ever shared across schools, their tags travel with the notes
+  (organisation is preserved) rather than being pinned to a school. (Contrast with
+  decks/presets/note-types, which are school-scoped.) Concrete consequence: the
+  `tags`/`note_tags` tables carry **no `school_id`** — tag identity is the `name`,
+  and visibility is via the notes the user can already see (the deck-access
+  predicate determines which notes, hence which tags, a user sees).
+- **`tag:` search scope is deferred to the browser/search stage.** Whether `tag:`
+  filters the notes/cards list in place, or is a standalone endpoint, is a browser
+  feature decision — not made here. Stage 6 only exposes the *storage + CRUD + a
+  distinct-tags list*; search consumes it later.
 
-### Stories (tentative order — core-first, then shell)
+### Stories (core-first, then shell)
 
-- [ ] `US-6.1` — **Schema + contracts.** `note_tags` (or the chosen shape) +
-      migration; `Tag` accessor DTOs in `anjuman_contracts` (a tag on a note is
-      serializable/deserializable both ways).
-- [ ] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags for a note
-      (teacher/admin-gated); a distinct-tag list endpoint (the sidebar tree
+- [ ] `US-6.1` — **Schema + contracts.** `tags`/`note_tags` tables + migration;
+      `Tag` DTOs in `anjuman_contracts` (a tag on a note serializes/deserializes
+      both ways).
+- [ ] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags on a note
+      (teacher/admin-gated); a distinct-tags list endpoint (the sidebar tree
       source). `server/tests/` per criterion.
-- [ ] `US-6.3` — **Rename/move + clear-unused.** Rename a tag (rewrites affected
-      notes, preserving `::` hierarchy); "clear unused tags". Teacher/admin-gated.
-- [ ] `US-6.4` — **Search/filter by tag.** `tag:` semantics on the notes/cards
-      list (prefix → subtags, exact/none/glob), in `server/tests/`.
+- [ ] `US-6.3` — **Rename/move + clear-unused.** Rename a tag (updates the one
+      `tags` row; `note_tags` unaffected since it references the tag id);
+      "clear unused tags" (delete `tags` rows with no `note_tags`).
+      Teacher/admin-gated.
+- [ ] `US-6.4` — **Distinct-tags list + hierarchy.** Expose the distinct tag
+      namespace as a `::` tree for the sidebar, and the prefix/`tag:none`/glob
+      matching that later search work consumes. `server/tests/`.
 - [ ] `US-6.5` — **Client consumes tags.** Browser/search UI for tags (core
       first: `Model`/`ViewModel`/events; then shell render). `shared` update tests.
-- [ ] `US-6.6` — **Leech as per-student state, not a tag.** Move the leech marker
-      off `notes.leech_tagged_at` onto per-student scheduling state (`student_card_states`,
-      or an equivalent per-`(student, card)` flag set by the US-2.3 leech logic).
-      `TagOnly` becomes "mark as leech for *this* student only"; `SuspendCard`
-      suspends + marks that student's card. No shared-note mutation → a student's
-      leech can't leak to others. Replace the old note-level bridge.
+- [x] `US-6.6` — **Leech as per-student state, not a tag.** Done via US-2.20
+      (per-student `student_card_states.leech_at`; `TagOnly` marks, `SuspendCard`
+      marks + suspends — no tag-system involvement).
 
 ---
 
