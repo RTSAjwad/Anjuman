@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
     BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
-    NavDrawer, NavItem, Select, SelectSize, Switch,
+    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Select, SelectSize, Switch,
 };
 
 use crate::core_link;
@@ -115,22 +115,30 @@ pub fn RootComponent() -> impl IntoView {
                 let vm: ViewModel = view.get();
                 if vm.authenticated {
                     let selected_deck = vm.selected_deck.clone();
+                    let display_name = vm.display_name.clone();
                     view! {
                         <div class="app-shell">
-                            <aside class="app-sidebar">
-                                <div class="app-sidebar__brand">"Anjuman"</div>
-                                <NavDrawer selected_value=RwSignal::new("decks".to_string()) open_categories=RwSignal::new(Vec::<String>::new()) multiple=false>
-                                    <NavItem value=RwSignal::new("decks".to_string())>
-                                        "Decks"
-                                    </NavItem>
-                                </NavDrawer>
-                                <div class="app-sidebar__footer">
-                                    <p class="app-sidebar__user">{vm.display_name.clone()}</p>
-                                    <Button appearance=ButtonAppearance::Subtle on_click=logout>
-                                        "Log out"
-                                    </Button>
-                                </div>
-                            </aside>
+                            <NavDrawer
+                                class="app-sidebar-nav"
+                                selected_value=RwSignal::new("decks".to_string())
+                                open_categories=RwSignal::new(Vec::<String>::new())
+                                multiple=false
+                            >
+                                <NavDrawerHeader slot:nav_drawer_header>
+                                    <span class="app-sidebar__brand">"Anjuman"</span>
+                                </NavDrawerHeader>
+                                <NavItem value=RwSignal::new("decks".to_string())>
+                                    "Decks"
+                                </NavItem>
+                                <NavDrawerFooter slot:nav_drawer_footer>
+                                    <div class="app-sidebar__footer">
+                                        <p class="app-sidebar__user">{display_name.clone()}</p>
+                                        <Button appearance=ButtonAppearance::Subtle on_click=logout>
+                                            "Log out"
+                                        </Button>
+                                    </div>
+                                </NavDrawerFooter>
+                            </NavDrawer>
 
                             <main class="app-content">
                                 {if let Some(deck) = selected_deck.clone() {

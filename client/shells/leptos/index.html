@@ -176,26 +176,18 @@
         height: 100vh;
         overflow: hidden;
       }
-      .app-sidebar {
-        /* Sized to fit thaw's NavDrawer (fixed 260px) plus the sidebar's own
-         * 1rem padding on each side, so the drawer isn't squeezed/clipped. */
-        flex: 0 0 19rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-        padding: 1rem;
+      /* The NavDrawer IS the sidebar (header/footer slotted). thaw's NavDrawer
+       * keeps its own fixed 260px width and 100% height; we only pin it to the
+       * left (no shrink) and give it the shell's divider. */
+      .app-sidebar-nav {
+        flex: 0 0 auto;
         border-right: 1px solid var(--colorNeutralStroke2);
-        background-color: var(--colorNeutralBackground1);
-        /* Fixed alongside the content: the sidebar never scrolls away. */
-        height: 100vh;
-        overflow-y: auto;
       }
       .app-sidebar__brand {
         font-weight: var(--fontWeightSemibold);
         font-size: var(--fontSizeBase500);
       }
       .app-sidebar__footer {
-        margin-top: auto;
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
