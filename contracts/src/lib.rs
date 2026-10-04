@@ -26,6 +26,7 @@ pub mod preferences;
 pub mod reviews;
 pub mod shared;
 pub mod study;
+pub mod tags;
 pub mod users;
 
 pub use shared::{MessageResponse, UserRole};

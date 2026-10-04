@@ -1662,9 +1662,8 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
 
 ### Stories (core-first, then shell)
 
-- [ ] `US-6.1` — **Schema + contracts.** `tags`/`note_tags` tables + migration;
-      `Tag` DTOs in `anjuman_contracts` (a tag on a note serializes/deserializes
-      both ways).
+- [x] `US-6.1` — **Schema + contracts.** `tags`/`note_tags` tables + migration;
+      `Tag` DTOs in `anjuman_contracts`.
 - [ ] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags on a note
       (teacher/admin-gated); a distinct-tags list endpoint (the sidebar tree
       source). `server/tests/` per criterion.
