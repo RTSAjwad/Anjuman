@@ -202,7 +202,7 @@ pub fn RootComponent() -> impl IntoView {
                                             </Breadcrumb>
                                         </div>
                                         <div class="app-content__pad">
-                                            <DeckList vm=vm.clone() on_navigate=navigate />
+                                            <DeckList vm=view.into() on_navigate=navigate />
                                         </div>
                                     }
                                     .into_any()
@@ -261,8 +261,13 @@ pub fn RootComponent() -> impl IntoView {
 /// Renders the authenticated user's deck list (title + due counts), with
 /// explicit error and empty states. Pure rendering of the `ViewModel` — no
 /// logic beyond deciding what the three states look like.
+///
+/// Takes `vm` as a reactive `Signal` (not a plain value) so the component
+/// re-renders when the core writes new counts into `decks` after study — a plain
+/// owned `ViewModel` prop would be snapshotted at first render and never update.
 #[component]
-fn deck_list(vm: ViewModel, on_navigate: Callback<(i64, DeckView), ()>) -> impl IntoView {
+fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) -> impl IntoView {
+    let vm = vm.get();
     // Error state — a deck fetch failed.
     if let Some(err) = vm.decks_error {
         return view! {
