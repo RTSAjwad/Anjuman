@@ -139,6 +139,7 @@ pub fn RootComponent() -> impl IntoView {
                                     let deck_options_view = vm.deck_options.clone();
                                     let deck_options_error = vm.deck_options_error.clone();
                                     let sub_view = vm.selected_deck_view;
+                                    let current_card = vm.current_card.clone();
                                     view! {
                                         <div class="app-header">
                                             <Breadcrumb>
@@ -159,10 +160,20 @@ pub fn RootComponent() -> impl IntoView {
                                                     </span>
                                                 </BreadcrumbItem>
                                             </Breadcrumb>
-                                            {match sub_view {
-                                                DeckView::Study => study_count_badges(counts).into_any(),
-                                                DeckView::Options => ().into_any(),
-                                            }}
+                                            <div class="app-header__right">
+                                                {match sub_view {
+                                                    DeckView::Study => study_count_badges(counts).into_any(),
+                                                    DeckView::Options => ().into_any(),
+                                                }}
+                                                {if let (DeckView::Study, Some(card)) = (sub_view, current_card) {
+                                                    view! {
+                                                        <StudyActions card=card set_event=set_event />
+                                                    }
+                                                    .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
+                                            </div>
                                         </div>
                                         {match sub_view {
                                             DeckView::Study => view! {
@@ -313,11 +324,15 @@ fn study_screen(
 ) -> impl IntoView {
     let current = vm.current_card;
     let study_error = vm.study_error;
+    let card_action_error = vm.card_action_error;
     let busy = vm.busy;
 
     view! {
         <div class="study-screen">
             {study_error.map(|err| view! {
+                <p style="color: #c00;">{err}</p>
+            })}
+            {card_action_error.map(|err| view! {
                 <p style="color: #c00;">{err}</p>
             })}
 
@@ -365,6 +380,76 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
             >
                 {counts.review_count.to_string()}
             </Badge>
+        </div>
+    }
+}
+
+/// Study-card actions shown in the top bar while a card is in hand: Bury,
+/// Suspend (card + note), Reschedule (set due date), and Flag. Each forwards a
+/// core `Event` using the current card; the core owns the HTTP + state. Flag is
+/// an Anki-style 0–7 selector; Reschedule prompts for a day offset.
+#[component]
+fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl IntoView {
+    // Reschedule: a day offset the user types, then confirms.
+    let days = RwSignal::new(String::new());
+    let reschedule = move |_| {
+        if let Ok(d) = days.get().trim().parse::<i64>() {
+            set_event.set(Event::RescheduleCard { days: d });
+            days.set(String::new());
+        }
+    };
+
+    // Flag: 0-7, seeded with the card's current flag. thaw's `Select` exposes no
+    // user `on:change` hook, so watch the signal and forward on change (guarding
+    // against the initial render).
+    let flag = RwSignal::new(card.flag.to_string());
+    let last_flag = StoredValue::new(card.flag);
+    Effect::new(move |_| {
+        if let Ok(f) = flag.get().parse::<i64>() {
+            if last_flag.get_value() != f {
+                last_flag.set_value(f);
+                set_event.set(Event::FlagCard { flag: f as i32 });
+            }
+        }
+    });
+
+    view! {
+        <div class="study-actions">
+            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryCard)>
+                "Bury"
+            </Button>
+            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryNote)>
+                "Bury note"
+            </Button>
+            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendCard)>
+                "Suspend"
+            </Button>
+            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendNote)>
+                "Suspend note"
+            </Button>
+
+            <span class="study-actions__group">
+                <Input
+                    value=days
+                    placeholder="days"
+                    input_type=Signal::derive(|| InputType::Number) />
+                <Button appearance=ButtonAppearance::Subtle on_click=reschedule>
+                    "Reschedule"
+                </Button>
+            </span>
+
+            <span class="study-actions__group">
+                <Select value=flag size=SelectSize::Medium>
+                    <option value="0">"No flag"</option>
+                    <option value="1">"Red"</option>
+                    <option value="2">"Orange"</option>
+                    <option value="3">"Green"</option>
+                    <option value="4">"Blue"</option>
+                    <option value="5">"Pink"</option>
+                    <option value="6">"Turquoise"</option>
+                    <option value="7">"Purple"</option>
+                </Select>
+            </span>
         </div>
     }
 }
