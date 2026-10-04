@@ -563,7 +563,7 @@ fn deck_options_panel(
 
             <div class="deck-options-assign">
                 <span class="deck-options-assign__label">"Preset"</span>
-                <Select value=assign_selection size=SelectSize::Medium>
+                <Select value=assign_selection default_value=options.id.to_string() size=SelectSize::Medium>
                     <option value="0">"Default"</option>
                     {presets.iter().map(|p| {
                         let id = p.id.to_string();
@@ -883,9 +883,9 @@ fn easy_days_field(days: [RwSignal<String>; 7]) -> impl IntoView {
                 view! {
                     <div class="deck-options-easy-day">
                         <span class="deck-options-easy-day__label">{*name}</span>
-                        <Select value=d size=SelectSize::Medium>
+                        <Select value=d default_value=d.get_untracked() size=SelectSize::Medium>
                             {EASY_DAY_OPTIONS.iter().map(|(val, lbl)| {
-                                view! { <option value=*val selected=move || d.get() == *val>{*lbl}</option> }
+                                view! { <option value=*val>{*lbl}</option> }
                             }).collect_view()}
                         </Select>
                     </div>
