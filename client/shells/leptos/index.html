@@ -178,6 +178,7 @@
       }
       .app-sidebar {
         flex: 0 0 14rem;
+        min-width: 0;
         display: flex;
         flex-direction: column;
         gap: 1rem;
@@ -187,6 +188,9 @@
         /* Fixed alongside the content: the sidebar never scrolls away. */
         height: 100vh;
         overflow-y: auto;
+        /* NavDrawer/NavItem have an intrinsic width that can exceed the fixed
+         * sidebar width; clip horizontally so only the vertical axis scrolls. */
+        overflow-x: hidden;
       }
       .app-sidebar__brand {
         font-weight: var(--fontWeightSemibold);
@@ -201,6 +205,12 @@
       .app-sidebar__user {
         margin: 0;
         color: var(--colorNeutralForeground3);
+      }
+      /* thaw's NavDrawer hard-codes `width: 260px`, wider than the fixed 14rem
+       * sidebar; make it fill the sidebar instead so it doesn't overflow.
+       */
+      .app-sidebar .thaw-nav-drawer {
+        width: 100%;
       }
       .app-content {
         flex: 1 1 auto;
