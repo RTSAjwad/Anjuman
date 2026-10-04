@@ -11,6 +11,17 @@ pub struct Tag {
     pub name: String,
 }
 
+/// A node in the `::` tag tree (the sidebar shape). `name` is a single path
+/// segment; a non-empty `children` means it is an interior node. Interior nodes
+/// are *implicit* — they appear even when no tag is literally named that
+/// segment (e.g. `biology::cells` alone renders `biology > cells`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TagNode {
+    pub name: String,
+    pub children: Vec<TagNode>,
+}
+
 /// Expected JSON body for adding tags to a note. Tags are submitted by name
 /// (matching Anki's "type tags separated by spaces"); names are normalised
 /// (trimmed) by the server and deduplicated.

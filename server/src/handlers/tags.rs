@@ -14,7 +14,7 @@ use axum::{
     http::StatusCode,
 };
 
-use anjuman_contracts::tags::{AddTags, RemoveTags, RenameTag, Tag};
+use anjuman_contracts::tags::{AddTags, RemoveTags, RenameTag, Tag, TagNode};
 use anjuman_contracts::{MessageResponse, UserRole};
 
 use crate::{
@@ -44,6 +44,21 @@ pub async fn list_tags(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     Ok(Json(tags))
+}
+
+/// `GET /tags/tree` — the distinct tag namespace as a `::`-split tree (the
+/// sidebar shape, with implicit interior nodes).
+pub async fn tag_tree(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<TagNode>>, (StatusCode, &'static str)> {
+    let _ = &claims;
+    let all = tags::all_tags(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    let names: Vec<String> = all.into_iter().map(|t| t.name).collect();
+    let tree = tags::build_tag_tree(names.iter().map(|s| s.as_str()));
+    Ok(Json(tree))
 }
 
 /// `POST /notes/{id}/tags` — add tags (by name) to a note.

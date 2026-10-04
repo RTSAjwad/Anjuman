@@ -1670,7 +1670,7 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
 - [x] `US-6.3` — **Rename/move.** Rename a tag (updates the one `tags` row;
       `note_tags` unaffected since it references the tag id). Teacher/admin-gated.
       (Clear-unused is done here: `DELETE /tags` removes orphaned tags.)
-- [ ] `US-6.4` — **Distinct-tags list + hierarchy.** Expose the distinct tag
+- [x] `US-6.4` — **Distinct-tags list + hierarchy.** Expose the distinct tag
       namespace as a `::` tree for the sidebar, and the prefix/`tag:none`/glob
       matching that later search work consumes. `server/tests/`.
 - [ ] `US-6.5` — **Client consumes tags.** Browser/search UI for tags (core

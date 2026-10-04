@@ -329,3 +329,40 @@ async fn rename_tag_conflict_on_existing_name() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "rename onto existing name is a conflict");
 }
+
+/// `GET /tags/tree` returns the tag namespace as a `::`-split tree with implicit
+/// interior nodes.
+#[tokio::test]
+async fn tag_tree_endpoint_returns_hierarchy() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_id = seed_note(&app, teacher_id).await;
+
+    let _ = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_id}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["bio::cells", "bio::mitosis", "physics"] }),
+    )
+    .await;
+
+    let (status, json) = get(&app, "/tags/tree", &token).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Roots: bio (interior) and physics (leaf).
+    let roots = json.as_array().unwrap();
+    let names: Vec<&str> = roots.iter().map(|n| n["name"].as_str().unwrap()).collect();
+    assert_eq!(names, vec!["bio", "physics"]);
+
+    // bio has children cells + mitosis.
+    let bio = &roots[0];
+    let bio_children: Vec<&str> = bio["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(bio_children, vec!["cells", "mitosis"]);
+}

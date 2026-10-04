@@ -74,3 +74,137 @@ pub async fn clear_unused_tags(db: &PgPool) -> Result<u64, sqlx::Error> {
 
     Ok(result.rows_affected())
 }
+
+// ---------------------------------------------------------------------------
+// Tree (US-6.4) — the sidebar nesting, `::`-split, with implicit interior nodes.
+// ---------------------------------------------------------------------------
+
+use anjuman_contracts::tags::TagNode;
+use std::collections::BTreeMap;
+
+#[derive(Default)]
+struct Node {
+    children: BTreeMap<String, Node>,
+}
+
+impl Node {
+    fn insert(&mut self, segments: &[&str]) {
+        if let Some((&head, rest)) = segments.split_first() {
+            self.children.entry(head.to_string()).or_default().insert(rest);
+        }
+    }
+
+    fn into_tag_nodes(&self) -> Vec<TagNode> {
+        let mut out: Vec<TagNode> = self
+            .children
+            .iter()
+            .map(|(name, child)| TagNode {
+                name: name.clone(),
+                children: child.into_tag_nodes(),
+            })
+            .collect();
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        out
+    }
+}
+
+/// Build the tag tree from a list of full tag names. Interior nodes are
+/// *implicit* — `bio::cells` renders `bio > cells` even with no bare `bio` tag.
+/// Returns roots sorted by name.
+pub fn build_tag_tree<'a, I>(names: I) -> Vec<TagNode>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut root = Node::default();
+    for name in names {
+        let segments: Vec<&str> = name.split("::").collect();
+        root.insert(&segments);
+    }
+    root.into_tag_nodes()
+}
+
+/// Does a tag *name* match a `tag:` query, with Anki's semantics?
+///
+/// - `none` — matches only the "no tags" sentinel (callers pass that case
+///   separately; a real tag name never matches `none`).
+/// - `foo` (exact) — matches the tag named `foo` only.
+/// - `foo::` prefix semantics are expressed by the *caller* via `tag:foo` →
+///   `tag_matches(name, "foo") || tag_matches(name, "foo::*")`; see `tag_query_matches`.
+/// - `foo*` / `*foo` / `fo*o` — glob (Anki's `*` wildcard).
+///
+/// This is the lowest-level predicate: exact name vs. single-wildcard glob.
+pub fn tag_matches(name: &str, query: &str) -> bool {
+    if query == "none" {
+        return false; // `none` matches no concrete tag name
+    }
+    if !query.contains('*') {
+        return name == query;
+    }
+    glob_match(query, name)
+}
+
+/// The full `tag:`-query predicate over a single tag name, matching Anki:
+/// `tag:animal` matches `animal` and any subtag `animal::*`; `tag:ani*` globs.
+/// `tag:none` is handled by the caller (it matches notes with *no* tags, not a
+/// tag name).
+pub fn tag_query_matches(name: &str, query: &str) -> bool {
+    if query == "none" {
+        return false;
+    }
+    // Exact name, or a `::`-descendant of an exact parent (`animal` → `animal::mammal`).
+    if !query.contains('*') {
+        return name == query || name.starts_with(&format!("{query}::"));
+    }
+    // Glob with `::` prefix semantics: `ani*` matches `ani`, `ani::x`, `animal`, …
+    glob_match(query, name) || (name.contains("::") && name.split("::").any(|seg| glob_match(query, seg)))
+}
+
+/// Simple `*`-wildcard glob matcher (single embedded wildcard supported for the
+/// Anki `tag:ani*`/`tag:*ani` cases; `*` in the middle also works).
+fn glob_match(pattern: &str, text: &str) -> bool {
+    match pattern.find('*') {
+        None => pattern == text,
+        Some(i) => {
+            let (prefix, suffix) = pattern.split_at(i);
+            let suffix = &suffix[1..]; // strip the '*'
+            text.starts_with(prefix) && text.ends_with(suffix) && text.len() >= prefix.len() + suffix.len()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tag_matches_exact_and_glob() {
+        assert!(tag_matches("animal", "animal"));
+        assert!(!tag_matches("animal::mammal", "animal"), "exact does not match subtag");
+        assert!(tag_matches("animal::mammal", "animal::*"));
+        assert!(tag_matches("animal::mammal", "ani*"));
+        assert!(!tag_matches("animal", "none"));
+    }
+
+    #[test]
+    fn tag_query_matches_prefix_and_subtags() {
+        // `tag:animal` matches `animal` and any `animal::*` subtag.
+        assert!(tag_query_matches("animal", "animal"));
+        assert!(tag_query_matches("animal::mammal", "animal"));
+        assert!(tag_query_matches("animal::mammal::bovine", "animal"));
+        assert!(!tag_query_matches("animalia", "animal"));
+        assert!(!tag_query_matches("plant", "animal"));
+        // Glob.
+        assert!(tag_query_matches("animal", "ani*"));
+        assert!(tag_query_matches("animal::mammal", "ani*"));
+    }
+
+    #[test]
+    fn build_tag_tree_implicit_interior_nodes() {
+        let tree = build_tag_tree(["bio::cells", "bio"].iter().map(|s| *s));
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].name, "bio");
+        // `bio` has a child `cells` (the `bio::cells` tag), plus is itself a leaf.
+        let children: Vec<&str> = tree[0].children.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(children, vec!["cells"]);
+    }
+}
