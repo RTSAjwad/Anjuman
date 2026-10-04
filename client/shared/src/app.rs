@@ -19,6 +19,7 @@ use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
+use anjuman_contracts::tags::{Tag, TagNode};
 
 /// The base URL of the Anjuman server.
 ///
@@ -77,6 +78,12 @@ pub struct Model {
     pub presets: Vec<DeckOptions>,
     /// A human-readable error from the last preset-list fetch, if any.
     pub presets_error: Option<String>,
+    /// The distinct tag namespace (from `GET /tags`), for the sidebar.
+    pub tags: Vec<Tag>,
+    /// The distinct tag namespace as a `::` tree (from `GET /tags/tree`).
+    pub tag_tree: Vec<TagNode>,
+    /// A human-readable error from the last tag-list fetch, if any.
+    pub tags_error: Option<String>,
 }
 
 /// Authentication state.
@@ -135,6 +142,10 @@ pub enum Event {
     },
     /// Fetch the school's reusable presets (for the assign-preset affordance).
     DeckOptionsListRequested,
+    /// Fetch the distinct tag namespace (for the sidebar).
+    TagsRequested,
+    /// Fetch the distinct tag namespace as a `::` tree (for the sidebar).
+    TagTreeRequested,
     /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
     Answer {
         rating: i32,
@@ -196,6 +207,14 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     TokenDeleted(#[facet(opaque)] crux_kv::DataResult),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    TagsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<Tag>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    TagTreeResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<TagNode>>>),
 }
 
 /// Side effects the core requests from the shell.
@@ -249,6 +268,12 @@ pub struct ViewModel {
     pub presets: Vec<PresetSummary>,
     /// A human-readable error from the last preset-list fetch, if any.
     pub presets_error: Option<String>,
+    /// The distinct tag namespace (for the sidebar).
+    pub tags: Vec<TagView>,
+    /// The distinct tag namespace as a `::` tree (for the sidebar).
+    pub tag_tree: Vec<TagNodeView>,
+    /// A human-readable error from the last tag-list fetch, if any.
+    pub tags_error: Option<String>,
 }
 
 /// The shell-facing view of a card during study (a Facet/FFI-friendly mirror of
@@ -489,6 +514,41 @@ impl From<&DeckOptions> for PresetSummary {
         PresetSummary {
             id: o.id,
             name: o.name.clone(),
+        }
+    }
+}
+
+/// A shell-facing tag (id + full `::`-hierarchical name) for the sidebar.
+/// Mirrors `DeckSummary`; the contracts `Tag` isn't `Facet`-derived, so this
+/// carries the fields the shell renders.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct TagView {
+    pub id: i64,
+    pub name: String,
+}
+
+impl From<&Tag> for TagView {
+    fn from(t: &Tag) -> Self {
+        TagView {
+            id: t.id,
+            name: t.name.clone(),
+        }
+    }
+}
+
+/// A shell-facing node in the `::` tag tree. Mirrors the contracts `TagNode`
+/// (which isn't `Facet`-derived); `children` are nested recursively.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct TagNodeView {
+    pub name: String,
+    pub children: Vec<TagNodeView>,
+}
+
+impl From<&TagNode> for TagNodeView {
+    fn from(n: &TagNode) -> Self {
+        TagNodeView {
+            name: n.name.clone(),
+            children: n.children.iter().map(TagNodeView::from).collect(),
         }
     }
 }
@@ -755,6 +815,9 @@ impl crux_core::App for Anjuman {
                 model.study_error = None;
                 model.deck_options = None;
                 model.deck_options_error = None;
+                model.tags.clear();
+                model.tag_tree.clear();
+                model.tags_error = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
             }
@@ -944,6 +1007,54 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::TagsRequested => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.tags_error = None;
+                Http::get(format!("{API_URL}/tags"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::TagsResult)
+            }
+
+            Event::TagsResult(Ok(mut response)) => {
+                model.tags = response.take_body().expect("tags response has a body");
+                model.tags_error = None;
+                render::render()
+            }
+
+            Event::TagsResult(Err(e)) => {
+                model.tags_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::TagTreeRequested => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.tags_error = None;
+                Http::get(format!("{API_URL}/tags/tree"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::TagTreeResult)
+            }
+
+            Event::TagTreeResult(Ok(mut response)) => {
+                model.tag_tree = response.take_body().expect("tag tree response has a body");
+                model.tags_error = None;
+                render::render()
+            }
+
+            Event::TagTreeResult(Err(e)) => {
+                model.tags_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::StartStudy => {
                 // Requires a selected deck (and a token); otherwise a no-op.
                 let Some(deck) = &model.selected_deck else {
@@ -1095,6 +1206,9 @@ impl crux_core::App for Anjuman {
                 deck_options_error: model.deck_options_error.clone(),
                 presets: model.presets.iter().map(PresetSummary::from).collect(),
                 presets_error: model.presets_error.clone(),
+                tags: model.tags.iter().map(TagView::from).collect(),
+                tag_tree: model.tag_tree.iter().map(TagNodeView::from).collect(),
+                tags_error: model.tags_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -1113,6 +1227,9 @@ impl crux_core::App for Anjuman {
                 deck_options_error: None,
                 presets: Vec::new(),
                 presets_error: None,
+                tags: Vec::new(),
+                tag_tree: Vec::new(),
+                tags_error: None,
             },
         }
     }
@@ -2266,5 +2383,125 @@ mod tests {
         // A render is emitted; the preset re-fetch is chained as a follow-up
         // event (`DeckOptionsRequested`), not an effect in this call.
         assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
+    }
+
+    // --------------------------------------------------------------------
+    // US-6.5a — tag list + tree in the client core
+    // --------------------------------------------------------------------
+
+    /// `TagsRequested` emits `GET /tags` with the bearer header.
+    #[test]
+    fn tags_requested_emits_get_with_bearer() {
+        let mut model = authenticated_model();
+        let effects = update(Event::TagsRequested, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/tags");
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `TagsRequested` while unauthenticated is a no-op render (no request).
+    #[test]
+    fn tags_requested_unauthenticated_is_noop() {
+        let mut model = Model::default();
+        let effects = update(Event::TagsRequested, &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// `TagTreeRequested` emits `GET /tags/tree` with the bearer header.
+    #[test]
+    fn tag_tree_requested_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(Event::TagTreeRequested, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/tags/tree"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A canned tag list populates the model and is exposed in the view.
+    #[test]
+    fn tags_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(vec![
+                Tag { id: 1, name: "biology".to_string() },
+                Tag { id: 2, name: "biology::cells".to_string() },
+            ])
+            .build();
+        let _ = update(Event::TagsResult(Ok(response)), &mut model);
+
+        assert!(model.tags_error.is_none());
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.tags.len(), 2);
+        assert_eq!(vm.tags[0].id, 1);
+        assert_eq!(vm.tags[0].name, "biology");
+        assert_eq!(vm.tags[1].name, "biology::cells");
+    }
+
+    /// A canned tag tree populates the model (nested) and is exposed in the view.
+    #[test]
+    fn tag_tree_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(vec![TagNode {
+                name: "biology".to_string(),
+                children: vec![TagNode { name: "cells".to_string(), children: vec![] }],
+            }])
+            .build();
+        let _ = update(Event::TagTreeResult(Ok(response)), &mut model);
+
+        assert!(model.tags_error.is_none());
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.tag_tree.len(), 1);
+        assert_eq!(vm.tag_tree[0].name, "biology");
+        assert_eq!(vm.tag_tree[0].children.len(), 1);
+        assert_eq!(vm.tag_tree[0].children[0].name, "cells");
+    }
+
+    /// A tag-list error surfaces in `tags_error` and leaves tags empty.
+    #[test]
+    fn tags_result_error_sets_tags_error() {
+        let mut model = authenticated_model();
+        let err = crux_http::testing::rejection::<Vec<Tag>>(500, "boom").unwrap_err();
+        let _ = update(Event::TagsResult(Err(err)), &mut model);
+
+        assert!(model.tags_error.is_some());
+        let vm = Anjuman.view(&model);
+        assert!(vm.tags_error.is_some());
+        assert!(vm.tags.is_empty());
+    }
+
+    /// `Logout` clears the tag list, tree and error state.
+    #[test]
+    fn logout_clears_tags_state() {
+        let mut model = authenticated_model();
+        model.tags = vec![Tag { id: 1, name: "biology".to_string() }];
+        model.tag_tree = vec![TagNode { name: "biology".to_string(), children: vec![] }];
+        model.tags_error = Some("boom".to_string());
+
+        let _ = update(Event::Logout, &mut model);
+
+        assert!(model.tags.is_empty());
+        assert!(model.tag_tree.is_empty());
+        assert!(model.tags_error.is_none());
     }
 }

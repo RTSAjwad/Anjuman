@@ -33,7 +33,7 @@ Legend:
 | Study session | ❌ | Consumes `GET/POST /decks/{id}/study`; the single-card loop. |
 | Deck options settings | 🟡 | US-4.9 (view) + US-4.10 (edit/save) core done; read-only shell view done (Leptos), edit/save pending the shell agent. Preferences settings not yet drafted. |
 | Classes / dashboard (teacher) | ❌ | Consumer of `/classes`, `/dashboard`; lower priority. |
-| Tagging / search | ❌ | Deferred to stage 6 (search) — no client work now. |
+| Tagging / search | 🟡 | US-6.5a core done (distinct tag list + `::` tree exposed via `ViewModel.tags`/`tag_tree`); shell render pending. Per-note tag CRUD (US-6.5b) and `tag:` search deferred to the notes/browser + search stages. |
 
 ## Shell coverage (per-platform parity)
 
@@ -50,6 +50,7 @@ tracked here only.
 | Decks | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Notes | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Cards / browser | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Tagging (list/tree) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Study session | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Deck options settings | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Classes / dashboard | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |

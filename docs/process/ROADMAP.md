@@ -1673,8 +1673,15 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
 - [x] `US-6.4` — **Distinct-tags list + hierarchy.** Expose the distinct tag
       namespace as a `::` tree for the sidebar, and the prefix/`tag:none`/glob
       matching that later search work consumes. `server/tests/`.
-- [ ] `US-6.5` — **Client consumes tags.** Browser/search UI for tags (core
-      first: `Model`/`ViewModel`/events; then shell render). `shared` update tests.
+- [x] `US-6.5a` — **Client core consumes the tag list + tree.** Standalone
+      `Model.tags`/`tag_tree` + `ViewModel` (via `TagView`/`TagNodeView` Facet
+      mirrors), events `TagsRequested`/`TagTreeRequested` (+ `TagsResult`/
+      `TagTreeResult`), `tags_error`, and clear-on-logout. `shared` update tests.
+- [ ] `US-6.5b` — **Per-note tag CRUD in the client (deferred).** Add/remove tags
+      on a note from the UI. **Deferred**: the client has no notes/browser model
+      yet (the notes screen is ❌ in `docs/support/screens.md`), so there is
+      nothing to hang per-note tag actions on. Do this when the notes/browser
+      screen lands (future stage).
 - [x] `US-6.6` — **Leech as per-student state, not a tag.** Done via US-2.20
       (per-student `student_card_states.leech_at`; `TagOnly` marks, `SuspendCard`
       marks + suspends — no tag-system involvement).
