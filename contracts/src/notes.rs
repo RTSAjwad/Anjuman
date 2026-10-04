@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use super::tags::Tag;
+
 /// Expected JSON body for creating a note.
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -39,6 +41,8 @@ pub struct NoteResponse {
     pub note_type_name: String,
     pub fields: Map<String, Value>,
     pub cards: Vec<CardSummary>,
+    /// This note's tags (shared note taxonomy).
+    pub tags: Vec<Tag>,
     pub created_at: DateTime<Utc>,
 }
 

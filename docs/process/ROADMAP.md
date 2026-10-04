@@ -1664,13 +1664,12 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
 
 - [x] `US-6.1` — **Schema + contracts.** `tags`/`note_tags` tables + migration;
       `Tag` DTOs in `anjuman_contracts`.
-- [ ] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags on a note
+- [x] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags on a note
       (teacher/admin-gated); a distinct-tags list endpoint (the sidebar tree
       source). `server/tests/` per criterion.
-- [ ] `US-6.3` — **Rename/move + clear-unused.** Rename a tag (updates the one
-      `tags` row; `note_tags` unaffected since it references the tag id);
-      "clear unused tags" (delete `tags` rows with no `note_tags`).
-      Teacher/admin-gated.
+- [ ] `US-6.3` — **Rename/move.** Rename a tag (updates the one `tags` row;
+      `note_tags` unaffected since it references the tag id). Teacher/admin-gated.
+      (Clear-unused is done here: `DELETE /tags` removes orphaned tags.)
 - [ ] `US-6.4` — **Distinct-tags list + hierarchy.** Expose the distinct tag
       namespace as a `::` tree for the sidebar, and the prefix/`tag:none`/glob
       matching that later search work consumes. `server/tests/`.

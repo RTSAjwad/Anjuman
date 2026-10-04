@@ -111,6 +111,8 @@ async fn reset_mutable_tables(db: &PgPool) {
             student_card_states,
             cards,
             notes,
+            note_tags,
+            tags,
             deck_classes,
             deck_collaborators,
             class_members,

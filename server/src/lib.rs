@@ -17,6 +17,7 @@ pub mod openapi;
 pub mod permissions;
 pub mod routes;
 pub mod state;
+pub mod tags;
 
 pub mod handlers {
     pub mod admin_users;
@@ -37,6 +38,7 @@ pub mod handlers {
     pub mod reviews;
     pub mod search_users;
     pub mod study;
+    pub mod tags;
     pub mod users;
 }
 

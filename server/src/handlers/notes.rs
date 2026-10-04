@@ -128,7 +128,7 @@ async fn note_deck_ids(db: &sqlx::PgPool, note_id: i64) -> Result<Vec<i64>, Stat
 }
 
 /// Require the caller to have collaborator access to every deck the note spans.
-async fn check_note_authorization(
+pub(crate) async fn check_note_authorization(
     db: &sqlx::PgPool,
     note_id: i64,
     school_id: i64,
@@ -198,12 +198,17 @@ async fn fetch_note_with_cards(
         })
         .collect();
 
+    let note_tags = crate::tags::tags_for_note(db, note_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     Ok(NoteResponse {
         id: note.id,
         note_type_id: note.note_type_id,
         note_type_name: nt.name,
         fields,
         cards: card_summaries,
+        tags: note_tags,
         created_at: note.created_at,
     })
 }

@@ -12,7 +12,7 @@ use crate::{
     handlers::{
         admin_users, analytics, card_browser, card_mod, classes, dashboard, deck_options_handler,
         decks, health, login, logout, me, note_types_handler, notes, preferences, reviews, search_users,
-        study, users,
+        study, tags, users,
     },
     openapi::ApiDoc,
     state::AppState,
@@ -170,6 +170,11 @@ pub fn router(state: AppState) -> Router {
         .route("/notes/{note_id}", get(notes::get_note))
         .route("/notes/{note_id}", patch(notes::update_note))
         .route("/notes/{note_id}", delete(notes::delete_note))
+        // Note tags
+        .route("/tags", get(tags::list_tags))
+        .route("/tags", delete(tags::clear_unused_tags))
+        .route("/notes/{note_id}/tags", post(tags::add_tags))
+        .route("/notes/{note_id}/tags", delete(tags::remove_tags))
         .layer(cors)
         .with_state(state)
 }
