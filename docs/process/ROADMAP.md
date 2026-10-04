@@ -76,8 +76,10 @@ matrix's "Summary of the biggest gaps" is the working list:
       deck covers its subtree, ancestors are read-only context, and the
       student's list stays a tree. Added `DeckResponse.studyable` + recursive
       access + `server/tests/deck_sharing.rs`.
-- [x] **Lapses** — leech threshold/action + empty relearning steps. Done
-      (US-2.2–US-2.4). Minimum interval is SM-2 — out of scope.
+- [ ] **Leech action (per-student state)** — the leech *action* completes as
+      US-2.20 (per-student `leech_at`, not a tag). Threshold + empty relearning
+      steps are already done (US-2.2–US-2.4); minimum interval is SM-2 — out
+      of scope.
 - [x] **US-2.2 — Leech threshold**
 
       **As** a student failing a review card repeatedly,
@@ -106,8 +108,9 @@ matrix's "Summary of the biggest gaps" is the working list:
       - [x] Each criterion has a `server/tests/` test.
 
       **Out of scope / documented divergence**
-      - Tagging the note (both actions tag in Anki) — blocked on a tag system
-        (ROADMAP stage 6). `TagOnly` is a no-op until tags land.
+      - Tagging the note (both actions tag in Anki) — Anjuman does **not** model
+        leech as a tag. Leech is per-student scheduling state, not a shared note
+        tag (US-6.6). `TagOnly` is a no-op until that per-student marker lands.
 - [x] **US-2.4 — Empty relearning steps**
 
       **As** a student who lets FSRS control short-term scheduling,
@@ -542,9 +545,10 @@ matrix's "Summary of the biggest gaps" is the working list:
       descope/deferral note: the ⏳ collection-wide FSRS options (stage 7), the
       post-client simulators, `historical_retention`/`ignore_before` (with
       US-2.18b), custom scheduling (stage 7), desired-retention per-deck
-      (stage 7), leech tagging (stage 6), Easy Days scheduling (interval load
-      balancer), US-2.5 (empty learning steps, experimental), US-2.18b
-      (optimizer). Fixed two stale rows: "Display order taken from selected
+      (stage 7), leech action (US-2.20, per-student state — not a tag), Easy
+      Days scheduling (interval load balancer), US-2.5 (empty learning steps,
+      experimental), US-2.18b (optimizer). Fixed two stale rows: "Display
+      order taken from selected
       deck" (now ✅ — it is implemented) and "Save to all subdecks" (now ⏳ —
       deferred convenience, not missing scheduling).
 
@@ -614,6 +618,61 @@ single-user and trivially total):
 
 Each item must keep the OpenAPI spec in sync (new/changed DTOs → regenerated
 `/api-docs`).
+
+---
+
+### US-2.20 — Leech as per-student state (complete the leech action)
+
+**As** a student who keeps failing a card,
+**I want** the leech action to mark *my* card as a leech (and suspend it, when
+configured) without affecting anyone else,
+**so that** the leech signal is personal scheduling state, not shared-note
+metadata.
+
+**Background / decisions (settled)**
+
+`apply_review` (`server/src/handlers/reviews.rs`) already detects leeches and
+acts on them, but the marker is wrong: it writes `notes.leech_tagged_at` (a
+**shared note** column) and `TagOnly` is a no-op. Since leech is **not** a tag
+(see stage 6), the marker becomes per-student scheduling state.
+
+Decisions recorded so implementation is unambiguous:
+
+1. **`leech_at TIMESTAMPTZ` on `student_card_states`** (per `(student, card)`) is
+   the single source of truth. Set when `lapses >= leech_threshold` on a review
+   "Again". Null = not a leech. Replaces `notes.leech_tagged_at`.
+2. **`TagOnly` = "mark leech, don't suspend"; `SuspendCard` = "mark + suspend".**
+   Both write only that student's `student_card_states` row — no shared-note
+   mutation, so a student's leech cannot leak to anyone else.
+3. **The flag is per-student and survives a threshold change.** Lowering the
+   threshold does **not** retroactively leech old cards (the marker is set at the
+   moment of crossing, not recomputed from `lapses`).
+
+**Acceptance criteria**
+
+- [ ] Migration: add `leech_at TIMESTAMPTZ` to `student_card_states` (new
+      migration; never edit `0001`). Drop `notes.leech_tagged_at` (and its
+      write in `apply_review`).
+- [ ] `apply_review` sets `leech_at = now` for *that* `(student, card)` when a
+      review "Again" reaches the threshold; `TagOnly` marks without suspending,
+      `SuspendCard` marks **and** sets `suspended = TRUE`.
+- [ ] Per-student isolation: student A leeching card X leaves student B's
+      `student_card_states` row for X (`leech_at`, `suspended`) untouched, and
+      the shared `notes` row is never mutated.
+- [ ] `StudyCard` (and `ReviewedCardState`) expose a `leech: bool` so the
+      client can render the marker (`leech_at.is_some()`). Contracts + OpenAPI
+      regenerated.
+- [ ] Each criterion has a `server/tests/` test named after it; `cargo test`
+      passes and OpenAPI still generates.
+
+**Out of scope / related**
+
+- The client's leech "Tag Only" popup and any UI surfacing of the `leech` flag
+  (already tracked as a deferred stage-4 client behaviour in
+  [`docs/support/screens.md`](../support/screens.md)).
+- `marked` (Anki's other system tag) — deferred to the future import/export
+  stage (see stage 6).
+- Undo of a leech (stage 8).
 
 ---
 
@@ -1544,17 +1603,79 @@ should still ship *their own* stories + tests inline, not wait for this stage.
 
 ## 6. Tags — note/collection tagging   `[ ]`
 
-A general tag system (note-level tags: add, remove, filter, browse/search by
-tag). This is a cross-cutting feature in its own right, deferred until after the
-core feature stages settle.
+Two related but distinct deliverables:
 
-- [ ] `note_tags` table (or equivalent) + schema migration.
-- [ ] CRUD + list/browse/search-by-tag endpoints on `anjuman_contracts`.
-- [ ] Client (stage 4) consumes tags in the browser/search UI.
-- [ ] **Revisit leeches** — wire the leech `TagOnly` action (currently a
-      documented no-op, see US-2.3) to actually emit the `leech` tag, and back
-      the `SuspendCard` action's "also tag the note" behaviour. Today leech
-      le marks the note via `notes.leech_tagged_at` only.
+1. **A teacher/admin-controlled tag system** — note-level tags (add, remove,
+   rename, browse, filter/search) matching Anki's model, authored only by
+   teachers/admins on shared notes.
+2. **A dedicated per-student leech functionality** — leech is scheduling state
+   owned by the scheduler for that student, **not** a tag (see `US-6.6`), so it
+   is delivered here as its own mechanism, decoupled from the tag system.
+
+### Grounding (Anki reference)
+
+- **Tags are note-level**, not card-level — the `Tags` column is "the note's
+  tags", and `tag:` searches notes. (<https://docs.ankiweb.net/browsing.html>,
+  <https://docs.ankiweb.net/searching.html>)
+- **Tags are hierarchical** with `::` separators (`parent::child`); `tag:animal`
+  matches `animal` **and** `animal::mammal` (subtags) — a prefix match, not an
+  exact match. `tag:none`, `tag:ani*`, and `tag:re:` also exist.
+- **Rename/move rewrites the tag on affected notes** ("renamed the tags … and
+  updated your notes accordingly").
+- Operations: Add/Remove Tags, a sidebar tag tree, Clear Unused Tags, search by
+  `tag:`, and Find-and-Replace within tags.
+
+### Scope & permissions (settled decisions)
+
+- **Tags describe shared note content → teacher/admin-authorable, student
+  read-only.** Notes (and their taxonomy) are shared school-wide, so a student
+  never authors tags; only `check_teacher_or_admin` may add/remove/rename.
+  Students may *see* a note's tags (rendered in the browser), never edit them.
+- **No system tags.** Anki's `leech`/`marked` are *not* part of the tag system
+  here. `leech` is per-student scheduling state (see `US-6.6`), not a note tag.
+- **`marked` is deferred, out of the main experience.** It is a *legacy* Anki
+  feature (its manual says "most users will want to use flags instead") and,
+  like `leech`, is a per-user signal rather than shared note taxonomy. Do **not**
+  model it as a tag now. Revisit it only in the future import/export stage, where
+  faithful Anki-data preservation forces an explicit decision on how `marked` is
+  represented in Anjuman.
+- **Divergence (documented):** Anki lets the single user tag their own notes;
+  Anjuman restricts tag *authoring* to teachers/admins because notes are shared
+  (same class of divergence as deck-options per-school vs. per-user).
+
+### Design decision to settle (before implementing)
+
+- [ ] **Tag storage shape** — Anki stores tags as a single delimited string per
+      note with `::` hierarchy. Options to record once decided:
+      (a) **`note_tags(note_id, tag)` join table + a canonical `tags` table**
+          (normalised; rename = one UPDATE; but hierarchy must be materialised or
+          computed), or
+      (b) **`notes.tags TEXT[]` (array) or a JSONB/text blob** matching Anki's
+          "one delimited string" more literally (simpler round-trip; rename =
+          an UPDATE across notes).
+      Flag which we choose and **why**; this determines the migration and every
+      endpoint.
+
+### Stories (tentative order — core-first, then shell)
+
+- [ ] `US-6.1` — **Schema + contracts.** `note_tags` (or the chosen shape) +
+      migration; `Tag` accessor DTOs in `anjuman_contracts` (a tag on a note is
+      serializable/deserializable both ways).
+- [ ] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags for a note
+      (teacher/admin-gated); a distinct-tag list endpoint (the sidebar tree
+      source). `server/tests/` per criterion.
+- [ ] `US-6.3` — **Rename/move + clear-unused.** Rename a tag (rewrites affected
+      notes, preserving `::` hierarchy); "clear unused tags". Teacher/admin-gated.
+- [ ] `US-6.4` — **Search/filter by tag.** `tag:` semantics on the notes/cards
+      list (prefix → subtags, exact/none/glob), in `server/tests/`.
+- [ ] `US-6.5` — **Client consumes tags.** Browser/search UI for tags (core
+      first: `Model`/`ViewModel`/events; then shell render). `shared` update tests.
+- [ ] `US-6.6` — **Leech as per-student state, not a tag.** Move the leech marker
+      off `notes.leech_tagged_at` onto per-student scheduling state (`student_card_states`,
+      or an equivalent per-`(student, card)` flag set by the US-2.3 leech logic).
+      `TagOnly` becomes "mark as leech for *this* student only"; `SuspendCard`
+      suspends + marks that student's card. No shared-note mutation → a student's
+      leech can't leak to others. Replace the old note-level bridge.
 
 ---
 
