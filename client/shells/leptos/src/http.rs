@@ -21,6 +21,8 @@ pub async fn request(
     let builder = match method.as_str() {
         "GET" => gloo_net::http::Request::get(url),
         "POST" => gloo_net::http::Request::post(url),
+        "PATCH" => gloo_net::http::Request::patch(url),
+        "DELETE" => gloo_net::http::Request::delete(url),
         other => panic!("not yet handling method {other}"),
     };
 
