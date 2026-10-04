@@ -444,7 +444,7 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
             </span>
 
             <span class="study-actions__group">
-                <Select value=flag size=SelectSize::Medium>
+                <Select value=flag default_value=card.flag.to_string() size=SelectSize::Medium>
                     <option value="0">"No flag"</option>
                     <option value="1">"Red"</option>
                     <option value="2">"Orange"</option>
