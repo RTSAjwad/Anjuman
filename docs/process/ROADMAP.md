@@ -1212,6 +1212,25 @@ and `StudyCardView` was missing `note_id`/`flag` (both already on the wire
 
 - Undo/history, and the card-browser UI for these same actions (separate story).
 
+**Deferred decisions (recorded for later)**
+
+- **Reschedule input is `days` only.** The event is `RescheduleCard { days }`
+  (Anki's "set due date" is a relative day offset). Anki also allows an
+  **absolute date**; if we want parity (a date picker), that's a one-field event
+  addition (`RescheduleCard { due_at }` or an extra `Option<DateTime>`) — the
+  server already accepts both `due_at` and `days` via `RescheduleBody`, so no
+  server change is needed. Defer until the shell builds the affordance and we
+  decide whether a relative-offset spinner is enough or an absolute picker is
+  wanted.
+- **No undo.** Bury/suspend/reschedule are fire-and-forget with no undo hook.
+  They are *reversible* server-side via the inverse endpoints
+  (`POST /cards/{id}/unbury`, `POST /cards/{id}/unsuspend`, `POST
+  /notes/{id}/unbury`, `POST /notes/{id}/unsuspend`), but there is no in-UI
+  undo. This is intentional pending **stage 8 (History / Undo)**; when that
+  lands, these actions should emit the same reversible-op records as every other
+  mutation (per its `US-8.1` history-table design) rather than relying on
+  carry-over from the browser UI.
+
 ---
 
 ### US-4.6 — Card styling (deliver template CSS + dark-mode inversion decision)
@@ -1830,7 +1849,11 @@ plan it properly (story list + acceptance criteria) when it becomes current work
       study/reviews?** Reversing an FSRS review is the hard, risky case (must
       restore the exact prior `student_card_states` row and delete the matching
       `reviews` row, and a mid-stream delete can perturb downstream scheduling).
-      Descoping review-undo initially is the cheap path.
+      Descoping review-undo initially is the cheap path. Note: bury/suspend are
+      `card_mod` mutations with *existing inverse endpoints* (`unbury`/
+      `unsuspend`, card and note variants), so they are cheaply reversible — but
+      they currently have **no in-UI undo hook** (see US-4.5b, deferred for this
+      stage).
 - [ ] **Persistence vs. ephemeral** — persistent (history table, survives
       reload) vs. Anki-style in-session undo (ring buffer, gone on reload).
 - [ ] **Scope/permission** — personal history only, or school/class history
