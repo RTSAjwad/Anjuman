@@ -63,13 +63,6 @@ pub fn RootComponent() -> impl IntoView {
             password: password.get(),
         });
     };
-    // Developer convenience: sign in with a canned credential pair, no typing.
-    let quick_login = move |creds: (&'static str, &'static str)| {
-        set_event.set(Event::LoginSubmit {
-            email: creds.0.to_string(),
-            password: creds.1.to_string(),
-        });
-    };
     let logout = move |_| set_event.set(Event::Logout);
 
     // -----------------------------------------------------------------
@@ -195,6 +188,7 @@ pub fn RootComponent() -> impl IntoView {
                                                     error=deck_options_error
                                                     presets=vm.presets.clone()
                                                     presets_error=vm.presets_error.clone()
+                                                    can_manage_presets=vm.permissions.can_manage_presets
                                                     set_event=set_event />
                                             }.into_any(),
                                         }}
@@ -236,26 +230,6 @@ pub fn RootComponent() -> impl IntoView {
                                 {vm.error.clone().map(|err| view! {
                                     <p style="color: #c00;">{err}</p>
                                 })}
-                                <div style="display: flex; gap: 0.5rem;">
-                                    {["admin", "teacher", "student"].into_iter().map(|role| {
-                                        let creds: (&str, &str) = match role {
-                                            "admin" => ("admin@school1.com", "admin123"),
-                                            "teacher" => ("teacher@school1.com", "teach123"),
-                                            "student" => ("student@school1.com", "stud123"),
-                                            _ => unreachable!(),
-                                        };
-                                        let q = quick_login.clone();
-                                        view! {
-                                            <Button
-                                                appearance=ButtonAppearance::Subtle
-                                                on_click=move |_| q(creds)
-                                                disabled=vm.busy
-                                            >
-                                                {role}
-                                            </Button>
-                                        }
-                                    }).collect_view()}
-                                </div>
                             </div>
                         </main>
                     }
@@ -481,6 +455,7 @@ fn deck_options_panel(
     error: Option<String>,
     presets: Vec<PresetSummary>,
     presets_error: Option<String>,
+    can_manage_presets: bool,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     let options = match options {
@@ -504,8 +479,11 @@ fn deck_options_panel(
 
     let name = options.name.clone();
     // The system-owned global default (id 0) is read-only — see US-4.10 and the
-    // server report. Editing/saving is disabled for it.
+    // server report.
     let read_only = options.id == 0;
+    // Editing/saving is gated on the management permission (US-9.5); without it
+    // the preset is shown read-only (view stays, controls are locked).
+    let can_edit = can_manage_presets && !read_only;
     // Editable draft state, initialized from the loaded preset. Rebuilt on each
     // entry to Options (see `RootComponent`, which mounts this only on the
     // Options route).
@@ -549,7 +527,7 @@ fn deck_options_panel(
     };
 
     view! {
-        <section class="deck-options" class:deck-options--readonly=read_only>
+        <section class="deck-options" class:deck-options--readonly=move || !can_edit>
             <header class="deck-options__header">
                 <h2 class="deck-options__title">"Deck options"</h2>
                 <span class="deck-options__preset">
@@ -565,24 +543,38 @@ fn deck_options_panel(
                     </p>
                 }
                 .into_any()
+            } else if !can_manage_presets {
+                view! {
+                    <p class="deck-options__readonly-notice">
+                        "You don't have permission to change deck options."
+                    </p>
+                }
+                .into_any()
             } else {
                 ().into_any()
             }}
 
-            <div class="deck-options-assign">
-                <span class="deck-options-assign__label">"Preset"</span>
-                <Select value=assign_selection default_value=options.id.to_string() size=SelectSize::Medium>
-                    <option value="0">"Default"</option>
-                    {presets.iter().map(|p| {
-                        let id = p.id.to_string();
-                        let name = p.name.clone();
-                        view! { <option value=id>{name}</option> }
-                    }).collect_view()}
-                </Select>
-                {presets_error.map(|err| view! {
-                    <span class="deck-options__error">{err}</span>
-                })}
-            </div>
+            {if can_manage_presets {
+                view! {
+                    <div class="deck-options-assign">
+                        <span class="deck-options-assign__label">"Preset"</span>
+                        <Select value=assign_selection default_value=options.id.to_string() size=SelectSize::Medium>
+                            <option value="0">"Default"</option>
+                            {presets.iter().map(|p| {
+                                let id = p.id.to_string();
+                                let name = p.name.clone();
+                                view! { <option value=id>{name}</option> }
+                            }).collect_view()}
+                        </Select>
+                        {presets_error.map(|err| view! {
+                            <span class="deck-options__error">{err}</span>
+                        })}
+                    </div>
+                }
+                .into_any()
+            } else {
+                ().into_any()
+            }}
 
             <OptionsGroup title="Daily limits">
                 <NumberField label="New cards/day" value=state.new_per_day placeholder="20" />
@@ -664,15 +656,15 @@ fn deck_options_panel(
                         ().into_any()
                     }
                 }}
-                {if read_only {
-                    ().into_any()
-                } else {
+                {if can_edit {
                     view! {
                         <Button appearance=ButtonAppearance::Primary on_click=on_save>
                             "Save"
                         </Button>
                     }
                     .into_any()
+                } else {
+                    ().into_any()
                 }}
             </footer>
         </section>
