@@ -42,7 +42,7 @@ use crate::{
     auth::AuthUser,
     db_types::{DbLimitMode, DbUserRole},
     permissions::{
-        DeckGovernance, DeckPerm, can_administer_school, deck_governance, deck_permission,
+        DeckGovernance, DeckPerm, deck_governance, deck_permission,
     },
     state::AppState,
 };
@@ -81,10 +81,10 @@ pub fn check_teacher_or_admin(
 }
 
 /// Check whether the caller can manage (edit/delete/share) a deck.
-/// Admins can manage any deck in their school. Teachers must be the owner.
+/// Only the owner (teacher or admin) may manage a deck.
 ///
 /// A thin adapter over `permissions::deck_governance` (stage 9): the
-/// owner/admin/deny logic lives in one place; this preserves the legacy
+/// owner/deny logic lives in one place; this preserves the legacy
 /// signature + 404/403 status/message.
 pub async fn check_deck_owner(
     db: &sqlx::PgPool,
@@ -112,11 +112,10 @@ pub async fn check_deck_owner(
 }
 
 /// Check whether the caller can manage a deck's content (notes).
-/// Admins can manage any deck in their school. Teachers must be
-/// the owner OR a collaborator on the deck.
+/// The owner OR a collaborator (teacher or admin).
 ///
 /// A thin adapter over `permissions::deck_governance` (stage 9): the
-/// owner/collaborator/admin/deny logic lives in one place; this preserves the
+/// owner/collaborator/deny logic lives in one place; this preserves the
 /// legacy signature + 404/403 status/message.
 pub async fn check_deck_collaborator(
     db: &sqlx::PgPool,
@@ -148,16 +147,17 @@ pub async fn check_deck_collaborator(
 /// working while the underlying logic lives in one place.
 pub use crate::permissions::{DeckAccess, check_deck_studyable, check_deck_visible, deck_access};
 
-/// Whether the user is an owner, admin, or direct collaborator of the deck —
-/// i.e. entitled to see the deck's *administrative* detail (collaborator list
-/// and class roster), which is hidden from students who reach the deck only via
-/// a subtree/class grant. Shares logic with `get_deck`.
+/// Whether the user is an owner or direct collaborator of the deck — i.e.
+/// entitled to see the deck's *administrative* detail (collaborator list and
+/// class roster), which is hidden from students who reach the deck only via a
+/// subtree/class grant. Shares logic with `get_deck`. Admins are held to the same
+/// owner/collaborator rule as teachers (no admin trump).
 pub async fn is_deck_collaborator(
     db: &sqlx::PgPool,
     deck_id: i64,
     claims: &crate::auth::Claims,
 ) -> Result<bool, (StatusCode, &'static str)> {
-    // Owner or admin.
+    // Owner.
     let row = sqlx::query!(
         "SELECT created_by FROM decks WHERE id = $1",
         deck_id
@@ -165,9 +165,6 @@ pub async fn is_deck_collaborator(
     .fetch_optional(db)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-    if can_administer_school(claims) {
-        return Ok(true);
-    }
     if let Some(r) = &row {
         if r.created_by == claims.sub {
             return Ok(true);
@@ -575,8 +572,9 @@ pub async fn duplicate_deck(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or((StatusCode::NOT_FOUND, "Deck not found"))?;
 
-    // Visibility check: must be owner, admin, or collaborator.
-    let can_access = can_administer_school(&claims) || source.created_by == claims.sub;
+    // Visibility check: must be owner or collaborator (admins held to the same
+    // rule as teachers).
+    let can_access = source.created_by == claims.sub;
 
     if !can_access {
         let is_collab = sqlx::query_scalar!(
@@ -706,13 +704,6 @@ pub async fn share_deck(
         return Err((
             StatusCode::BAD_REQUEST,
             "Cannot share a deck with a student",
-        ));
-    }
-
-    if target.role == DbUserRole::Admin {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Admins already have access to all decks",
         ));
     }
 
@@ -1053,73 +1044,14 @@ pub async fn get_deck(
 
 /// `GET /decks` — List decks visible to the caller.
 ///
-/// - Teachers see their own decks + shared + published.
-/// - Admins see all decks in their school.
+/// - Teachers & admins see their own decks + shared + published (admins are held
+///   to the same owner/collaborator rule as teachers — no admin sees-all).
 /// - Students see published decks + decks assigned to their classes.
 pub async fn list_decks(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<DeckResponse>>, (StatusCode, &'static str)> {
-    if can_administer_school(&claims) {
-        let rows = sqlx::query!(
-            r#"
-            SELECT d.id, d.school_id, d.title, d.description,
-                   d.created_by, d.parent_id, d.created_at,
-                   d.options_id,
-                   u.email as owner_email,
-                   u.first_name as owner_first_name,
-                   u.last_name as owner_last_name,
-                   (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) as "card_count!: i64"
-            FROM decks d
-            JOIN users u ON u.id = d.created_by
-            WHERE d.school_id = $1
-            ORDER BY d.created_at DESC
-            "#,
-            claims.school_id
-        )
-        .fetch_all(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-        let mut decks: Vec<DeckResponse> = Vec::new();
-        for r in rows {
-            let deck_id = r.id;
-            let studyable =
-                deck_permission(&state.db, &claims, deck_id).await? == DeckPerm::Study;
-            let counts =
-                crate::handlers::study::deck_counts_for_student(&state.db, claims.sub, deck_id)
-                    .await
-                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-            decks.push(DeckResponse {
-                id: r.id,
-                school_id: r.school_id,
-                title: r.title,
-                description: r.description,
-                created_by: r.created_by,
-                owner_email: r.owner_email,
-                owner_first_name: r.owner_first_name,
-                owner_last_name: r.owner_last_name,
-                parent_id: r.parent_id,
-                created_at: r.created_at,
-                options_id: r.options_id.unwrap_or(0),
-                new_per_day_mode: None,
-                review_per_day_mode: None,
-                new_per_day_override: None,
-                review_per_day_override: None,
-                new_per_day_today_date: None,
-                review_per_day_today_date: None,
-                new_count: Some(counts.new_count),
-                learning_count: Some(counts.learning_count),
-                review_count: Some(counts.review_count),
-                relearning_count: Some(counts.relearning_count),
-                total_count: Some(r.card_count),
-                studyable,
-            });
-        }
-        return Ok(Json(decks));
-    }
-
-    if claims.role == UserRole::Teacher {
+    if claims.role == UserRole::Admin || claims.role == UserRole::Teacher {
         let rows = sqlx::query!(
             r#"
             SELECT DISTINCT d.id, d.school_id, d.title, d.description,

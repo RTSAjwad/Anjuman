@@ -60,10 +60,10 @@ async fn teacher_sees_only_owned_or_collaborated_decks() {
     assert!(decks.is_empty(), "non-owner/non-collab teacher sees nothing");
 }
 
-/// An admin sees the deck with `studyable` reflecting the *grant* (false when
-/// they don't own/collaborate), not a hardcoded true.
+/// An admin without a relationship sees nothing (like a teacher) — the admin
+/// role no longer grants blanket deck visibility.
 #[tokio::test]
-async fn admin_studyable_reflects_grant_not_blanket() {
+async fn admin_without_relationship_sees_no_decks() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (teacher_id, _ttok) = create_user(&app, UserRole::Teacher).await;
@@ -71,8 +71,7 @@ async fn admin_studyable_reflects_grant_not_blanket() {
     seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
 
     let decks = list_decks(&app, &atok).await;
-    assert_eq!(decks.len(), 1, "admin sees all school decks");
-    assert_eq!(decks[0]["studyable"], false, "admin without grant is not studyable");
+    assert!(decks.is_empty(), "admin without relationship sees no decks");
 }
 
 /// `GET /decks/counts` returns real per-state counts for a teacher/admin who

@@ -124,14 +124,27 @@ async fn deck_governance_returns_contribute_for_collaborator() {
 }
 
 #[tokio::test]
-async fn deck_governance_returns_manage_for_admin() {
+async fn deck_governance_returns_none_for_admin_without_relationship() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (owner_id, _tok) = create_user(&app, UserRole::Teacher).await;
     let (admin_id, _atok) = create_user(&app, UserRole::Admin).await;
     let deck_id = seed_deck(&app, owner_id).await;
 
-    // Admin who does not own the deck still gets `Manage` (admin trump).
+    // Admin who does not own/collaborate gets no governance (no admin trump).
+    let gov = deck_governance(&app.db, &claims(admin_id, UserRole::Admin), deck_id)
+        .await
+        .expect("governance");
+    assert_eq!(gov, DeckGovernance::None);
+}
+
+#[tokio::test]
+async fn deck_governance_returns_manage_for_admin_owner() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (admin_id, _atok) = create_user(&app, UserRole::Admin).await;
+    let deck_id = seed_deck(&app, admin_id).await;
+
     let gov = deck_governance(&app.db, &claims(admin_id, UserRole::Admin), deck_id)
         .await
         .expect("governance");

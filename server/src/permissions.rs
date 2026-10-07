@@ -12,8 +12,6 @@
 //! A decision is `allow iff capability(role) AND relationship(user, resource)`.
 //! A role never grants a *particular* resource; it only says *what kind of
 //! action* that role may take on resources it is related to in a specific way.
-//! The "admin trump" is one relationship rule (admin → may `Manage` any deck in
-//! school), not a separate special case.
 //!
 //! ## Two orthogonal dimensions
 //!
@@ -25,8 +23,9 @@
 //!   *manage* the deck (rename/delete/share) or its *content* (notes/cards)?
 //!   Role-gated AND relationship-gated.
 //!
-//! These are **not** a single ordering: an admin may `Manage` a deck they cannot
-//! `Study` (the admin trump grants governance, not study — see US-4.7).
+//! **No admin trump for decks** — admins are held to the same owner/collaborator
+//! relationship rules as teachers (they manage only what they own or collaborate
+//! on). An admin role alone grants neither deck `Study` nor deck `Manage`/`Contribute`.
 //!
 //! ## Layers
 //!
@@ -308,7 +307,9 @@ pub async fn check_deck_studyable(
 /// - `Contribute` — may edit deck *content* (notes/cards): owner **or**
 ///   collaborator, for teacher/admin only.
 /// - `Manage`     — may manage the *deck* (rename/delete/share/transfer): owner,
-///   for teacher/admin; **admin trump** for any deck in school.
+///   for teacher/admin. **No admin trump** — admins are held to the same
+///   owner/collaborator relationship rules as teachers (they manage only what
+///   they own or collaborate on).
 /// - `None`       — no management access.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DeckGovernance {
@@ -319,30 +320,20 @@ pub enum DeckGovernance {
 
 /// Compute the user's deck **governance** access.
 ///
-/// - `Manage`     if the caller is an admin (trump — any deck in school), or is a
-///   teacher/admin owner of the deck.
+/// - `Manage`     if the caller is a teacher/admin owner of the deck.
 /// - `Contribute` if the caller is a teacher/admin collaborator (or owner — but
 ///   an owner already resolves to `Manage`).
 /// - `None`       otherwise (including a student owner/collaborator, whose
 ///   relationship is a *study* grant only — governance is role-gated).
+///
+/// Admins are **not** granted deck governance by role alone: they follow the same
+/// owner/collaborator relationship rules as teachers, so they can only manage
+/// decks they own or collaborate on.
 pub async fn deck_governance(
     db: &PgPool,
     claims: &Claims,
     deck_id: i64,
 ) -> Result<DeckGovernance, (StatusCode, &'static str)> {
-    // Admin trump: admins may manage any deck in their school.
-    if claims.role == UserRole::Admin {
-        let exists = sqlx::query_scalar!(
-            "SELECT EXISTS(SELECT 1 FROM decks WHERE id = $1 AND school_id = $2) AS \"exists!: bool\"",
-            deck_id,
-            claims.school_id
-        )
-        .fetch_one(db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-        return Ok(if exists { DeckGovernance::Manage } else { DeckGovernance::None });
-    }
-
     // Governance is role-gated: only teacher/admin reach `Contribute`/`Manage`.
     if !can_manage_decks(claims) {
         return Ok(DeckGovernance::None);
@@ -429,11 +420,10 @@ async fn is_collaborator(
 /// Whether the user holds a grant on this **specific** deck (owner/collaborator/
 /// class-member). Non-recursive — ancestors/descendants are the caller's concern.
 ///
-/// NOTE (US-4.7): there is **no** `Admin → true` shortcut here. Admins hold a
-/// grant by the same owner/collaborator/class rules as everyone else; the
-/// `Admin` role alone does not grant study access to a deck the admin does not
-/// own or collaborate on. (Deck *management* is admin-permissive via
-/// `deck_governance`'s admin trump.)
+/// NOTE: there is **no** `Admin → true` shortcut here — for study *or* governance.
+/// Admins hold a grant and governance by the same owner/collaborator/class rules
+/// as everyone else; the `Admin` role alone grants access to no deck the admin
+/// does not own or collaborate on.
 async fn has_grant(
     db: &PgPool,
     deck_id: i64,

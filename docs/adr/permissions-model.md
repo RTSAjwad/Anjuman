@@ -35,7 +35,7 @@ Consolidate **all** authorization into `server/src/permissions.rs` behind two
 layers, and reject the heavier alternatives (see "Consequences"):
 
 1. **RBAC as a thin, fast, coarse layer** — keep `role` in the JWT for the cheap
-   auth fast-path and coarse gates (`Admin` → manage any deck in school).
+   auth fast-path and coarse *non-deck* gates (`Admin` → manage users/school).
 2. **Capability-named predicates (PBAC seam)** — replace the ~40 `if role`
    checks with functions that read as intent: `can_manage_decks`, `can_manage_notes`,
    `can_manage_presets`, `can_administer_school`, … (resource-first naming).
@@ -45,22 +45,23 @@ layers, and reject the heavier alternatives (see "Consequences"):
    - **Study** (`DeckPerm::{None, VisibleOnly, Study}`) — grant-based,
      role-agnostic (`deck_permission`); unchanged from US-4.7.
    - **Governance** (`DeckGovernance::{None, Contribute, Manage}`) — role-gated
-     AND relationship-gated (`deck_governance`): `Manage` = owner (teacher/admin)
-     or admin-trump; `Contribute` = collaborator (teacher/admin).
+     AND relationship-gated (`deck_governance`): `Manage` = owner (teacher/admin);
+     `Contribute` = collaborator (teacher/admin).
 
-   These are **not** a single ordering: an admin may `Manage` a deck they cannot
-   `Study` (the admin trump grants governance, not study — confirmed by the
-   existing US-4.7 tests). A student owner/collaborator gets *study* only,
-   never governance, because governance is role-gated.
+   A student owner/collaborator gets *study* only, never governance, because
+   governance is role-gated.
 
 Every decision is **capability (role bundle) AND relationship (user ↔ resource)**;
 a role never grants a *particular* resource, only the *kind of action* that role
 may take on resources it is related to in a specific way.
 
-**Admin trump (deck capabilities): kept.** `Admin → Manage` on any deck in school,
-skipping the owner/collaborator relationship check — matching current
-`check_deck_owner` behavior. Admins are **not** trumped for *study* (the existing
-`deck_access` has no admin shortcut and keeps none).
+**No admin trump for decks (2026-10-07, revised).** Admins are held to the same
+owner/collaborator relationship rules as teachers for decks: `deck_governance`
+returns `Manage` only for an owner, `Contribute` only for a collaborator — the
+`Admin` role alone grants neither study nor governance/visibility on any deck the
+admin does not own or collaborate on (matching `list_decks`/`list_notes`'s
+owner/collaborator filter). School/user administration (`can_administer_school`,
+`can_manage_users`) and class management remain admin-permissive.
 
 The transition is **Option A now, structured so B drops in later**: the
 `has_permission`/capability seam is the *single* funnel every decision passes

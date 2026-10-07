@@ -2180,12 +2180,14 @@ full analysis and the models comparison (RBAC / PBAC / ABAC / ReBAC).
   governance and study are *not* one ordering):
   - `DeckPerm` (study) = `None | VisibleOnly | Study` (unchanged from US-4.7).
   - `DeckGovernance` (management) = `None | Contribute | Manage`;
-    `Manage` = owner (teacher/admin) or admin-trump; `Contribute` = collaborator
+    `Manage` = owner (teacher/admin); `Contribute` = collaborator
     (teacher/admin). Governance is **role-gated**, study is not.
-- **Admin trump (deck governance):** keep current behavior — `Admin` → `Manage`
-  on any deck in school, skipping owner/collab. Crucially, the trump grants
-  **governance, not study** (a non-granted admin still cannot study — matches
-  the existing US-4.7 test).
+- **No admin trump for decks (revised 2026-10-07):** admins are held to the same
+  owner/collaborator relationship rules as teachers — `Manage` = owner,
+  `Contribute` = collaborator. The `Admin` role alone grants neither study, nor
+  governance, nor deck-list/note-list visibility on any deck the admin does not
+  own or collaborate on. (School/user admin + class management stay
+  admin-permissive.)
 - **Incremental:** one story per capability group, each independently green.
 - **No schema change; no ABAC; `role` stays in the JWT** (coarse fast-path).
 
@@ -2201,8 +2203,8 @@ allow  if  capability(role)                 // "may this kind of user do this ki
 
 A role does not grant access to a *particular* resource; it only says *what kind
 of action* that role may take *on resources it is related to* in a specific way.
-The "admin trump" is one relationship rule (admin → `Manage` on any deck in
-school), not a separate special case.
+There is **no admin trump for decks** — admins follow the same relationship rules
+as teachers.
 
 ### Capability list (exact)
 

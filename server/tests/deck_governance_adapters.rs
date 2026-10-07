@@ -52,16 +52,30 @@ async fn check_deck_owner_owner_passes() {
 }
 
 #[tokio::test]
-async fn check_deck_owner_admin_passes() {
+async fn check_deck_owner_admin_denied_unless_owner() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (owner_id, _tok) = create_user(&app, UserRole::Teacher).await;
     let (admin_id, _atok) = create_user(&app, UserRole::Admin).await;
     let deck_id = seed_deck(&app, owner_id).await;
 
+    // An admin who does not own the deck is denied (same rule as a teacher).
+    let err = check_deck_owner(&app.db, deck_id, 1, &claims(admin_id, UserRole::Admin))
+        .await
+        .expect_err("admin without ownership must be denied");
+    assert_eq!(err.0, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn check_deck_owner_admin_owner_passes() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (admin_id, _atok) = create_user(&app, UserRole::Admin).await;
+    let deck_id = seed_deck(&app, admin_id).await;
+
     check_deck_owner(&app.db, deck_id, 1, &claims(admin_id, UserRole::Admin))
         .await
-        .expect("admin may manage any deck in school");
+        .expect("admin owner may manage");
 }
 
 #[tokio::test]
@@ -146,16 +160,40 @@ async fn check_deck_collaborator_collaborator_passes() {
 }
 
 #[tokio::test]
-async fn check_deck_collaborator_admin_passes() {
+async fn check_deck_collaborator_admin_denied_unless_related() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (owner_id, _tok) = create_user(&app, UserRole::Teacher).await;
     let (admin_id, _atok) = create_user(&app, UserRole::Admin).await;
     let deck_id = seed_deck(&app, owner_id).await;
 
+    // An admin who neither owns nor collaborates is denied (same as a teacher).
+    let err = check_deck_collaborator(&app.db, deck_id, 1, &claims(admin_id, UserRole::Admin))
+        .await
+        .expect_err("admin without relationship must be denied");
+    assert_eq!(err.0, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn check_deck_collaborator_admin_collaborator_passes() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (owner_id, _tok) = create_user(&app, UserRole::Teacher).await;
+    let (admin_id, _atok) = create_user(&app, UserRole::Admin).await;
+    let deck_id = seed_deck(&app, owner_id).await;
+
+    sqlx::query!(
+        "INSERT INTO deck_collaborators (deck_id, user_id, shared_at) VALUES ($1, $2, NOW())",
+        deck_id,
+        admin_id
+    )
+    .execute(&app.db)
+    .await
+    .expect("add admin as collaborator");
+
     check_deck_collaborator(&app.db, deck_id, 1, &claims(admin_id, UserRole::Admin))
         .await
-        .expect("admin may manage any deck's content");
+        .expect("admin collaborator may manage content");
 }
 
 #[tokio::test]
