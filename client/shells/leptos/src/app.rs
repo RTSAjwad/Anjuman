@@ -63,6 +63,14 @@ pub fn RootComponent() -> impl IntoView {
             password: password.get(),
         });
     };
+    // DEV ONLY: one-click login with seeded credentials, so the three roles can
+    // be exercised without typing. Remove before any production use.
+    let quick_login = move |creds: (&'static str, &'static str)| {
+        set_event.set(Event::LoginSubmit {
+            email: creds.0.to_string(),
+            password: creds.1.to_string(),
+        });
+    };
     let logout = move |_| set_event.set(Event::Logout);
 
     // -----------------------------------------------------------------
@@ -257,6 +265,26 @@ pub fn RootComponent() -> impl IntoView {
                                 {vm.error.clone().map(|err| view! {
                                     <p style="color: #c00;">{err}</p>
                                 })}
+                                <div style="display: flex; gap: 0.5rem;">
+                                    {["admin", "teacher", "student"].into_iter().map(|role| {
+                                        let creds: (&str, &str) = match role {
+                                            "admin" => ("admin@school1.com", "admin123"),
+                                            "teacher" => ("teacher@school1.com", "teach123"),
+                                            "student" => ("student@school1.com", "stud123"),
+                                            _ => unreachable!(),
+                                        };
+                                        let q = quick_login.clone();
+                                        view! {
+                                            <Button
+                                                appearance=ButtonAppearance::Subtle
+                                                on_click=move |_| q(creds)
+                                                disabled=vm.busy
+                                            >
+                                                {role}
+                                            </Button>
+                                        }
+                                    }).collect_view()}
+                                </div>
                             </div>
                         </main>
                     }
