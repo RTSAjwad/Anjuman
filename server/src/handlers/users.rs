@@ -92,6 +92,7 @@ pub async fn create_user(
         last_name: body.last_name,
         role: body.role,
         school_id: body.school_id,
+        permissions: crate::permissions::permissions_for(body.role),
     }))
 }
 

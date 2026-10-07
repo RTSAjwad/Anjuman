@@ -15,7 +15,7 @@ use crux_kv::protocol::KeyValueOperation;
 use facet::Facet;
 use serde::{Deserialize, Serialize};
 
-use anjuman_contracts::auth::{LoginRequest, LoginResponse, UserResponse};
+use anjuman_contracts::auth::{LoginRequest, LoginResponse, Permissions, UserResponse};
 use anjuman_contracts::cards::{CardModResponse, NoteModResponse, RescheduleBody};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
@@ -278,6 +278,10 @@ pub struct ViewModel {
     pub authenticated: bool,
     /// The signed-in user's display name, when authenticated.
     pub display_name: String,
+    /// The user's global capabilities (server-resolved role bundle); the shell
+    /// gates management affordances on these. Study is gated per-deck via
+    /// `DeckSummary.studyable`, not here.
+    pub permissions: PermissionsView,
     pub busy: bool,
     pub error: Option<String>,
     /// Decks to render (title + per-state counts).
@@ -314,6 +318,40 @@ pub struct ViewModel {
     /// A human-readable error from the last card action (bury/suspend/
     /// reschedule/flag) during study, if any.
     pub card_action_error: Option<String>,
+}
+
+/// The shell-facing view of the user's global capabilities (a Facet mirror of
+/// the wire `Permissions`). Study is *not* here — it is per-deck
+/// (`DeckSummary.studyable`); these are the management/role-bundle capabilities.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct PermissionsView {
+    pub can_administer_school: bool,
+    pub can_manage_users: bool,
+    pub can_manage_decks: bool,
+    pub can_manage_notes: bool,
+    pub can_manage_presets: bool,
+    pub can_manage_note_types: bool,
+    pub can_manage_tags: bool,
+    pub can_manage_classes: bool,
+    pub can_view_dashboard: bool,
+    pub can_view_analytics: bool,
+}
+
+impl From<&Permissions> for PermissionsView {
+    fn from(p: &Permissions) -> Self {
+        PermissionsView {
+            can_administer_school: p.can_administer_school,
+            can_manage_users: p.can_manage_users,
+            can_manage_decks: p.can_manage_decks,
+            can_manage_notes: p.can_manage_notes,
+            can_manage_presets: p.can_manage_presets,
+            can_manage_note_types: p.can_manage_note_types,
+            can_manage_tags: p.can_manage_tags,
+            can_manage_classes: p.can_manage_classes,
+            can_view_dashboard: p.can_view_dashboard,
+            can_view_analytics: p.can_view_analytics,
+        }
+    }
 }
 
 /// The shell-facing view of a card during study (a Facet/FFI-friendly mirror of
@@ -1439,6 +1477,7 @@ impl crux_core::App for Anjuman {
                 email: user.email.clone(),
                 authenticated: true,
                 display_name: format!("{} {}", user.first_name, user.last_name),
+                permissions: PermissionsView::from(&user.permissions),
                 busy: model.busy,
                 error: model.error.clone(),
                 decks,
@@ -1461,6 +1500,7 @@ impl crux_core::App for Anjuman {
                 email: String::new(),
                 authenticated: false,
                 display_name: String::new(),
+                permissions: PermissionsView::default(),
                 busy: model.busy,
                 error: model.error.clone(),
                 decks,
@@ -1546,6 +1586,7 @@ mod tests {
                     last_name: "Lovelace".to_string(),
                     role: UserRole::Student,
                     school_id: 1,
+                    permissions: test_permissions(UserRole::Student),
                 },
             })
             .build();
@@ -1618,6 +1659,29 @@ mod tests {
         }
     }
 
+    /// The server-resolved `permissions` map into `ViewModel.permissions` (so the
+    /// shell can gate management affordances), and a student's differ from a
+    /// teacher's.
+    #[test]
+    fn permissions_map_into_view() {
+        // Student (the default `authenticated_model`) has no management caps.
+        let student = authenticated_model();
+        let svm = Anjuman.view(&student);
+        assert!(!svm.permissions.can_manage_decks);
+        assert!(!svm.permissions.can_administer_school);
+
+        // A teacher has management caps but not administration.
+        let mut teacher = authenticated_model();
+        if let Auth::Authenticated { user, .. } = &mut teacher.auth {
+            user.role = UserRole::Teacher;
+            user.permissions = test_permissions(UserRole::Teacher);
+        }
+        let tvm = Anjuman.view(&teacher);
+        assert!(tvm.permissions.can_manage_decks);
+        assert!(tvm.permissions.can_manage_notes);
+        assert!(!tvm.permissions.can_administer_school);
+    }
+
     /// `/me` success stores the `UserResponse` (with the pending token); `/me`
     /// 401 clears the token and returns to signed-out.
     #[test]
@@ -1636,6 +1700,7 @@ mod tests {
                 last_name: "Hopper".to_string(),
                 role: UserRole::Teacher,
                 school_id: 1,
+                permissions: test_permissions(UserRole::Teacher),
             })
             .build();
         let _ = update(Event::MeResult(Ok(ok)), &mut model);
@@ -1672,6 +1737,7 @@ mod tests {
                     last_name: "Lovelace".to_string(),
                     role: UserRole::Student,
                     school_id: 1,
+                    permissions: test_permissions(UserRole::Student),
                 },
             },
             ..Model::default()
@@ -1726,6 +1792,25 @@ mod tests {
         }
     }
 
+    /// A `Permissions` object mirroring the server's `permissions_for` mapping
+    /// (used to build test `UserResponse`s).
+    fn test_permissions(role: UserRole) -> Permissions {
+        let manages = matches!(role, UserRole::Admin | UserRole::Teacher);
+        let administers = matches!(role, UserRole::Admin);
+        Permissions {
+            can_administer_school: administers,
+            can_manage_users: administers,
+            can_manage_decks: manages,
+            can_manage_notes: manages,
+            can_manage_presets: manages,
+            can_manage_note_types: manages,
+            can_manage_tags: manages,
+            can_manage_classes: manages,
+            can_view_dashboard: manages,
+            can_view_analytics: manages,
+        }
+    }
+
     fn authenticated_model() -> Model {
         Model {
             auth: Auth::Authenticated {
@@ -1737,6 +1822,7 @@ mod tests {
                     last_name: "Lovelace".to_string(),
                     role: UserRole::Student,
                     school_id: 1,
+                    permissions: test_permissions(UserRole::Student),
                 },
             },
             ..Model::default()

@@ -47,6 +47,7 @@ use sqlx::PgPool;
 use axum::http::StatusCode;
 
 use crate::auth::Claims;
+use anjuman_contracts::auth::Permissions;
 use anjuman_contracts::UserRole;
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,53 @@ pub fn can_view_dashboard(claims: &Claims) -> bool {
 /// `can_view_analytics` — role bundle for class analytics.
 pub fn can_view_analytics(claims: &Claims) -> bool {
     matches!(claims.role, UserRole::Admin | UserRole::Teacher)
+}
+
+/// Resolve the full role-bundle permission object for a role (the authoritative
+/// mapping role → capabilities, served to the client on `/me`/`login`).
+///
+/// A pure function of `role` today; if a database-backed permission table lands
+/// later, this becomes the single place that swap happens (the client DTO is
+/// unchanged).
+pub fn permissions_for(role: UserRole) -> Permissions {
+    match role {
+        UserRole::Admin => Permissions {
+            can_administer_school: true,
+            can_manage_users: true,
+            can_manage_decks: true,
+            can_manage_notes: true,
+            can_manage_presets: true,
+            can_manage_note_types: true,
+            can_manage_tags: true,
+            can_manage_classes: true,
+            can_view_dashboard: true,
+            can_view_analytics: true,
+        },
+        UserRole::Teacher => Permissions {
+            can_administer_school: false,
+            can_manage_users: false,
+            can_manage_decks: true,
+            can_manage_notes: true,
+            can_manage_presets: true,
+            can_manage_note_types: true,
+            can_manage_tags: true,
+            can_manage_classes: true,
+            can_view_dashboard: true,
+            can_view_analytics: true,
+        },
+        UserRole::Student => Permissions {
+            can_administer_school: false,
+            can_manage_users: false,
+            can_manage_decks: false,
+            can_manage_notes: false,
+            can_manage_presets: false,
+            can_manage_note_types: false,
+            can_manage_tags: false,
+            can_manage_classes: false,
+            can_view_dashboard: false,
+            can_view_analytics: false,
+        },
+    }
 }
 
 // ---------------------------------------------------------------------------

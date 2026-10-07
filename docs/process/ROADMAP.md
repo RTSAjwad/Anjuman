@@ -2026,6 +2026,22 @@ school), not a separate special case.
 - [x] OpenAPI route coverage unchanged (no routes added/removed); `cargo build`/
       `cargo test` green; no new warnings.
 
+#### US-9.5 — Expose server-resolved permissions to the client (feature gating)
+
+- [x] Contracts: add `auth::Permissions` (the 10 role-bundle capability
+      booleans) + `UserResponse.permissions`.
+- [x] Server: `permissions::permissions_for(role) -> Permissions` (authoritative
+      role → capability mapping); populated by `login`/`me`/`create_user`.
+- [x] Core: `ViewModel.permissions: PermissionsView` (Facet mirror) mapped from
+      `UserResponse.permissions`; defaults when unauthenticated. Study is *not*
+      here — it stays per-deck `DeckSummary.studyable`.
+- [x] Tests: `shared` `permissions_map_into_view` (student vs. teacher caps).
+- [ ] **Shell contract:** gate management affordances (create deck, presets,
+      tags, classes, note types, user admin, dashboard/analytics) on
+      `vm.permissions.*`; keep study gated on `deck.studyable`. Also remove/replace
+      the hard-coded dev login buttons if desired (they're dev-only). **(shell
+      agent scope — a follow-up.)**
+
 ### Remaining open (not blocking — resolve only if it bites)
 
 - [ ] **Membership second axis** — `class_members.membership_role` (teacher/student

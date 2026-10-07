@@ -105,6 +105,7 @@ pub async fn login(
             last_name: row.last_name,
             role,
             school_id: row.school_id,
+            permissions: crate::permissions::permissions_for(role),
         },
     }))
 }
