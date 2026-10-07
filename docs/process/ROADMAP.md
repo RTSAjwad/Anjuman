@@ -1920,13 +1920,16 @@ full analysis and the models comparison (RBAC / PBAC / ABAC / ReBAC).
 - **Naming:** resource-first capability names (`can_manage_decks`,
   `can_manage_notes`, …).
 - **Capability list:** the exact table below (refine later, not now).
-- **Deck governance levels:** add `DeckPerm::Manage` (owner/admin) **and**
-  `DeckPerm::Contribute` (owner/collaborator/admin) — two governance levels,
-  distinct from `Study`, so "collaborator may edit content but not delete the
-  deck" stays expressible. `Manage ⊇ Contribute ⊇ Study ⊇ VisibleOnly ⊇ None`.
-- **Admin trump (deck capabilities):** keep current behavior — `Admin` → `Manage`
-  on any deck in school, skipping the owner/collab relationship check. (Admins are
-  **not** trumped for *study*; `deck_access` already has no admin shortcut.)
+- **Deck governance:** two **orthogonal dimensions** (corrected during US-9.1 —
+  governance and study are *not* one ordering):
+  - `DeckPerm` (study) = `None | VisibleOnly | Study` (unchanged from US-4.7).
+  - `DeckGovernance` (management) = `None | Contribute | Manage`;
+    `Manage` = owner (teacher/admin) or admin-trump; `Contribute` = collaborator
+    (teacher/admin). Governance is **role-gated**, study is not.
+- **Admin trump (deck governance):** keep current behavior — `Admin` → `Manage`
+  on any deck in school, skipping owner/collab. Crucially, the trump grants
+  **governance, not study** (a non-granted admin still cannot study — matches
+  the existing US-4.7 test).
 - **Incremental:** one story per capability group, each independently green.
 - **No schema change; no ABAC; `role` stays in the JWT** (coarse fast-path).
 
@@ -1966,24 +1969,24 @@ school), not a separate special case.
 
 #### US-9.1 — Primitives + capability module (no behavior change)
 
-- Extend `DeckPerm` in `permissions.rs` to `None | VisibleOnly | Study |
-  Contribute | Manage` (ordered; ordering asserts `Manage ⊇ Contribute ⊇ Study ⊇
-  VisibleOnly`).
-- Add role-bundle capability fns (pure `Claims → bool`, no DB):
-  `can_administer_school`, `can_manage_users`, `can_manage_decks` (role term),
-  `can_manage_notes`, `can_manage_presets`, `can_manage_note_types`,
-  `can_manage_tags`, `can_manage_classes`.
-- Add `deck_permission`'s `Manage`/`Contribute` return for owner/collaborator
-  (admin trump included); keep `deck_access` and re-exports intact.
-- **Tests (named):** `deck_permission_returns_manage_for_owner`,
-  `..._contribute_for_collaborator`, `..._manage_for_admin`,
-  `..._study_for_granted_non_owner`, `..._none_for_unrelated`,
-  `role_bundle_student_cannot_manage_decks`, `role_bundle_teacher_can_manage_decks`.
+- [x] Add `DeckGovernance::{ None, Contribute, Manage }` (orthogonal to the
+      study `DeckPerm::{ None, VisibleOnly, Study }`); `deck_governance()` returns
+      `Manage` (owner/admin or admin-trump) / `Contribute` (collaborator) gated by
+      the role bundle.
+- [x] Add role-bundle capability fns (pure `Claims → bool`):
+      `can_administer_school`, `can_manage_users`, `can_manage_decks`,
+      `can_manage_notes`, `can_manage_presets`, `can_manage_note_types`,
+      `can_manage_tags`, `can_manage_classes`, `can_view_dashboard`,
+      `can_view_analytics`; plus `require_teacher_or_admin` / `require_admin`
+      gates preserving the per-resource deny messages.
+- [x] Tests (named): 8 in `server/tests/permissions_capabilities.rs` (role-bundle
+      predicates + governance levels + student-not-governance). Existing US-4.7
+      `deck_permissions.rs` unchanged — proving study semantics preserved.
 
 #### US-9.2 — Deck governance through the relationship model
 
-- Make `check_deck_owner` = `require deck_permission == Manage`; make
-  `check_deck_collaborator` = `require deck_permission ∈ {Contribute, Manage}`
+- Make `check_deck_owner` = `require deck_governance == Manage`; make
+  `check_deck_collaborator` = `require deck_governance ∈ {Contribute, Manage}`
   (thin adapters; delete their duplicated owner/collab SQL).
 - Preserve `move_card`'s **target-deck-only** collaborator check as-is (pre-existing;
   do not add a source-deck check).

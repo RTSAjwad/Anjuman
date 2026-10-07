@@ -40,12 +40,18 @@ layers, and reject the heavier alternatives (see "Consequences"):
    checks with functions that read as intent: `can_manage_decks`, `can_manage_notes`,
    `can_manage_presets`, `can_administer_school`, … (resource-first naming).
 3. **Generalized relationship model (ReBAC)** — extend the existing resource-grant
-   (`deck_access`) so "governance vs study" is one enum with **two governance
-   levels**: `DeckPerm::Manage` (owner/admin) and `DeckPerm::Contribute`
-   (owner/collaborator/admin), ordered `Manage ⊇ Contribute ⊇ Study ⊇
-   VisibleOnly ⊇ None`. This keeps "collaborator may edit content but not delete
-   the deck" expressible, which a single `Manage` level would either over-grant
-   (collaborators) or under-grant (owners).
+   (`deck_access`) so "governance vs study" is expressed as **two orthogonal
+   dimensions**, not one ordering:
+   - **Study** (`DeckPerm::{None, VisibleOnly, Study}`) — grant-based,
+     role-agnostic (`deck_permission`); unchanged from US-4.7.
+   - **Governance** (`DeckGovernance::{None, Contribute, Manage}`) — role-gated
+     AND relationship-gated (`deck_governance`): `Manage` = owner (teacher/admin)
+     or admin-trump; `Contribute` = collaborator (teacher/admin).
+
+   These are **not** a single ordering: an admin may `Manage` a deck they cannot
+   `Study` (the admin trump grants governance, not study — confirmed by the
+   existing US-4.7 tests). A student owner/collaborator gets *study* only,
+   never governance, because governance is role-gated.
 
 Every decision is **capability (role bundle) AND relationship (user ↔ resource)**;
 a role never grants a *particular* resource, only the *kind of action* that role
@@ -92,8 +98,10 @@ later is a swap of one function's implementation, not a handler sweep.
 ## Open questions
 
 1. ~~Capability-naming convention~~ → **resource-first** (`can_manage_notes`).
-2. ~~Governance levels~~ → **two**: `DeckPerm::Manage` (owner/admin) + `Contribute`
-   (owner/collaborator/admin), both distinct from `Study`.
+- ~~Governance levels~~ → **two orthogonal dimensions**: `DeckPerm` (study:
+   `None/VisibleOnly/Study`) + `DeckGovernance` (management: `None/Contribute/Manage`).
+   Admin trump grants `Manage` but **not** `Study` — governance and study are
+   orthogonal, matching the existing US-4.7 tests.
 3. ~~Admin trump~~ → **kept** (admin manages any deck in school).
 4. Membership second axis (`class_members.membership_role` vs. global `users.role`)
    — kept distinct for now; revisit when class-scoped management appears.
