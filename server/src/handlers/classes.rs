@@ -46,13 +46,7 @@ use crate::{
 /// Require that the authenticated user is a teacher or admin.
 /// Students cannot manage classes.
 fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCode, &'static str)> {
-    match claims.role {
-        UserRole::Admin | UserRole::Teacher => Ok(()),
-        UserRole::Student => Err((
-            StatusCode::FORBIDDEN,
-            "Only teachers and admins can manage classes",
-        )),
-    }
+    crate::permissions::require_teacher_or_admin(claims, "Only teachers and admins can manage classes")
 }
 
 /// Check whether the caller is authorised to manage a specific class.

@@ -14,8 +14,6 @@ use axum::{
 };
 
 use anjuman_contracts::users::{SearchQuery, SearchResult};
-use anjuman_contracts::UserRole;
-
 use crate::{auth::AuthUser, db_types::DbUserRole, state::AppState};
 
 // ---------------------------------------------------------------------------
@@ -32,9 +30,7 @@ pub async fn search_users(
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, (StatusCode, &'static str)> {
     // Only teachers and admins can search for users.
-    if claims.role == UserRole::Student {
-        return Err((StatusCode::FORBIDDEN, "Students cannot search for users"));
-    }
+    crate::permissions::require_teacher_or_admin(&claims, "Students cannot search for users")?;
 
     let query = params.q.trim();
     if query.is_empty() {

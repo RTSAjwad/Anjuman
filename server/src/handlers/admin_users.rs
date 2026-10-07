@@ -16,7 +16,7 @@ use axum::{
 };
 
 use anjuman_contracts::users::{UpdateUser, UserDetail};
-use anjuman_contracts::{MessageResponse, UserRole};
+use anjuman_contracts::MessageResponse;
 
 use crate::{
     auth::AuthUser,
@@ -35,10 +35,7 @@ use crate::{
 /// This is the single gate that enforces admin-only access across all
 /// the handlers in this module.
 fn check_admin(claims: &crate::auth::Claims) -> Result<i64, (StatusCode, &'static str)> {
-    if claims.role != UserRole::Admin {
-        return Err((StatusCode::FORBIDDEN, "Admin role required"));
-    }
-    Ok(claims.school_id)
+    crate::permissions::require_admin(claims)
 }
 
 // ---------------------------------------------------------------------------

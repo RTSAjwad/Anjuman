@@ -45,13 +45,7 @@ struct NoteIdRow {
 // ---------------------------------------------------------------------------
 
 fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCode, &'static str)> {
-    match claims.role {
-        UserRole::Admin | UserRole::Teacher => Ok(()),
-        UserRole::Student => Err((
-            StatusCode::FORBIDDEN,
-            "Only teachers and admins can manage notes",
-        )),
-    }
+    crate::permissions::require_teacher_or_admin(claims, "Only teachers and admins can manage notes")
 }
 
 /// Ensure a card row exists for each template of a note's note type, in the

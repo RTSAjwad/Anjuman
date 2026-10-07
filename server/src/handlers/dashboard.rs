@@ -93,7 +93,7 @@ pub async fn dashboard(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<DashboardResponse>, (StatusCode, &'static str)> {
-    if claims.role == UserRole::Student {
+    if !crate::permissions::can_view_dashboard(&claims) {
         return Err((
             StatusCode::FORBIDDEN,
             "Only teachers and admins can view the dashboard",

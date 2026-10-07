@@ -15,7 +15,7 @@ use axum::{
 };
 
 use anjuman_contracts::tags::{AddTags, RemoveTags, RenameTag, Tag, TagNode};
-use anjuman_contracts::{MessageResponse, UserRole};
+use anjuman_contracts::MessageResponse;
 
 use crate::{
     auth::AuthUser,
@@ -25,13 +25,7 @@ use crate::{
 };
 
 fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCode, &'static str)> {
-    match claims.role {
-        UserRole::Admin | UserRole::Teacher => Ok(()),
-        UserRole::Student => Err((
-            StatusCode::FORBIDDEN,
-            "Only teachers and admins can manage tags",
-        )),
-    }
+    crate::permissions::require_teacher_or_admin(claims, "Only teachers and admins can manage tags")
 }
 
 /// `GET /tags` — the distinct tag namespace (every tag, by name).

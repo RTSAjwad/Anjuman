@@ -16,7 +16,7 @@ use chrono::Utc;
 use anjuman_contracts::note_types::{
     CreateTemplate, NoteTypeResponse, ReorderTemplates, UpdateNoteType, UpdateTemplate,
 };
-use anjuman_contracts::{MessageResponse, UserRole};
+use anjuman_contracts::MessageResponse;
 
 use crate::{
     auth::AuthUser,
@@ -29,13 +29,7 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCode, &'static str)> {
-    match claims.role {
-        UserRole::Admin | UserRole::Teacher => Ok(()),
-        UserRole::Student => Err((
-            StatusCode::FORBIDDEN,
-            "Only teachers and admins can manage note types",
-        )),
-    }
+    crate::permissions::require_teacher_or_admin(claims, "Only teachers and admins can manage note types")
 }
 
 /// Verify a note type exists in the caller's school and return its row id.

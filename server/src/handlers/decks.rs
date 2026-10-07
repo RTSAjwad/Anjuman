@@ -75,13 +75,7 @@ fn resolve_limit_input(
 pub fn check_teacher_or_admin(
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
-    match claims.role {
-        UserRole::Admin | UserRole::Teacher => Ok(()),
-        UserRole::Student => Err((
-            StatusCode::FORBIDDEN,
-            "Only teachers and admins can manage decks",
-        )),
-    }
+    crate::permissions::require_teacher_or_admin(claims, "Only teachers and admins can manage decks")
 }
 
 /// Check whether the caller can manage (edit/delete/share) a deck.

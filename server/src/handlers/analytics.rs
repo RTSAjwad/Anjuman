@@ -20,7 +20,6 @@ use anjuman_contracts::analytics::{
     ClassAnalytics, DailyPoint, DifficultCard, StudentDetail, StudentStats,
     StudentStatsWithEmail,
 };
-use anjuman_contracts::UserRole;
 
 use crate::{
     auth::AuthUser,
@@ -333,7 +332,7 @@ async fn check_class_access(
     school_id: i64,
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
-    if claims.role == UserRole::Student {
+    if !crate::permissions::can_view_analytics(claims) {
         return Err((
             StatusCode::FORBIDDEN,
             "Only teachers and admins can view class analytics",

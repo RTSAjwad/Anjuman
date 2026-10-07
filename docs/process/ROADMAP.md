@@ -1996,10 +1996,22 @@ school), not a separate special case.
 
 #### US-9.3 — Sweep the remaining inline role checks
 
-- Convert `search_users`, `analytics`, `dashboard`, `study` inline `claims.role`
-  checks to capability fns + `check_deck_studyable`/`check_deck_visible`.
-- **Tests:** per-conversion parity (student denied / teacher+admin allowed,
-  status codes unchanged).
+- [x] Convert the 6 duplicated `check_teacher_or_admin` definitions (decks,
+      deck_options_handler, classes, notes, note_types_handler, tags) and
+      `check_admin` (admin_users) to thin delegates over
+      `permissions::require_teacher_or_admin` / `require_admin`, preserving each
+      resource's deny message.
+- [x] Convert the inline `claims.role == Student` deny-gates in `search_users`,
+      `analytics` (`check_class_access`), `dashboard` to `require_teacher_or_admin`
+      / `can_view_analytics` / `can_view_dashboard`. (`study` already used
+      `check_deck_studyable` — no change.)
+- [x] Dropped the now-unused `UserRole` contract imports from the six converted
+      handler files (build is warning-free).
+- [x] Existing `server/tests/` cover the student-denied parity (tags, deck
+      permissions, teacher-admin study); full suite green.
+- [ ] (Note, deferred to US-9.4) the remaining `claims.role == Admin` *branches*
+      in `dashboard`/`classes`/`decks`/`notes` are **query-shaping** (admin sees
+      all vs. teacher's own), not deny-gates; leave for the final consistency pass.
 
 #### US-9.4 — Backfill + DoD gate
 
