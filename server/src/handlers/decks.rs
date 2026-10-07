@@ -41,7 +41,7 @@ use anjuman_contracts::{MessageResponse, UserRole};
 use crate::{
     auth::AuthUser,
     db_types::{DbLimitMode, DbUserRole},
-    permissions::{DeckPerm, deck_permission},
+    permissions::{DeckGovernance, DeckPerm, deck_governance, deck_permission},
     state::AppState,
 };
 
@@ -86,82 +86,65 @@ pub fn check_teacher_or_admin(
 
 /// Check whether the caller can manage (edit/delete/share) a deck.
 /// Admins can manage any deck in their school. Teachers must be the owner.
+///
+/// A thin adapter over `permissions::deck_governance` (stage 9): the
+/// owner/admin/deny logic lives in one place; this preserves the legacy
+/// signature + 404/403 status/message.
 pub async fn check_deck_owner(
     db: &sqlx::PgPool,
     deck_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
-    let row = sqlx::query!(
-        "SELECT id, created_by FROM decks WHERE id = $1 AND school_id = $2",
+    // 404 for a deck that doesn't exist in this school.
+    let exists = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM decks WHERE id = $1 AND school_id = $2) AS \"exists!: bool\"",
         deck_id,
         school_id
     )
-    .fetch_optional(db)
+    .fetch_one(db)
     .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    .ok_or((StatusCode::NOT_FOUND, "Deck not found"))?;
-
-    if claims.role == UserRole::Admin {
-        return Ok(());
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    if !exists {
+        return Err((StatusCode::NOT_FOUND, "Deck not found"));
     }
 
-    if row.created_by != claims.sub {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "You can only manage decks you created",
-        ));
+    match deck_governance(db, claims, deck_id).await? {
+        DeckGovernance::Manage => Ok(()),
+        _ => Err((StatusCode::FORBIDDEN, "You can only manage decks you created")),
     }
-
-    Ok(())
 }
 
 /// Check whether the caller can manage a deck's content (notes).
 /// Admins can manage any deck in their school. Teachers must be
 /// the owner OR a collaborator on the deck.
+///
+/// A thin adapter over `permissions::deck_governance` (stage 9): the
+/// owner/collaborator/admin/deny logic lives in one place; this preserves the
+/// legacy signature + 404/403 status/message.
 pub async fn check_deck_collaborator(
     db: &sqlx::PgPool,
     deck_id: i64,
     school_id: i64,
     claims: &crate::auth::Claims,
 ) -> Result<(), (StatusCode, &'static str)> {
-    let row = sqlx::query!(
-        "SELECT id, created_by FROM decks WHERE id = $1 AND school_id = $2",
+    // 404 for a deck that doesn't exist in this school.
+    let exists = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM decks WHERE id = $1 AND school_id = $2) AS \"exists!: bool\"",
         deck_id,
         school_id
-    )
-    .fetch_optional(db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    .ok_or((StatusCode::NOT_FOUND, "Deck not found"))?;
-
-    if claims.role == UserRole::Admin {
-        return Ok(());
-    }
-
-    // Owner can manage.
-    if row.created_by == claims.sub {
-        return Ok(());
-    }
-
-    // Check if the user is a collaborator.
-    let is_collab = sqlx::query_scalar!(
-        r#"SELECT EXISTS(SELECT 1 FROM deck_collaborators WHERE deck_id = $1 AND user_id = $2) AS "exists!: bool""#,
-        deck_id,
-        claims.sub
     )
     .fetch_one(db)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    if is_collab {
-        return Ok(());
+    if !exists {
+        return Err((StatusCode::NOT_FOUND, "Deck not found"));
     }
 
-    Err((
-        StatusCode::FORBIDDEN,
-        "You can only manage decks you own or collaborate on",
-    ))
+    match deck_governance(db, claims, deck_id).await? {
+        DeckGovernance::Manage | DeckGovernance::Contribute => Ok(()),
+        _ => Err((StatusCode::FORBIDDEN, "You can only manage decks you own or collaborate on")),
+    }
 }
 
 /// Deck access is now centralized in `crate::permissions` (US-4.7). Re-export

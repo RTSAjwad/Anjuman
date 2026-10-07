@@ -1985,12 +1985,14 @@ school), not a separate special case.
 
 #### US-9.2 — Deck governance through the relationship model
 
-- Make `check_deck_owner` = `require deck_governance == Manage`; make
-  `check_deck_collaborator` = `require deck_governance ∈ {Contribute, Manage}`
-  (thin adapters; delete their duplicated owner/collab SQL).
-- Preserve `move_card`'s **target-deck-only** collaborator check as-is (pre-existing;
-  do not add a source-deck check).
-- **Tests:** parity for owner/collaborator/admin/stranger across both helpers.
+- [x] Make `check_deck_owner` = `require deck_governance == Manage`; make
+      `check_deck_collaborator` = `require deck_governance ∈ {Contribute, Manage}`
+      (thin adapters; deleted their duplicated owner/collab SQL; preserved the
+      legacy 404/403 status + messages).
+- [x] Preserve `move_card`'s **target-deck-only** collaborator check as-is
+      (pre-existing; did not add a source-deck check).
+- [x] **Tests:** 8 parity tests in `server/tests/deck_governance_adapters.rs`
+      (owner/collaborator/admin/stranger/missing-deck for both helpers).
 
 #### US-9.3 — Sweep the remaining inline role checks
 
