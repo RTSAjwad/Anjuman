@@ -71,7 +71,45 @@ This is the Crux-idiomatic answer to routing: URLs/`leptos_router` are web-only
 and would duplicate core state. The five shells share one routing model carried
 by the `ViewModel` + `Event`s, not per-shell URL frameworks.
 
-## 4. The effect loop (canonical shape)
+## 4. Feature gating (permissions)
+
+The core resolves each user's capabilities server-side (`US-9.5`) and exposes
+them as `ViewModel.permissions` (a `Facet`-friendly struct of booleans). The
+shell's job is **UX gating only** — hiding (or dimming/locking) what the user
+isn't allowed to do. The server enforces every permission regardless; the client
+must merely mirror it so the two never drift.
+
+- **Read `permissions`, never re-derive a role.** The shell must not hard-code
+  `is_teacher`/`is_admin` checks or inspect `UserRole`. The only source of truth
+  is `ViewModel.permissions.*`: `can_administer_school`, `can_manage_users`,
+  `can_manage_decks`, `can_manage_notes`, `can_manage_presets`,
+  `can_manage_note_types`, `can_manage_tags`, `can_manage_classes`,
+  `can_view_dashboard`, `can_view_analytics`.
+
+- **Study is a separate layer.** Study is per-deck, gated by
+  `DeckSummary.studyable` — **not** in `permissions`. Never conflate the two:
+  anyone with a study grant has `studyable == true` regardless of role.
+  Study-side card actions (bury/suspend/reschedule/flag) are student-per-card and
+  are therefore governed by study access, not the management permission bundle.
+
+- **Hide vs. lock.** For management affordances, prefer *hiding* what the user
+  can't do (e.g. an "assign preset" picker). Where a read-only *view* should
+  remain reachable (e.g. the deck-options preset), keep the view but lock the
+  edit/save controls — dim the form and omit the Save button, with a
+  "you don't have permission" hint. This mirrors the existing `studyable`
+  disabled-row pattern.
+
+- **If a capability is missing, file a carve-out.** Do not invent a shell-local
+  permission check. If the `ViewModel` lacks a field a new affordance needs,
+  request it from the core agent rather than approximating it in the shell.
+
+- **New screens inherit the pattern.** When a management screen (decks, notes,
+  note-types, tags, classes, users, dashboard/analytics) lands, thread
+  `vm.permissions` the same way: gate each affordance on the matching `can_*`
+  field. Since `PermissionsView` is server-derived, a future DB-backed
+  permission table will not require shell changes.
+
+## 5. The effect loop (canonical shape)
 
 Every shell implements this loop. The Leptos example below is the reference
 implementation; translate the `task::spawn_local` + `async` to each platform's
@@ -118,7 +156,7 @@ Key points:
 - `resolve` returns a new batch of effects (usually just `Render`); recurse over
   them, don't drop them.
 
-## 5. Implementing each capability
+## 6. Implementing each capability
 
 ### HTTP (`crux_http`)
 
@@ -150,7 +188,7 @@ KeyValueResponse::Get/Set/Delete { .. } }`). Reference:
 platform time and the pattern is identical: an `Effect::Time(op)` variant resolved
 with the platform's clock.
 
-## 6. Where a shell's work is *specified*
+## 7. Where a shell's work is *specified*
 
 A shell agent does **not** read the user stories and invent behaviour — it
 satisfies the **shell contract** and the **coverage matrix**:
@@ -164,7 +202,7 @@ If the contract is silent on something a shell needs (an ambiguous prop, a
 missing event), ask — don't invent a convention. The contract is the interface
 between the core agent and the shell agent.
 
-## 7. Per-shell gotchas (live here, not in the shared docs)
+## 8. Per-shell gotchas (live here, not in the shared docs)
 
 - **Leptos** — CSR-only single binary (no `lib` target). Wraps the tree in thaw's
   `<ConfigProvider>`; prefers plain `<div>` for layout (nesting thaw components
