@@ -67,7 +67,7 @@ pub struct NoteModResponse {
 }
 
 /// Query parameters for `GET /cards`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CardBrowserQuery {
     /// Comma-separated deck IDs, e.g. "1,2,3"
@@ -104,7 +104,7 @@ fn default_per_page() -> i64 {
 }
 
 /// A single card in the browser view.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CardBrowserResponse {
     pub card_id: i64,
@@ -138,7 +138,7 @@ pub struct CardBrowserResponse {
 }
 
 /// A page of card-browser results.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CardBrowserPage {
     pub cards: Vec<CardBrowserResponse>,

@@ -16,7 +16,10 @@ use facet::Facet;
 use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, Permissions, UserResponse};
-use anjuman_contracts::cards::{CardModResponse, NoteModResponse, RescheduleBody};
+use anjuman_contracts::cards::{
+    CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, NoteModResponse,
+    RescheduleBody,
+};
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::reviews::{FlagResponse, SetFlag};
@@ -89,6 +92,17 @@ pub struct Model {
     /// A human-readable error from the last card action (bury/suspend/
     /// reschedule/flag) during study, if any.
     pub card_action_error: Option<String>,
+    /// The card-browser result set + page info (from `GET /cards`).
+    pub browser_cards: Vec<CardBrowserResponse>,
+    pub browser_page: i64,
+    pub browser_per_page: i64,
+    pub browser_total: i64,
+    /// The card currently selected in the browser (for per-card actions).
+    pub browser_selected: Option<CardBrowserResponse>,
+    /// The last filter used to fetch the browser (so actions can refresh).
+    pub browser_filter: Option<CardBrowserFilter>,
+    /// A human-readable error from the last card-browser fetch, if any.
+    pub browser_error: Option<String>,
 }
 
 /// Authentication state.
@@ -169,6 +183,32 @@ pub enum Event {
     },
     /// Set the current card's flag (0-7; 0 clears the flag).
     FlagCard {
+        flag: i32,
+    },
+    /// Fetch the card browser (US-4.12) with the given filter.
+    CardsRequested {
+        filter: CardBrowserFilter,
+    },
+    /// Select a card in the browser (enables per-card actions).
+    BrowserSelectCard {
+        card_id: i64,
+    },
+    /// Suspend a browser card by id.
+    BrowserSuspendCard {
+        card_id: i64,
+    },
+    /// Bury a browser card by id.
+    BrowserBuryCard {
+        card_id: i64,
+    },
+    /// Reschedule a browser card by id to `days` from now.
+    BrowserRescheduleCard {
+        card_id: i64,
+        days: i64,
+    },
+    /// Set a browser card's flag by id (0-7).
+    BrowserFlagCard {
+        card_id: i64,
         flag: i32,
     },
     /// Leave the study screen and return to the deck list: clear the selection
@@ -252,6 +292,26 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     FlagDone(#[facet(opaque)] crux_http::Result<crux_http::Response<FlagResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    CardsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<CardBrowserPage>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserCardActionDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<CardModResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserRescheduleDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<CardModResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserFlagDone(#[facet(opaque)] crux_http::Result<crux_http::Response<FlagResponse>>),
 }
 
 /// Side effects the core requests from the shell.
@@ -318,6 +378,15 @@ pub struct ViewModel {
     /// A human-readable error from the last card action (bury/suspend/
     /// reschedule/flag) during study, if any.
     pub card_action_error: Option<String>,
+    /// The card-browser results to render (US-4.12).
+    pub browser_cards: Vec<CardBrowserView>,
+    pub browser_page: i64,
+    pub browser_per_page: i64,
+    pub browser_total: i64,
+    /// The card currently selected in the browser, for per-card actions.
+    pub browser_selected: Option<CardBrowserView>,
+    /// A human-readable error from the last card-browser fetch, if any.
+    pub browser_error: Option<String>,
 }
 
 /// The shell-facing view of the user's global capabilities (a Facet mirror of
@@ -350,6 +419,86 @@ impl From<&Permissions> for PermissionsView {
             can_manage_classes: p.can_manage_classes,
             can_view_dashboard: p.can_view_dashboard,
             can_view_analytics: p.can_view_analytics,
+        }
+    }
+}
+
+/// The shell-facing card-browser filter (US-4.12). The core folds these into the
+/// wire `CardBrowserQuery`'s comma-separated strings when building the request.
+/// Empty `Vec`s mean "no filter"; `None` means "not set".
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct CardBrowserFilter {
+    pub deck_ids: Vec<i64>,
+    pub note_type_ids: Vec<i64>,
+    pub q: Option<String>,
+    /// `new`, `learning`, `review`, `relearning`.
+    pub states: Vec<String>,
+    /// Anki-style flag values 0-7 (empty = no filter).
+    pub flags: Vec<i64>,
+    pub sort: String,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+impl CardBrowserFilter {
+    /// Fold into the wire `CardBrowserQuery` (comma-separated multi-values),
+    /// defaulting `sort`/`page`/`per_page` when unset.
+    pub fn to_wire_query(&self) -> CardBrowserQuery {
+        CardBrowserQuery {
+            deck_id: csv_i64(&self.deck_ids),
+            note_type_id: csv_i64(&self.note_type_ids),
+            q: self.q.clone(),
+            state: self.states.join(","),
+            flag: csv_i64(&self.flags),
+            sort: if self.sort.is_empty() {
+                "created_at".to_string()
+            } else {
+                self.sort.clone()
+            },
+            page: if self.page > 0 { self.page } else { 1 },
+            per_page: if self.per_page > 0 { self.per_page } else { 50 },
+        }
+    }
+}
+
+/// Join `i64`s into a comma-separated string (empty for an empty list).
+fn csv_i64(vals: &[i64]) -> String {
+    vals.iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// A shell-facing browser card (a Facet mirror of the wire `CardBrowserResponse`).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Debug)]
+pub struct CardBrowserView {
+    pub card_id: i64,
+    pub note_id: i64,
+    pub deck_id: i64,
+    pub deck_title: String,
+    pub note_type_name: String,
+    pub front: String,
+    pub back: String,
+    pub state: String,
+    pub flag: i64,
+    pub suspended: bool,
+    pub buried: bool,
+}
+
+impl From<&CardBrowserResponse> for CardBrowserView {
+    fn from(c: &CardBrowserResponse) -> Self {
+        CardBrowserView {
+            card_id: c.card_id,
+            note_id: c.note_id,
+            deck_id: c.deck_id,
+            deck_title: c.deck_title.clone(),
+            note_type_name: c.note_type_name.clone(),
+            front: c.front.clone(),
+            back: c.back.clone(),
+            state: c.state.clone().unwrap_or_default(),
+            flag: c.flag.unwrap_or(0),
+            suspended: c.suspended.unwrap_or(false),
+            buried: c.buried_at.is_some(),
         }
     }
 }
@@ -527,6 +676,16 @@ fn fold_study_counts_into_decks(
     deck.learning_count = Some(counts.learning_count);
     deck.review_count = Some(counts.review_count);
     deck.relearning_count = Some(counts.relearning_count);
+}
+
+/// Re-fetch the card browser using the last stored filter (returns a `Render` for
+/// the current state, chained with a `CardsRequested` command). For browser action
+/// completions, which refresh the list rather than the study loop.
+fn refresh_browser(model: &Model) -> Command<Effect, Event> {
+    let Some(filter) = model.browser_filter.clone() else {
+        return render::render();
+    };
+    render::render().and(Command::event(Event::CardsRequested { filter }))
 }
 
 /// The shell-facing view of a deck-options preset (a `Facet`/`PartialEq`-friendly
@@ -928,6 +1087,10 @@ impl crux_core::App for Anjuman {
                 model.tag_tree.clear();
                 model.tags_error = None;
                 model.card_action_error = None;
+                model.browser_cards.clear();
+                model.browser_selected = None;
+                model.browser_filter = None;
+                model.browser_error = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
             }
@@ -1417,6 +1580,144 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::CardsRequested { filter } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_filter = Some(filter.clone());
+                model.browser_error = None;
+                let query = filter.to_wire_query();
+                Http::get(format!("{API_URL}/cards"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .query(&query)
+                    .expect("serialize card browser query")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::CardsResult)
+            }
+
+            Event::CardsResult(Ok(mut response)) => {
+                let page = response.take_body().expect("cards response has a body");
+                model.browser_cards = page.cards;
+                model.browser_page = page.page;
+                model.browser_per_page = page.per_page;
+                model.browser_total = page.total;
+                model.browser_error = None;
+                render::render()
+            }
+
+            Event::CardsResult(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserSelectCard { card_id } => {
+                model.browser_selected =
+                    model.browser_cards.iter().find(|c| c.card_id == card_id).cloned();
+                render::render()
+            }
+
+            Event::BrowserSuspendCard { card_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/suspend"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserCardActionDone)
+            }
+
+            Event::BrowserBuryCard { card_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/bury"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserCardActionDone)
+            }
+
+            Event::BrowserRescheduleCard { card_id, days } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                let body = RescheduleBody {
+                    due_at: None,
+                    days: Some(days),
+                };
+                Http::patch(format!("{API_URL}/cards/{card_id}/reschedule"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize reschedule body")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserRescheduleDone)
+            }
+
+            Event::BrowserFlagCard { card_id, flag } => {
+                if !(0..=7).contains(&flag) {
+                    return render::render();
+                }
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                let body = SetFlag { flag };
+                Http::patch(format!("{API_URL}/cards/{card_id}/flag"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize set flag")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserFlagDone)
+            }
+
+            // Browser action completions refresh the list using the last filter
+            // (unlike the study actions, which advance to the next due card).
+            Event::BrowserCardActionDone(Ok(_)) => {
+                model.browser_error = None;
+                refresh_browser(model)
+            }
+
+            Event::BrowserCardActionDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserRescheduleDone(Ok(_)) => {
+                model.browser_error = None;
+                refresh_browser(model)
+            }
+
+            Event::BrowserRescheduleDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserFlagDone(Ok(mut response)) => {
+                let flag = response.take_body().expect("flag response has a body");
+                if let Some(card) = model.browser_cards.iter_mut().find(|c| c.card_id == flag.card_id) {
+                    card.flag = Some(flag.flag);
+                }
+                model.browser_error = None;
+                render::render()
+            }
+
+            Event::BrowserFlagDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::DecksRequested => {
                 model.decks_error = None;
                 // Needs the current token; only reachable when authenticated.
@@ -1495,6 +1796,12 @@ impl crux_core::App for Anjuman {
                 tag_tree: model.tag_tree.iter().map(TagNodeView::from).collect(),
                 tags_error: model.tags_error.clone(),
                 card_action_error: model.card_action_error.clone(),
+                browser_cards: model.browser_cards.iter().map(CardBrowserView::from).collect(),
+                browser_page: model.browser_page,
+                browser_per_page: model.browser_per_page,
+                browser_total: model.browser_total,
+                browser_selected: model.browser_selected.as_ref().map(CardBrowserView::from),
+                browser_error: model.browser_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -1518,6 +1825,12 @@ impl crux_core::App for Anjuman {
                 tag_tree: Vec::new(),
                 tags_error: None,
                 card_action_error: None,
+                browser_cards: Vec::new(),
+                browser_page: 1,
+                browser_per_page: 50,
+                browser_total: 0,
+                browser_selected: None,
+                browser_error: None,
             },
         }
     }
@@ -1826,6 +2139,44 @@ mod tests {
                 },
             },
             ..Model::default()
+        }
+    }
+
+    fn browser_card(card_id: i64) -> CardBrowserResponse {
+        CardBrowserResponse {
+            card_id,
+            note_id: 1,
+            deck_id: 1,
+            deck_title: "Spanish".to_string(),
+            template_id: 1,
+            front: "front".to_string(),
+            back: "back".to_string(),
+            note_type_name: "Basic".to_string(),
+            note_type_id: 1,
+            template_name: "Card 1".to_string(),
+            fields: serde_json::Map::new(),
+            state: Some("review".to_string()),
+            due_at: None,
+            stability: None,
+            difficulty: None,
+            reps: None,
+            lapses: None,
+            flag: Some(0),
+            suspended: Some(false),
+            buried_at: None,
+            bury_reason: None,
+            created_at: chrono::Utc::now(),
+            new_card_position: None,
+        }
+    }
+
+    fn browser_page(cards: Vec<CardBrowserResponse>) -> CardBrowserPage {
+        let total = cards.len() as i64;
+        CardBrowserPage {
+            cards,
+            page: 1,
+            per_page: 50,
+            total,
         }
     }
 
@@ -3127,5 +3478,176 @@ mod tests {
         let card_view = vm.current_card.as_ref().expect("current card");
         assert_eq!(card_view.note_id, 99);
         assert_eq!(card_view.flag, 4);
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.12 — card browser
+    // --------------------------------------------------------------------
+
+    /// `CardsRequested` emits `GET /cards` with the folded query + bearer header.
+    #[test]
+    fn cards_requested_emits_get_with_query() {
+        let mut model = authenticated_model();
+        let filter = CardBrowserFilter {
+            deck_ids: vec![1, 2],
+            note_type_ids: vec![7],
+            q: Some("DNA".to_string()),
+            states: vec!["review".to_string()],
+            flags: vec![1, 3],
+            sort: "due_at".to_string(),
+            page: 2,
+            per_page: 25,
+        };
+        let effects = update(Event::CardsRequested { filter }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                let url = req.operation.url.to_string();
+                assert!(url.starts_with("http://127.0.0.1:3000/cards?"), "url = {url}");
+                assert!(url.contains("deck_id=1,2"), "url = {url}");
+                assert!(url.contains("note_type_id=7"), "url = {url}");
+                assert!(url.contains("q=DNA"), "url = {url}");
+                assert!(url.contains("state=review"), "url = {url}");
+                assert!(url.contains("flag=1,3"), "url = {url}");
+                assert!(url.contains("sort=due_at"), "url = {url}");
+                assert!(url.contains("page=2"), "url = {url}");
+                assert!(url.contains("per_page=25"), "url = {url}");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `CardsResult(Ok)` populates the browser list + page info and the view.
+    #[test]
+    fn cards_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(browser_page(vec![browser_card(11), browser_card(12)]))
+            .build();
+        let _ = update(Event::CardsResult(Ok(response)), &mut model);
+
+        assert_eq!(model.browser_cards.len(), 2);
+        assert_eq!(model.browser_total, 2);
+        assert!(model.browser_error.is_none());
+
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.browser_cards.len(), 2);
+        assert_eq!(vm.browser_cards[0].card_id, 11);
+        assert_eq!(vm.browser_cards[0].deck_title, "Spanish");
+    }
+
+    /// `BrowserSelectCard` records the selected card; an unknown id clears it.
+    #[test]
+    fn browser_select_card_records_selection() {
+        let mut model = authenticated_model();
+        model.browser_cards = vec![browser_card(11), browser_card(12)];
+
+        let _ = update(Event::BrowserSelectCard { card_id: 12 }, &mut model);
+        assert_eq!(model.browser_selected.as_ref().map(|c| c.card_id), Some(12));
+
+        let _ = update(Event::BrowserSelectCard { card_id: 999 }, &mut model);
+        assert!(model.browser_selected.is_none());
+    }
+
+    /// `BrowserSuspendCard` emits `POST /cards/{id}/suspend`.
+    #[test]
+    fn browser_suspend_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserSuspendCard { card_id: 42 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/suspend"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserBuryCard` emits `POST /cards/{id}/bury`.
+    #[test]
+    fn browser_bury_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserBuryCard { card_id: 42 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/bury"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserRescheduleCard` emits `PATCH /cards/{id}/reschedule` with a body.
+    #[test]
+    fn browser_reschedule_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserRescheduleCard { card_id: 42, days: 3 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/reschedule"
+                );
+                let body: RescheduleBody =
+                    serde_json::from_slice(&req.operation.body).expect("body JSON");
+                assert_eq!(body.days, Some(3));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserFlagCard` emits `PATCH /cards/{id}/flag`; out-of-range is a no-op.
+    #[test]
+    fn browser_flag_emits_patch_and_rejects_out_of_range() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserFlagCard { card_id: 42, flag: 3 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/flag"
+                );
+                let body: SetFlag =
+                    serde_json::from_slice(&req.operation.body).expect("body JSON");
+                assert_eq!(body.flag, 3);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+
+        let noop = update(Event::BrowserFlagCard { card_id: 42, flag: 8 }, &mut model);
+        assert!(!noop.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// A filter fold rounds out defaults and commas for multi-selects.
+    #[test]
+    fn filter_to_wire_query_folds_defaults() {
+        let f = CardBrowserFilter::default();
+        let q = f.to_wire_query();
+        assert_eq!(q.deck_id, "");
+        assert_eq!(q.sort, "created_at");
+        assert_eq!(q.page, 1);
+        assert_eq!(q.per_page, 50);
+
+        let f = CardBrowserFilter {
+            deck_ids: vec![1, 2],
+            flags: vec![1, 3],
+            ..CardBrowserFilter::default()
+        };
+        let q = f.to_wire_query();
+        assert_eq!(q.deck_id, "1,2");
+        assert_eq!(q.flag, "1,3");
     }
 }

@@ -1704,15 +1704,18 @@ fields, no tests.
 
 **Acceptance criteria**
 
-- [ ] `Event::CardsRequested { .. }` emits `GET /cards` with the query params
-      (deck/note-type/state/flag/q/sort/page/per-page) + bearer header.
-- [ ] `CardsResult(Ok)` populates `Model.cards` + page/total, surface via a
-      `CardBrowserView` (Facet mirror of `CardBrowserResponse`); `Err` sets
-      `cards_error`.
-- [ ] Reusing the US-4.5b actions, a selected browser card supports
-      `SuspendCard`/`BuryCard`/`RescheduleCard`/`FlagCard` (by card id, without a
-      `Model.current_card` — i.e. the browser must carry its own selected card).
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+- [x] `Event::CardsRequested { filter: CardBrowserFilter }` emits `GET /cards`
+      with the folded query params (deck/note-type/state/flag/q/sort/page/
+      per-page, CSV multi-values via `to_wire_query`) + bearer header.
+- [x] `CardsResult(Ok)` populates `Model.browser_cards`/`browser_page`/
+      `browser_per_page`/`browser_total`, surfaced via `CardBrowserView` (Facet
+      mirror); `Err` sets `browser_error`.
+- [x] A selected browser card (`BrowserSelectCard`) supports
+      `BrowserSuspendCard`/`BrowserBuryCard`/`BrowserRescheduleCard`/
+      `BrowserFlagCard` (by card id, independent of `Model.current_card`);
+      completions refresh the list via the last stored filter (`refresh_browser`),
+      and `BrowserFlagDone` updates the card's flag in place.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes (75).
 
 **Shell contract**
 
