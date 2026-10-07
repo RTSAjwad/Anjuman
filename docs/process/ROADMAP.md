@@ -1912,62 +1912,113 @@ Consolidate the organically-grown authorization into a single, scalable model
 behind a capability seam. Today authorization is three overlapping layers: a
 centralized JWT `role`, ~40 hand-rolled `if role` checks spread across ~9
 handlers, and the US-4.7 deck-grant module. This stage makes them **one** model
-with a documented decision, without committing to a schema change.
+with a documented decision. See [`docs/adr/permissions-model.md`](../adr/permissions-model.md) for the
+full analysis and the models comparison (RBAC / PBAC / ABAC / ReBAC).
 
-**This stage is scoped but *not* decided** — the design questions below are
-deliberately left open until it is tackled. See
-[`docs/adr/permissions-model.md`](../adr/permissions-model.md) for the full
-analysis and the models comparison (RBAC / PBAC / ABAC / ReBAC).
+### Settled decisions (locked)
 
-### Scope (the boundary, fixed)
+- **Naming:** resource-first capability names (`can_manage_decks`,
+  `can_manage_notes`, …).
+- **Capability list:** the exact table below (refine later, not now).
+- **Deck governance levels:** add `DeckPerm::Manage` (owner/admin) **and**
+  `DeckPerm::Contribute` (owner/collaborator/admin) — two governance levels,
+  distinct from `Study`, so "collaborator may edit content but not delete the
+  deck" stays expressible. `Manage ⊇ Contribute ⊇ Study ⊇ VisibleOnly ⊇ None`.
+- **Admin trump (deck capabilities):** keep current behavior — `Admin` → `Manage`
+  on any deck in school, skipping the owner/collab relationship check. (Admins are
+  **not** trumped for *study*; `deck_access` already has no admin shortcut.)
+- **Incremental:** one story per capability group, each independently green.
+- **No schema change; no ABAC; `role` stays in the JWT** (coarse fast-path).
 
-- **In:** centralize *all* authorization into `server/src/permissions.rs`;
-  replace every ad-hoc `claims.role` match with capability-named predicates
-  (`can_manage_decks`, `can_manage_notes`, `can_manage_presets`,
-  `can_administer_school`, …); make deck *governance* and deck *study* share one
-  relationship model (add `DeckPerm::Manage` and route `check_deck_owner`/
-  `check_deck_collaborator` through it).
-- **In:** an explicit **PBAC seam** — a single `has_permission(...)`/capability
-  funnel every decision passes through — so migrating role→permission to a table
-  later is a one-function swap, not a handler sweep.
-- **Out:** no DB permission table in this pass; no ABAC/policy engine (rejected,
-  see ADR); no removal of the JWT `role` claim; no *new* permissions (behavior
-  is preserved — this is a refactor + a decision, not a feature).
+### The model (two steps, never conflated)
 
-### Design questions to settle (deferred — do not decide now)
+Every authorization decision is: **capability (role bundle) AND relationship
+(user ↔ specific resource)**.
 
-- [ ] **Capability naming** — resource-first (`can_manage_decks`) vs action-first
-      (`can_decks_manage`). Pick one and apply uniformly.
-- [ ] **Governance vs study unification** — add `DeckPerm::Manage` now and route
-      `check_deck_owner`/`check_deck_collaborator` through `deck_permission`, or
-      keep governance separate from study for this pass and unify later.
-- [ ] **Membership second axis** — `class_members.membership_role`
-      (teacher/student *within* a class) currently overlaps the global
-      `users.role`. Fold it into the capability model, or keep it a distinct axis?
-- [ ] **Role in JWT vs. DB** — keep `role` in the token as the coarse fast-path
-      (recommended), or drop it and always hit the DB? (Stale-24h-token concern.)
+```
+allow  if  capability(role)                 // "may this kind of user do this kind of action at all?"
+         AND relationship(user, resource)   // "…to *this specific* resource?"
+```
 
-### Likely decomposition (tentative — refine when planning the stage)
+A role does not grant access to a *particular* resource; it only says *what kind
+of action* that role may take *on resources it is related to* in a specific way.
+The "admin trump" is one relationship rule (admin → `Manage` on any deck in
+school), not a separate special case.
 
-- [ ] `US-9.1` — move `check_teacher_or_admin`/`check_admin`/`check_deck_owner`/
-      `check_deck_collaborator` into `permissions.rs` as named capabilities;
-      delete the ~40 duplicates. `server/tests/` named test per capability.
-- [ ] `US-9.2` — add `DeckPerm::Manage` (or settle governance-vs-study split) and
-      route the deck-governance helpers through the relationship model.
-- [ ] `US-9.3` — introduce the `has_permission(...)`/capability seam (the one
-      funnel), and convert remaining inline `claims.role` checks (search_users,
-      analytics, dashboard, study) to it.
-- [ ] `US-9.4` — backfill: a test per capability proving behavior is unchanged;
-      OpenAPI route coverage identical; no new warnings.
+### Capability list (exact)
+
+| Capability | Role bundle | Relationship gate | Backed by today |
+|---|---|---|---|
+| `can_administer_school` | `{Admin}` | none (school-wide) | `check_admin` |
+| `can_manage_users` | `{Admin}` | none (school-wide) | `admin_users.rs` |
+| `can_manage_classes` | `{Admin, Teacher}` | none (school-wide) | `classes.rs` |
+| `can_manage_note_types` | `{Admin, Teacher}` | none | `note_types_handler.rs` |
+| `can_manage_presets` | `{Admin, Teacher}` | none | `deck_options_handler.rs` |
+| `can_manage_tags` | `{Admin, Teacher}` | none | `tags.rs` |
+| `can_manage_deck` | `{Admin, Teacher}` | owner **or** admin (this deck) → `Manage` | `check_deck_owner` |
+| `can_manage_deck_content` | `{Admin, Teacher}` | owner **or** collaborator **or** admin (this deck) → `Contribute` | `check_deck_collaborator` |
+| `can_view_deck_administration` | `{Admin, Teacher}` | owner/collab/admin (this deck) | `is_deck_collaborator` |
+| `can_study_deck` | any authenticated | grant over subtree (recursive) → `Study` | `deck_permission` |
+| `can_act_on_own_card` | any authenticated | own `student_card_states` row | card_mod (no gate today) |
+| `can_view_dashboard` / `can_view_analytics` | teacher/admin vs student shape | none | inline `role == Student` |
+
+### Stories (incremental, each green)
+
+#### US-9.1 — Primitives + capability module (no behavior change)
+
+- Extend `DeckPerm` in `permissions.rs` to `None | VisibleOnly | Study |
+  Contribute | Manage` (ordered; ordering asserts `Manage ⊇ Contribute ⊇ Study ⊇
+  VisibleOnly`).
+- Add role-bundle capability fns (pure `Claims → bool`, no DB):
+  `can_administer_school`, `can_manage_users`, `can_manage_decks` (role term),
+  `can_manage_notes`, `can_manage_presets`, `can_manage_note_types`,
+  `can_manage_tags`, `can_manage_classes`.
+- Add `deck_permission`'s `Manage`/`Contribute` return for owner/collaborator
+  (admin trump included); keep `deck_access` and re-exports intact.
+- **Tests (named):** `deck_permission_returns_manage_for_owner`,
+  `..._contribute_for_collaborator`, `..._manage_for_admin`,
+  `..._study_for_granted_non_owner`, `..._none_for_unrelated`,
+  `role_bundle_student_cannot_manage_decks`, `role_bundle_teacher_can_manage_decks`.
+
+#### US-9.2 — Deck governance through the relationship model
+
+- Make `check_deck_owner` = `require deck_permission == Manage`; make
+  `check_deck_collaborator` = `require deck_permission ∈ {Contribute, Manage}`
+  (thin adapters; delete their duplicated owner/collab SQL).
+- Preserve `move_card`'s **target-deck-only** collaborator check as-is (pre-existing;
+  do not add a source-deck check).
+- **Tests:** parity for owner/collaborator/admin/stranger across both helpers.
+
+#### US-9.3 — Sweep the remaining inline role checks
+
+- Convert `search_users`, `analytics`, `dashboard`, `study` inline `claims.role`
+  checks to capability fns + `check_deck_studyable`/`check_deck_visible`.
+- **Tests:** per-conversion parity (student denied / teacher+admin allowed,
+  status codes unchanged).
+
+#### US-9.4 — Backfill + DoD gate
+
+- Delete every now-dead `check_teacher_or_admin` copy; `grep`-assert exactly one
+  definition remains.
+- `server/tests/` named test **per capability** in the table.
+- OpenAPI route coverage unchanged; `cargo build`/`cargo test` green; no new
+  warnings; flip the stage checkbox.
+
+### Remaining open (not blocking — resolve only if it bites)
+
+- [ ] **Membership second axis** — `class_members.membership_role` (teacher/student
+      *within* a class) still overlaps the global `users.role`. Kept distinct for
+      now; revisit when class-scoped management appears.
+- [ ] **Role in JWT vs. DB** — settled as "keep `role` in the JWT" for this pass;
+      the capability seam makes a later DB-backed move a one-function swap.
 
 ### Notes / ordering
 
-- This is a **prerequisite** for stage 7 (personal deck options needs a
-  "who may override" permission) and threads through stage 6 (tag/browser). It
-  is placed as stage 9 so the backlog ordering stays stable, but it may be pulled
-  forward once stage 7 stops being deferred.
-- **No ABAC** — recorded as an explicit non-goal. Revisit only if a
-  per-school-configurable policy requirement ever appears.
+- **Prerequisite** for stage 7 (personal deck options needs a "who may override"
+  permission → `can_manage_deck`-or-`can_study_deck` + a new per-deck flag) and
+  threads through stage 6 (tag/browser). Placed as stage 9 to keep the backlog
+  ordering stable; may be pulled forward once stage 7 stops being deferred.
+- **No ABAC** — explicit non-goal; revisit only for per-school-configurable policy.
 
 ---
 

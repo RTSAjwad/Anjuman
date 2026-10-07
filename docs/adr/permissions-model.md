@@ -37,15 +37,24 @@ layers, and reject the heavier alternatives (see "Consequences"):
 1. **RBAC as a thin, fast, coarse layer** — keep `role` in the JWT for the cheap
    auth fast-path and coarse gates (`Admin` → manage any deck in school).
 2. **Capability-named predicates (PBAC seam)** — replace the ~40 `if role`
-   checks with functions that read as intent: `can_manage_decks(claims)`,
-   `can_manage_notes(db, claims, deck)`, `can_manage_presets(claims)`,
-   `can_administer_school(claims)`, …
+   checks with functions that read as intent: `can_manage_decks`, `can_manage_notes`,
+   `can_manage_presets`, `can_administer_school`, … (resource-first naming).
 3. **Generalized relationship model (ReBAC)** — extend the existing resource-grant
-   (`deck_access`) so "governance vs study" is one enum (add `DeckPerm::Manage`),
-   and route `check_deck_owner`/`check_deck_collaborator` through it, so "may this
-   user act on this resource" is answered in one place by relationship
-   (owner / collaborator / class member / ancestor / descendant), not by role
-   label alone.
+   (`deck_access`) so "governance vs study" is one enum with **two governance
+   levels**: `DeckPerm::Manage` (owner/admin) and `DeckPerm::Contribute`
+   (owner/collaborator/admin), ordered `Manage ⊇ Contribute ⊇ Study ⊇
+   VisibleOnly ⊇ None`. This keeps "collaborator may edit content but not delete
+   the deck" expressible, which a single `Manage` level would either over-grant
+   (collaborators) or under-grant (owners).
+
+Every decision is **capability (role bundle) AND relationship (user ↔ resource)**;
+a role never grants a *particular* resource, only the *kind of action* that role
+may take on resources it is related to in a specific way.
+
+**Admin trump (deck capabilities): kept.** `Admin → Manage` on any deck in school,
+skipping the owner/collaborator relationship check — matching current
+`check_deck_owner` behavior. Admins are **not** trumped for *study* (the existing
+`deck_access` has no admin shortcut and keeps none).
 
 The transition is **Option A now, structured so B drops in later**: the
 `has_permission`/capability seam is the *single* funnel every decision passes
@@ -80,11 +89,13 @@ later is a swap of one function's implementation, not a handler sweep.
 - **Non-goal (explicit):** no ABAC/policy engine; no DB permission table in this
   pass; no removal of the JWT `role` claim.
 
-## Open questions (carried into the stage's design section)
+## Open questions
 
-1. Capability-naming convention (resource-first `can_manage_notes` vs.
-   action-first `can_notes_manage`).
-2. Whether `DeckPerm` gains a `Manage` level now, or deck *governance* stays
-   separate from deck *study* for this pass.
-3. Whether `class_members.membership_role` should be folded into the same
-   capability model or kept as a distinct axis.
+1. ~~Capability-naming convention~~ → **resource-first** (`can_manage_notes`).
+2. ~~Governance levels~~ → **two**: `DeckPerm::Manage` (owner/admin) + `Contribute`
+   (owner/collaborator/admin), both distinct from `Study`.
+3. ~~Admin trump~~ → **kept** (admin manages any deck in school).
+4. Membership second axis (`class_members.membership_role` vs. global `users.role`)
+   — kept distinct for now; revisit when class-scoped management appears.
+5. Role in JWT vs DB — kept in JWT for this pass; the capability seam makes a
+   later DB-backed move a one-function swap.
