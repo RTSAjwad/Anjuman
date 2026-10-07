@@ -567,12 +567,14 @@ impl From<&CardBrowserResponse> for CardBrowserView {
     }
 }
 
-/// A shell-facing note type (id + name) for filter dropdowns (a Facet mirror of
-/// the wire `NoteTypeResponse`, carrying only the fields a picker needs).
+/// A shell-facing note type for pickers (a Facet mirror of the wire
+/// `NoteTypeResponse`, carrying the fields a picker + editor needs).
 #[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
 pub struct NoteTypeView {
     pub id: i64,
     pub name: String,
+    /// The note type's field names, in order (drives the note editor inputs).
+    pub field_names: Vec<String>,
 }
 
 impl From<&NoteTypeResponse> for NoteTypeView {
@@ -580,6 +582,7 @@ impl From<&NoteTypeResponse> for NoteTypeView {
         NoteTypeView {
             id: n.id,
             name: n.name.clone(),
+            field_names: n.field_names.clone(),
         }
     }
 }
@@ -2467,7 +2470,7 @@ mod tests {
         NoteTypeResponse {
             id,
             name: name.to_string(),
-            field_names: vec![],
+            field_names: vec!["Front".to_string(), "Back".to_string()],
             sort_field: String::new(),
             styling: String::new(),
             templates: vec![],
@@ -4008,6 +4011,7 @@ mod tests {
         assert_eq!(vm.note_types[0].id, 1);
         assert_eq!(vm.note_types[0].name, "Basic");
         assert_eq!(vm.note_types[1].name, "Reversed");
+        assert_eq!(vm.note_types[0].field_names, vec!["Front".to_string(), "Back".to_string()]);
     }
 
     // --------------------------------------------------------------------
