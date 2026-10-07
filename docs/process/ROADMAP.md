@@ -1715,13 +1715,16 @@ fields, no tests.
       `BrowserFlagCard` (by card id, independent of `Model.current_card`);
       completions refresh the list via the last stored filter (`refresh_browser`),
       and `BrowserFlagDone` updates the card's flag in place.
-- [x] Each criterion has a `shared` test named after it; `cargo test` passes (75).
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes (77).
 
 **Shell contract**
 
-- [ ] Render the card table (front/back preview, deck, state, due, flag,
-      suspended/buried), the filter/sort controls, and pagination.
-- [ ] Per-row action menu (suspend/bury/reschedule/flag) forwarding the events.
+- [x] Render the card table (front/back preview, deck, state, due, flag,
+      suspended/buried), the filter/sort controls (incl. the note-type dropdown
+      fed by `NoteTypesRequested`), and pagination.
+- [x] Per-row action menu (suspend/bury/reschedule/flag) forwarding the events.
+- [x] (carve-out) note-type list (`NoteTypesRequested`/`vm.note_types`) added to
+      the core; shell consumed it for the filter dropdown.
 
 **Out of scope**
 
