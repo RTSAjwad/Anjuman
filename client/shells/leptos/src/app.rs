@@ -11,11 +11,11 @@
 
 use leptos::prelude::*;
 use shared::app::{
-    CardBrowserFilter, DeckOptionsEdit, DeckOptionsView, DeckSummary, DeckView, PresetSummary,
-    StudyCardView, StudyCountsView,
+    CardBrowserFilter, DeckOptionsEdit, DeckOptionsView, DeckSummary, DeckView, NoteView,
+    PresetSummary, StudyCardView, StudyCountsView,
 };
 use shared::{Event, ViewModel};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
     BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
@@ -136,10 +136,13 @@ pub fn RootComponent() -> impl IntoView {
                                 <NavItem value=RwSignal::new("decks".to_string())>
                                     "Decks"
                                 </NavItem>
-                                {if vm.permissions.can_manage_notes || vm.permissions.can_manage_decks {
+                                <NavItem value=RwSignal::new("cards".to_string())>
+                                    "Cards"
+                                </NavItem>
+                                {if vm.permissions.can_manage_notes {
                                     view! {
-                                        <NavItem value=RwSignal::new("cards".to_string())>
-                                            "Cards"
+                                        <NavItem value=RwSignal::new("notes".to_string())>
+                                            "Notes"
                                         </NavItem>
                                     }
                                     .into_any()
@@ -223,22 +226,29 @@ pub fn RootComponent() -> impl IntoView {
                                             <Breadcrumb>
                                                 <BreadcrumbItem>
                                                     <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
-                                                        {if nav_selected.get() == "cards" { "Cards" } else { "Decks" }}
+                                                        {match nav_selected.get().as_str() {
+                                                            "cards" => "Cards",
+                                                            "notes" => "Notes",
+                                                            _ => "Decks",
+                                                        }}
                                                     </button>
                                                 </BreadcrumbItem>
                                             </Breadcrumb>
                                         </div>
                                         <div class="app-content__pad">
-                                            {if nav_selected.get() == "cards" {
-                                                view! {
+                                            {match nav_selected.get().as_str() {
+                                                "cards" => view! {
                                                     <CardBrowser vm=view.into() set_event=set_event />
                                                 }
-                                                .into_any()
-                                            } else {
-                                                view! {
+                                                .into_any(),
+                                                "notes" => view! {
+                                                    <NotesBrowser vm=view.into() set_event=set_event />
+                                                }
+                                                .into_any(),
+                                                _ => view! {
                                                     <DeckList vm=view.into() on_navigate=navigate />
                                                 }
-                                                .into_any()
+                                                .into_any(),
                                             }}
                                         </div>
                                     }
@@ -430,13 +440,7 @@ fn card_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl In
     // Flatten the deck tree for the deck filter dropdown (owned titles, so the
     // options outlive the `vm` snapshot).
     let mut flat_decks: Vec<(String, i64)> = Vec::new();
-    fn flatten(ds: &[DeckSummary], out: &mut Vec<(String, i64)>) {
-        for d in ds {
-            out.push((d.title.clone(), d.id));
-            flatten(&d.children, out);
-        }
-    }
-    flatten(&vm.decks, &mut flat_decks);
+    flatten_decks(&vm.decks, &mut flat_decks);
 
     let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
 
@@ -628,6 +632,278 @@ fn card_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl In
                 </Button>
             </div>
         </div>
+    }
+}
+
+/// The notes browser (US-4.13): a management-oriented note table with per-note
+/// edit (fields + note type) and delete, plus a "New note" create form. Consumes
+/// the core's `notes`/`note_types` `ViewModel` fields and forwards the
+/// `NotesRequested`/`NoteCreate`/`NoteSave`/`NoteDelete` events (no shell fetch).
+#[component]
+fn notes_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl IntoView {
+    let vm_sig = vm;
+    let vm = vm_sig.get();
+
+    // Load notes (all decks) and note types on entry.
+    Effect::new(move |_| {
+        set_event.set(Event::NoteTypesRequested);
+        set_event.set(Event::NotesRequested { deck_id: None });
+    });
+
+    // The selected note id (shell-local — the core tracks no notes-browser
+    // selection yet) and a deck filter for the list.
+    let selected_id = RwSignal::new(None::<i64>);
+    let deck_filter = RwSignal::new("0".to_string()); // "0" = all decks
+
+    // Flatten the deck tree for both the list filter and the create-form picker.
+    let mut flat_decks: Vec<(String, i64)> = Vec::new();
+    flatten_decks(&vm.decks, &mut flat_decks);
+
+    // Edit/create form state.
+    // Editor: the selected note's field values (field name → text). Rebuilt when
+    // a note is selected; each field is a `RwSignal<String>` so thaw `Input` can
+    // bind it reactively.
+    let edit_fields = RwSignal::new(Vec::<(String, RwSignal<String>)>::new());
+    let edit_note_type = RwSignal::new("0".to_string()); // "0" = unchanged
+    // Create: chosen note type, deck, and a field-name→value list.
+    let create_note_type = RwSignal::new("0".to_string());
+    let create_deck = RwSignal::new("0".to_string());
+    let create_fields = RwSignal::new(Vec::<(String, RwSignal<String>)>::new());
+
+    let select_note = move |note: NoteView| {
+        selected_id.set(Some(note.id));
+        edit_note_type.set(note.note_type_id.to_string());
+        // Build the editor field list, preserving deterministic order.
+        let mut keys: Vec<String> = note.fields.keys().cloned().collect();
+        keys.sort();
+        let fields = keys
+            .into_iter()
+            .map(|k| {
+                let v = note.fields.get(&k).cloned().unwrap_or_default();
+                (k, RwSignal::new(v))
+            })
+            .collect();
+        edit_fields.set(fields);
+    };
+
+    let save_note = move |note_id: i64| {
+        let fields: HashMap<String, String> = edit_fields
+            .get()
+            .into_iter()
+            .map(|(k, s)| (k, s.get()))
+            .collect();
+        let note_type_id = {
+            match edit_note_type.get().parse::<i64>() {
+                Ok(t) if t != 0 => Some(t),
+                _ => None,
+            }
+        };
+        set_event.set(Event::NoteSave {
+            note_id,
+            note_type_id,
+            fields: Some(fields),
+        });
+    };
+
+    let create_note = move |_| {
+        let note_type_id = match create_note_type.get().parse::<i64>() {
+            Ok(id) if id != 0 => id,
+            _ => return,
+        };
+        let deck_id = match create_deck.get().parse::<i64>() {
+            Ok(id) if id != 0 => id,
+            _ => return,
+        };
+        let fields: HashMap<String, String> = create_fields
+            .get()
+            .into_iter()
+            .map(|(k, s)| (k, s.get()))
+            .collect();
+        set_event.set(Event::NoteCreate {
+            note_type_id,
+            deck_id,
+            fields,
+        });
+    };
+
+    // The core's `NoteTypeView` carries only {id, name} — not `field_names` — so
+    // the shell cannot know a chosen type's required fields up front. Until a
+    // carve-out lands (exposing `field_names` on `NoteTypeView`), seed the create
+    // form from an existing note of the chosen type (its field names + empty
+    // values). If none exists yet, the form simply has no fields to fill.
+    let create_type_last = StoredValue::new(0i64);
+    Effect::new(move |_| {
+        let parsed = create_note_type
+            .get()
+            .parse::<i64>()
+            .unwrap_or(0);
+        if parsed != 0 && create_type_last.get_value() != parsed {
+            create_type_last.set_value(parsed);
+            if let Some(template) = vm_sig
+                .get_untracked()
+                .notes
+                .iter()
+                .find(|n| n.note_type_id == parsed)
+            {
+                let mut keys: Vec<String> = template.fields.keys().cloned().collect();
+                keys.sort();
+                create_fields.set(
+                    keys.into_iter()
+                        .map(|k| (k, RwSignal::new(String::new())))
+                        .collect(),
+                );
+            }
+        }
+    });
+
+    let apply_filter = move |_| {
+        let deck_id = match deck_filter.get().parse::<i64>() {
+            Ok(d) if d != 0 => Some(d),
+            _ => None,
+        };
+        set_event.set(Event::NotesRequested { deck_id });
+    };
+
+    // `view!` expands to move closures, so anything referenced more than once
+    // must be cloned up front (the `vm` snapshot is a local owned value).
+    let filter_decks = flat_decks.clone();
+    let create_decks = flat_decks;
+    let editor_note_types = vm.note_types.clone();
+    let create_note_types = vm.note_types.clone();
+
+    view! {
+        <div class="notes-browser">
+            {vm.notes_error.clone().map(|err| view! {
+                <p class="deck-options__error">"Could not load notes: " {err}</p>
+            })}
+            {vm.note_types_error.clone().map(|err| view! {
+                <p class="deck-options__error">"Could not load note types: " {err}</p>
+            })}
+
+            <div class="card-browser__filters">
+                <Select value=deck_filter default_value="0" size=SelectSize::Medium>
+                    <option value="0">"All decks"</option>
+                    {filter_decks.iter().map(|(title, id)| {
+                        let id_str = id.to_string();
+                        let title = title.clone();
+                        view! { <option value=id_str>{title}</option> }
+                    }).collect_view()}
+                </Select>
+                <Button appearance=ButtonAppearance::Primary on_click=apply_filter>
+                    "Apply"
+                </Button>
+            </div>
+
+            <div class="notes-browser__table" role="table">
+                <div class="thaw-deck-header" role="row">
+                    <span class="thaw-deck-col">"Note"</span>
+                    <span class="thaw-deck-col">"Type"</span>
+                    <span class="thaw-deck-col">"Tags"</span>
+                </div>
+                {vm.notes.iter().map(|n| {
+                    let note_id = n.id;
+                    let is_selected = selected_id.get() == Some(note_id);
+                    let note_type_name = n.note_type_name.clone();
+                    let preview = n.fields.values().next().cloned().unwrap_or_default();
+                    let tags = n.tags.join(", ");
+                    let note = n.clone();
+                    view! {
+                        <div
+                            class="card-browser__row"
+                            class:card-browser__row--selected=is_selected
+                            role="row"
+                            on:click=move |_| select_note(note.clone())
+                        >
+                            <div class="card-browser__front">{preview}</div>
+                            <span class="card-browser__cell">{note_type_name}</span>
+                            <span class="card-browser__cell">{tags}</span>
+                        </div>
+                    }
+                }).collect_view()}
+            </div>
+
+            {if let Some(note_id) = selected_id.get() {
+                view! {
+                    <div class="notes-browser__editor">
+                        <h3 class="deck-options-group__title">"Edit note"</h3>
+                        <div class="notes-browser__fieldlist">
+                            {edit_fields.get().into_iter().map(|(name, v)| {
+                                let name_label = name.clone();
+                                view! {
+                                    <label class="notes-browser__field">
+                                        <span>{name_label}</span>
+                                        <Input value=v />
+                                    </label>
+                                }
+                            }).collect_view()}
+                        </div>
+                        <div class="notes-browser__row-actions">
+                            <Select value=edit_note_type size=SelectSize::Medium>
+                                <option value="0">"Unchanged type"</option>
+                                {editor_note_types.iter().map(|nt| {
+                                    let id = nt.id.to_string();
+                                    let name = nt.name.clone();
+                                    view! { <option value=id>{name}</option> }
+                                }).collect_view()}
+                            </Select>
+                            <Button appearance=ButtonAppearance::Primary on_click=move |_| save_note(note_id)>
+                                "Save"
+                            </Button>
+                            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::NoteDelete { note_id })>
+                                "Delete"
+                            </Button>
+                        </div>
+                    </div>
+                }.into_any()
+            } else {
+                view! { <span class="card-browser__hint">"Select a note to edit it, or create a new one below."</span> }.into_any()
+            }}
+
+            <div class="notes-browser__create">
+                <h3 class="deck-options-group__title">"New note"</h3>
+                <div class="notes-browser__create-controls">
+                    <Select value=create_note_type default_value="0" size=SelectSize::Medium>
+                        <option value="0">"Note type…"</option>
+                        {create_note_types.iter().map(|nt| {
+                            let id = nt.id.to_string();
+                            let name = nt.name.clone();
+                            view! { <option value=id>{name}</option> }
+                        }).collect_view()}
+                    </Select>
+                    <Select value=create_deck default_value="0" size=SelectSize::Medium>
+                        <option value="0">"Deck…"</option>
+                        {create_decks.iter().map(|(title, id)| {
+                            let id_str = id.to_string();
+                            let title = title.clone();
+                            view! { <option value=id_str>{title}</option> }
+                        }).collect_view()}
+                    </Select>
+                    <Button appearance=ButtonAppearance::Primary on_click=create_note>
+                        "Create"
+                    </Button>
+                </div>
+                <div class="notes-browser__fieldlist">
+                    {create_fields.get().into_iter().map(|(name, v)| {
+                        let name_label = name.clone();
+                        view! {
+                            <label class="notes-browser__field">
+                                <span>{name_label}</span>
+                                <Input value=v />
+                            </label>
+                        }
+                    }).collect_view()}
+                </div>
+            </div>
+        </div>
+    }
+}
+
+/// Flatten a `DeckSummary` tree into a `(title, id)` list (for filter/picker
+/// dropdowns). Shared by the card browser and notes browser.
+fn flatten_decks(ds: &[DeckSummary], out: &mut Vec<(String, i64)>) {
+    for d in ds {
+        out.push((d.title.clone(), d.id));
+        flatten_decks(&d.children, out);
     }
 }
 
