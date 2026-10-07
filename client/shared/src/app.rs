@@ -23,7 +23,9 @@ use anjuman_contracts::cards::{
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
+use anjuman_contracts::notes::{CreateNote, ListNotesQuery, NoteResponse, UpdateNote};
 use anjuman_contracts::reviews::{FlagResponse, SetFlag};
+use anjuman_contracts::MessageResponse;
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 use anjuman_contracts::tags::{Tag, TagNode};
 
@@ -109,6 +111,12 @@ pub struct Model {
     pub note_types: Vec<NoteTypeResponse>,
     /// A human-readable error from the last note-types fetch, if any.
     pub note_types_error: Option<String>,
+    /// The notes browser result set (from `GET /notes`).
+    pub notes: Vec<NoteResponse>,
+    /// The last notes filter (deck id) used, so create/delete can refresh.
+    pub notes_filter: Option<i64>,
+    /// A human-readable error from the last notes fetch, if any.
+    pub notes_error: Option<String>,
 }
 
 /// Authentication state.
@@ -173,6 +181,26 @@ pub enum Event {
     TagTreeRequested,
     /// Fetch the school's note types (for the card-browser note-type filter).
     NoteTypesRequested,
+    /// Fetch notes (optionally filtered by deck).
+    NotesRequested {
+        deck_id: Option<i64>,
+    },
+    /// Create a note (fields keyed by note-type field name → text value).
+    NoteCreate {
+        note_type_id: i64,
+        deck_id: i64,
+        fields: HashMap<String, String>,
+    },
+    /// Save edits to a note (only `Some` fields change).
+    NoteSave {
+        note_id: i64,
+        note_type_id: Option<i64>,
+        fields: Option<HashMap<String, String>>,
+    },
+    /// Delete a note (and its cards).
+    NoteDelete {
+        note_id: i64,
+    },
     /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
     Answer {
         rating: i32,
@@ -307,6 +335,22 @@ pub enum Event {
 
     #[serde(skip)]
     #[facet(skip)]
+    NotesResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<NoteResponse>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteCreated(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteSaved(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteDeleted(#[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
     CardsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<CardBrowserPage>>),
 
     #[serde(skip)]
@@ -403,6 +447,10 @@ pub struct ViewModel {
     pub note_types: Vec<NoteTypeView>,
     /// A human-readable error from the last note-types fetch, if any.
     pub note_types_error: Option<String>,
+    /// The notes browser results to render (US-4.13).
+    pub notes: Vec<NoteView>,
+    /// A human-readable error from the last notes fetch/action, if any.
+    pub notes_error: Option<String>,
 }
 
 /// The shell-facing view of the user's global capabilities (a Facet mirror of
@@ -532,6 +580,41 @@ impl From<&NoteTypeResponse> for NoteTypeView {
         NoteTypeView {
             id: n.id,
             name: n.name.clone(),
+        }
+    }
+}
+
+/// A shell-facing note (a Facet mirror of the wire `NoteResponse`). Fields are
+/// flattened to string values (the editor's text inputs); tags to names.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct NoteView {
+    pub id: i64,
+    pub note_type_id: i64,
+    pub note_type_name: String,
+    pub fields: HashMap<String, String>,
+    pub tags: Vec<String>,
+}
+
+impl From<&NoteResponse> for NoteView {
+    fn from(n: &NoteResponse) -> Self {
+        let fields = n
+            .fields
+            .iter()
+            .map(|(k, v)| {
+                let s = match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                (k.clone(), s)
+            })
+            .collect();
+        let tags = n.tags.iter().map(|t| t.name.clone()).collect();
+        NoteView {
+            id: n.id,
+            note_type_id: n.note_type_id,
+            note_type_name: n.note_type_name.clone(),
+            fields,
+            tags,
         }
     }
 }
@@ -719,6 +802,21 @@ fn refresh_browser(model: &Model) -> Command<Effect, Event> {
         return render::render();
     };
     render::render().and(Command::event(Event::CardsRequested { filter }))
+}
+
+/// Re-fetch the notes list using the last stored filter (deck id).
+fn refresh_notes(model: &Model) -> Command<Effect, Event> {
+    render::render().and(Command::event(Event::NotesRequested {
+        deck_id: model.notes_filter,
+    }))
+}
+
+/// Convert the editor's `String`-valued fields into the wire `Map<String, Value>`.
+fn fields_to_map(fields: HashMap<String, String>) -> serde_json::Map<String, serde_json::Value> {
+    fields
+        .into_iter()
+        .map(|(k, v)| (k, serde_json::Value::String(v)))
+        .collect()
 }
 
 /// The shell-facing view of a deck-options preset (a `Facet`/`PartialEq`-friendly
@@ -1388,6 +1486,124 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::NotesRequested { deck_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.notes_filter = deck_id;
+                model.notes_error = None;
+                let query = ListNotesQuery { deck_id };
+                Http::get(format!("{API_URL}/notes"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .query(&query)
+                    .expect("serialize notes query")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NotesResult)
+            }
+
+            Event::NotesResult(Ok(mut response)) => {
+                model.notes = response.take_body().expect("notes response has a body");
+                model.notes_error = None;
+                render::render()
+            }
+
+            Event::NotesResult(Err(e)) => {
+                model.notes_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteCreate {
+                note_type_id,
+                deck_id,
+                fields,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.notes_error = None;
+                let body = CreateNote {
+                    note_type_id,
+                    deck_id,
+                    fields: fields_to_map(fields),
+                };
+                Http::post(format!("{API_URL}/notes"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize create note")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteCreated)
+            }
+
+            Event::NoteCreated(Ok(_)) => {
+                model.notes_error = None;
+                refresh_notes(model)
+            }
+
+            Event::NoteCreated(Err(e)) => {
+                model.notes_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteSave {
+                note_id,
+                note_type_id,
+                fields,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.notes_error = None;
+                let body = UpdateNote {
+                    note_type_id,
+                    fields: fields.map(fields_to_map),
+                };
+                Http::patch(format!("{API_URL}/notes/{note_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize update note")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteSaved)
+            }
+
+            Event::NoteSaved(Ok(_)) => {
+                model.notes_error = None;
+                refresh_notes(model)
+            }
+
+            Event::NoteSaved(Err(e)) => {
+                model.notes_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteDelete { note_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.notes_error = None;
+                Http::delete(format!("{API_URL}/notes/{note_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteDeleted)
+            }
+
+            Event::NoteDeleted(Ok(_)) => {
+                model.notes_error = None;
+                refresh_notes(model)
+            }
+
+            Event::NoteDeleted(Err(e)) => {
+                model.notes_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::StartStudy => {
                 // Requires a selected deck (and a token); otherwise a no-op.
                 let Some(deck) = &model.selected_deck else {
@@ -1863,6 +2079,8 @@ impl crux_core::App for Anjuman {
                 browser_error: model.browser_error.clone(),
                 note_types: model.note_types.iter().map(NoteTypeView::from).collect(),
                 note_types_error: model.note_types_error.clone(),
+                notes: model.notes.iter().map(NoteView::from).collect(),
+                notes_error: model.notes_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -1894,6 +2112,8 @@ impl crux_core::App for Anjuman {
                 browser_error: None,
                 note_types: Vec::new(),
                 note_types_error: None,
+                notes: Vec::new(),
+                notes_error: None,
             },
         }
     }
@@ -2252,6 +2472,23 @@ mod tests {
             styling: String::new(),
             templates: vec![],
             note_count: 0,
+        }
+    }
+
+    fn note(id: i64) -> NoteResponse {
+        NoteResponse {
+            id,
+            note_type_id: 1,
+            note_type_name: "Basic".to_string(),
+            fields: [
+                ("Front".to_string(), serde_json::Value::String("hola".to_string())),
+                ("Back".to_string(), serde_json::Value::String("hello".to_string())),
+            ]
+            .into_iter()
+            .collect(),
+            cards: vec![],
+            tags: vec![Tag { id: 1, name: "spanish".to_string() }],
+            created_at: chrono::Utc::now(),
         }
     }
 
@@ -3771,5 +4008,125 @@ mod tests {
         assert_eq!(vm.note_types[0].id, 1);
         assert_eq!(vm.note_types[0].name, "Basic");
         assert_eq!(vm.note_types[1].name, "Reversed");
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.13 — notes browser
+    // --------------------------------------------------------------------
+
+    /// `NotesRequested` emits `GET /notes` (+ optional `deck_id` query) + bearer.
+    #[test]
+    fn notes_requested_emits_get_with_query() {
+        let mut model = authenticated_model();
+        let effects = update(Event::NotesRequested { deck_id: Some(5) }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert!(req.operation.url.as_str().starts_with("http://127.0.0.1:3000/notes"), "{} {}", "", req.operation.url);
+                assert!(req.operation.url.as_str().contains("deck_id=5"), "{}", req.operation.url);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+        assert_eq!(model.notes_filter, Some(5));
+    }
+
+    /// `NotesResult(Ok)` populates the model and flattens fields + tags into the
+    /// view.
+    #[test]
+    fn notes_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(vec![note(1), note(2)]).build();
+        let _ = update(Event::NotesResult(Ok(response)), &mut model);
+
+        assert_eq!(model.notes.len(), 2);
+        assert!(model.notes_error.is_none());
+
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.notes.len(), 2);
+        assert_eq!(vm.notes[0].id, 1);
+        assert_eq!(vm.notes[0].note_type_name, "Basic");
+        assert_eq!(vm.notes[0].fields.get("Front").map(|s| s.as_str()), Some("hola"));
+        assert_eq!(vm.notes[0].tags, vec!["spanish".to_string()]);
+    }
+
+    /// `NoteCreate` emits `POST /notes` with a `CreateNote` body over string fields.
+    #[test]
+    fn note_create_emits_post_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteCreate {
+                note_type_id: 1,
+                deck_id: 9,
+                fields: [("Front".to_string(), "hola".to_string())].into_iter().collect(),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/notes");
+                let body: CreateNote =
+                    serde_json::from_slice(&req.operation.body).expect("body JSON");
+                assert_eq!(body.note_type_id, 1);
+                assert_eq!(body.deck_id, 9);
+                assert_eq!(body.fields.get("Front"), Some(&serde_json::Value::String("hola".into())));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteSave` emits `PATCH /notes/{id}` with an `UpdateNote` body.
+    #[test]
+    fn note_save_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteSave {
+                note_id: 7,
+                note_type_id: Some(2),
+                fields: Some([("Back".to_string(), "hello".to_string())].into_iter().collect()),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/notes/7");
+                let body: UpdateNote =
+                    serde_json::from_slice(&req.operation.body).expect("body JSON");
+                assert_eq!(body.note_type_id, Some(2));
+                assert!(body.fields.is_some());
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteDelete` emits `DELETE /notes/{id}`.
+    #[test]
+    fn note_delete_emits_delete() {
+        let mut model = authenticated_model();
+        let effects = update(Event::NoteDelete { note_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "DELETE");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/notes/7");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A successful create clears the error and re-renders (the re-fetch is a
+    /// chained `NotesRequested` command, not an effect here).
+    #[test]
+    fn note_created_clears_error_and_renders() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(note(3)).build();
+        let effects = update(Event::NoteCreated(Ok(response)), &mut model);
+
+        assert!(model.notes_error.is_none());
+        assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
     }
 }

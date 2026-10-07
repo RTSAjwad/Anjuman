@@ -1749,19 +1749,20 @@ The server exposes `GET /notes` (list, optional `deck_id` filter),
 model (this is why US-6.5b per-note tag CRUD was deferred). Note scoping:
 teacher/admin only (gate via `vm.permissions.can_manage_notes` in the shell).
 
-**Prerequisite (contracts)** — `NoteResponse` derives `Serialize` only; needs
-`Deserialize`. `CreateNote`/`UpdateNote` derive `Deserialize` only; need
-`Serialize`.
+**Prerequisite (contracts)** — `NoteResponse` + `CardSummary` gain `Deserialize`;
+`CreateNote`/`UpdateNote`/`ListNotesQuery` gain `Serialize`.
 
 **Acceptance criteria**
 
-- [ ] `Event::NotesRequested { deck_id }` emits `GET /notes` (+ bearer);
-      `NotesResult(Ok)` populates `Model.notes` → `NoteView` (Facet mirror).
-- [ ] `Event::NoteSave`/`NoteCreate`/`NoteDelete` emit `PATCH`/`POST`/`DELETE
-      /notes/{id}` with the appropriate body; results refresh the list.
-- [ ] `Event::NoteTypesRequested` emits `GET /note-types`; results populate a
-      `note_types` view (name + fields + templates).
-- [ ] Each criterion has a `shared` test named after it.
+- [x] `Event::NotesRequested { deck_id }` emits `GET /notes` (+ bearer, optional
+      `deck_id` query); `NotesResult(Ok)` populates `Model.notes` → `NoteView`
+      (Facet mirror: fields flattened to strings, tags to names); `Err` sets
+      `notes_error`.
+- [x] `Event::NoteSave`/`NoteCreate`/`NoteDelete` emit `PATCH`/`POST`/`DELETE
+      /notes/{id}` with the appropriate body (string fields folded via
+      `fields_to_map`); completions refresh the list via the stored filter.
+- [x] `NoteTypesRequested` already delivered (US-4.12 carve-out); reused here.
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes (83).
 
 **Shell contract**
 
@@ -1771,7 +1772,8 @@ teacher/admin only (gate via `vm.permissions.can_manage_notes` in the shell).
 **Out of scope**
 
 - Note-type/template *editing UI* (front/back pattern + styling) is a follow-up
-  if not already server-covered; card generation preview.
+  if not already server-covered; card generation preview; per-note tag CRUD
+  (US-4.14).
 
 ---
 

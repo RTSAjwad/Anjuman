@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 use super::tags::Tag;
 
 /// Expected JSON body for creating a note.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateNote {
     pub note_type_id: i64,
@@ -17,7 +17,7 @@ pub struct CreateNote {
 }
 
 /// Fields that can be updated on a note.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateNote {
     pub note_type_id: Option<i64>,
@@ -25,7 +25,7 @@ pub struct UpdateNote {
 }
 
 /// Query parameters for `GET /notes`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ListNotesQuery {
     /// Optional deck filter: only notes with at least one card in this deck.
@@ -33,7 +33,7 @@ pub struct ListNotesQuery {
 }
 
 /// A note as returned to clients.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NoteResponse {
     pub id: i64,
@@ -47,7 +47,7 @@ pub struct NoteResponse {
 }
 
 /// A summary of one card generated from a note.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CardSummary {
     pub id: i64,
