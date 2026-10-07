@@ -43,6 +43,7 @@ Stories in `ROADMAP.md` are derived from them.
 |---|---|
 | [`adr/postgres-migration.md`](./adr/postgres-migration.md) | SQLite → Postgres migration plan. |
 | [`adr/timestamptz-migration.md`](./adr/timestamptz-migration.md) | TIMESTAMPTZ migration sub-plan. |
+| [`adr/permissions-model.md`](./adr/permissions-model.md) | Authorization model: consolidate RBAC + PBAC seam + ReBAC; ABAC rejected (stage 9). |
 
 ---
 

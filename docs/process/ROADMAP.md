@@ -1815,7 +1815,9 @@ options belong to the single user). This stage makes the personalisation model
       preset clones, or a delta-compare model?
 - [ ] **Permission model** — a `decks.allow_personal_options BOOLEAN` so a
       teacher can choose per-deck whether students may override. Turns today's
-      hard "school-only" rule into a per-deck choice.
+      hard "school-only" rule into a per-deck choice. *(Coordinates with
+      stage 9: the "may this user override" capability should come from the
+      consolidated authorization model, not a new ad-hoc role check.)*
 - [ ] **Fork vs. inherit** — does a personal override fork a snapshot of the
       preset (deviating independently), or diff against the live preset?
 - [ ] **Analytics/comparison** — how do diverging student options affect class
@@ -1904,6 +1906,71 @@ plan it properly (story list + acceptance criteria) when it becomes current work
 
 ---
 
+## 9. Permissions — consolidated authorization (RBAC → PBAC seam → ReBAC)   `[ ]`
+
+Consolidate the organically-grown authorization into a single, scalable model
+behind a capability seam. Today authorization is three overlapping layers: a
+centralized JWT `role`, ~40 hand-rolled `if role` checks spread across ~9
+handlers, and the US-4.7 deck-grant module. This stage makes them **one** model
+with a documented decision, without committing to a schema change.
+
+**This stage is scoped but *not* decided** — the design questions below are
+deliberately left open until it is tackled. See
+[`docs/adr/permissions-model.md`](../adr/permissions-model.md) for the full
+analysis and the models comparison (RBAC / PBAC / ABAC / ReBAC).
+
+### Scope (the boundary, fixed)
+
+- **In:** centralize *all* authorization into `server/src/permissions.rs`;
+  replace every ad-hoc `claims.role` match with capability-named predicates
+  (`can_manage_decks`, `can_manage_notes`, `can_manage_presets`,
+  `can_administer_school`, …); make deck *governance* and deck *study* share one
+  relationship model (add `DeckPerm::Manage` and route `check_deck_owner`/
+  `check_deck_collaborator` through it).
+- **In:** an explicit **PBAC seam** — a single `has_permission(...)`/capability
+  funnel every decision passes through — so migrating role→permission to a table
+  later is a one-function swap, not a handler sweep.
+- **Out:** no DB permission table in this pass; no ABAC/policy engine (rejected,
+  see ADR); no removal of the JWT `role` claim; no *new* permissions (behavior
+  is preserved — this is a refactor + a decision, not a feature).
+
+### Design questions to settle (deferred — do not decide now)
+
+- [ ] **Capability naming** — resource-first (`can_manage_decks`) vs action-first
+      (`can_decks_manage`). Pick one and apply uniformly.
+- [ ] **Governance vs study unification** — add `DeckPerm::Manage` now and route
+      `check_deck_owner`/`check_deck_collaborator` through `deck_permission`, or
+      keep governance separate from study for this pass and unify later.
+- [ ] **Membership second axis** — `class_members.membership_role`
+      (teacher/student *within* a class) currently overlaps the global
+      `users.role`. Fold it into the capability model, or keep it a distinct axis?
+- [ ] **Role in JWT vs. DB** — keep `role` in the token as the coarse fast-path
+      (recommended), or drop it and always hit the DB? (Stale-24h-token concern.)
+
+### Likely decomposition (tentative — refine when planning the stage)
+
+- [ ] `US-9.1` — move `check_teacher_or_admin`/`check_admin`/`check_deck_owner`/
+      `check_deck_collaborator` into `permissions.rs` as named capabilities;
+      delete the ~40 duplicates. `server/tests/` named test per capability.
+- [ ] `US-9.2` — add `DeckPerm::Manage` (or settle governance-vs-study split) and
+      route the deck-governance helpers through the relationship model.
+- [ ] `US-9.3` — introduce the `has_permission(...)`/capability seam (the one
+      funnel), and convert remaining inline `claims.role` checks (search_users,
+      analytics, dashboard, study) to it.
+- [ ] `US-9.4` — backfill: a test per capability proving behavior is unchanged;
+      OpenAPI route coverage identical; no new warnings.
+
+### Notes / ordering
+
+- This is a **prerequisite** for stage 7 (personal deck options needs a
+  "who may override" permission) and threads through stage 6 (tag/browser). It
+  is placed as stage 9 so the backlog ordering stays stable, but it may be pulled
+  forward once stage 7 stops being deferred.
+- **No ABAC** — recorded as an explicit non-goal. Revisit only if a
+  per-school-configurable policy requirement ever appears.
+
+---
+
 ## Notes
 
 - **Ordering rationale:** task 1 is invisible-but-risky infrastructure (no API
@@ -1914,7 +1981,10 @@ plan it properly (story list + acceptance criteria) when it becomes current work
   Task 6 (tags) is a deferred cross-cutting feature that revisits the leech
   `TagOnly` no-op from US-2.3. Task 7 (per-user deck options) makes scheduling
   personalisation layered (personal override → school preset) instead of
-  Anki's strict single-user model.
+  Anki's strict single-user model. Task 8 (history/undo) is cross-cutting.
+  Task 9 (permissions) consolidates authorization behind a capability seam and
+  is a prerequisite for task 7; it is staged last only to keep the backlog
+  ordering stable and may be pulled forward when task 7 becomes current work.
 - **Not implemented: full Anki gather→sort parity** — true parity still needs
   a two-phase gather-then-sort pipeline, which contradicts our stateless,
   sessionless study design, so we approximate with gather-primary sort-secondary
