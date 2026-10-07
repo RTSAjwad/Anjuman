@@ -334,8 +334,10 @@ fn card_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl In
     let vm_sig = vm;
     let vm = vm_sig.get();
 
-    // Request the first page on entry (no filter, default sort/page).
+    // Request the first page on entry (no filter, default sort/page), plus the
+    // note-type list for the filter dropdown.
     Effect::new(move |_| {
+        set_event.set(Event::NoteTypesRequested);
         set_event.set(Event::CardsRequested {
             filter: CardBrowserFilter {
                 deck_ids: Vec::new(),
@@ -350,8 +352,9 @@ fn card_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl In
         });
     });
 
-    // Filter state (text/sort/state/flag); deck is a separate single-select.
+    // Filter state (text/sort/state/flag); deck & note-type are single-selects.
     let deck_value = RwSignal::new("0".to_string()); // "0" = all decks
+    let note_type_value = RwSignal::new("0".to_string()); // "0" = all note types
     let state_value = RwSignal::new(String::new());
     let flag_value = RwSignal::new(String::new());
     let q_value = RwSignal::new(String::new());
@@ -372,10 +375,16 @@ fn card_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl In
                 deck_ids.push(d);
             }
         }
+        let mut note_type_ids = Vec::new();
+        if let Ok(n) = note_type_value.get().parse::<i64>() {
+            if n != 0 {
+                note_type_ids.push(n);
+            }
+        }
         set_event.set(Event::CardsRequested {
             filter: CardBrowserFilter {
                 deck_ids,
-                note_type_ids: Vec::new(),
+                note_type_ids,
                 q: if q_value.get().trim().is_empty() {
                     None
                 } else {
@@ -438,6 +447,9 @@ fn card_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl In
             {vm.browser_error.clone().map(|err| view! {
                 <p class="deck-options__error">"Could not load cards: " {err}</p>
             })}
+            {vm.note_types_error.clone().map(|err| view! {
+                <p class="deck-options__error">"Could not load note types: " {err}</p>
+            })}
 
             <div class="card-browser__filters">
                 <Select value=deck_value default_value="0" size=SelectSize::Medium>
@@ -445,6 +457,14 @@ fn card_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl In
                     {flat_decks.into_iter().map(|(title, id)| {
                         let id_str = id.to_string();
                         view! { <option value=id_str>{title}</option> }
+                    }).collect_view()}
+                </Select>
+                <Select value=note_type_value default_value="0" size=SelectSize::Medium>
+                    <option value="0">"All note types"</option>
+                    {vm.note_types.iter().map(|nt| {
+                        let id = nt.id.to_string();
+                        let name = nt.name.clone();
+                        view! { <option value=id>{name}</option> }
                     }).collect_view()}
                 </Select>
                 <Select value=state_value size=SelectSize::Medium>
