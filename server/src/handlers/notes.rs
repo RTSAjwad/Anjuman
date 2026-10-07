@@ -23,12 +23,13 @@ use chrono::Utc;
 use serde_json::Value;
 
 use anjuman_contracts::notes::{CardSummary, CreateNote, ListNotesQuery, NoteResponse, UpdateNote};
-use anjuman_contracts::{MessageResponse, UserRole};
+use anjuman_contracts::MessageResponse;
 
 use crate::{
     auth::AuthUser,
     handlers::decks,
     note_types,
+    permissions::can_administer_school,
     state::AppState,
 };
 
@@ -301,7 +302,7 @@ pub async fn list_notes(
         .fetch_all(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    } else if claims.role == UserRole::Admin {
+    } else if can_administer_school(&claims) {
         sqlx::query_as::<_, NoteIdRow>(
             "SELECT DISTINCT n.id FROM notes n JOIN cards c ON c.note_id = n.id JOIN decks d ON d.id = c.deck_id WHERE d.school_id = $1 ORDER BY n.id",
         )

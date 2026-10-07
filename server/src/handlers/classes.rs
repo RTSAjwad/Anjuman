@@ -31,11 +31,12 @@ use chrono::Utc;
 use anjuman_contracts::classes::{
     AddMember, ClassResponse, CreateClass, MemberResponse, RenameClass, RosterResponse,
 };
-use anjuman_contracts::{MessageResponse, UserRole};
+use anjuman_contracts::MessageResponse;
 
 use crate::{
     auth::AuthUser,
     db_types::{DbMembershipRole, DbUserRole},
+    permissions::can_administer_school,
     state::AppState,
 };
 
@@ -69,7 +70,7 @@ pub async fn check_class_owner(
     .ok_or((StatusCode::NOT_FOUND, "Class not found"))?;
 
     // Admins can manage any class in their school.
-    if claims.role == UserRole::Admin {
+    if can_administer_school(claims) {
         return Ok(());
     }
 
@@ -103,7 +104,7 @@ pub async fn check_class_member(
     .ok_or((StatusCode::NOT_FOUND, "Class not found"))?;
 
     // Admin can view any class in their school.
-    if claims.role == UserRole::Admin {
+    if can_administer_school(claims) {
         return Ok(());
     }
 
@@ -198,7 +199,7 @@ pub async fn list_classes(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ClassResponse>>, (StatusCode, &'static str)> {
-    if claims.role == UserRole::Admin {
+    if can_administer_school(&claims) {
         // Admins see all classes in their school.
         let rows = sqlx::query!(
             r#"

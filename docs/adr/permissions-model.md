@@ -1,6 +1,6 @@
 # ADR — Authorization & permissions model
 
-**Status:** proposed (supersedes the *implicit* model; replaces rolling role checks)
+**Status:** accepted (implemented — stage 9)
 **Date:** 2026-10-07
 **Scope:** `contracts/`, `server/`, `client/shared/` (no shell work)
 

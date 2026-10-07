@@ -41,7 +41,9 @@ use anjuman_contracts::{MessageResponse, UserRole};
 use crate::{
     auth::AuthUser,
     db_types::{DbLimitMode, DbUserRole},
-    permissions::{DeckGovernance, DeckPerm, deck_governance, deck_permission},
+    permissions::{
+        DeckGovernance, DeckPerm, can_administer_school, deck_governance, deck_permission,
+    },
     state::AppState,
 };
 
@@ -163,7 +165,7 @@ pub async fn is_deck_collaborator(
     .fetch_optional(db)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-    if claims.role == UserRole::Admin {
+    if can_administer_school(claims) {
         return Ok(true);
     }
     if let Some(r) = &row {
@@ -574,7 +576,7 @@ pub async fn duplicate_deck(
     .ok_or((StatusCode::NOT_FOUND, "Deck not found"))?;
 
     // Visibility check: must be owner, admin, or collaborator.
-    let can_access = claims.role == UserRole::Admin || source.created_by == claims.sub;
+    let can_access = can_administer_school(&claims) || source.created_by == claims.sub;
 
     if !can_access {
         let is_collab = sqlx::query_scalar!(
@@ -1058,7 +1060,7 @@ pub async fn list_decks(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<DeckResponse>>, (StatusCode, &'static str)> {
-    if claims.role == UserRole::Admin {
+    if can_administer_school(&claims) {
         let rows = sqlx::query!(
             r#"
             SELECT d.id, d.school_id, d.title, d.description,

@@ -7,9 +7,8 @@ use chrono::Utc;
 use sqlx::FromRow;
 
 use anjuman_contracts::analytics::{AttentionStudent, ClassCard, DashboardResponse};
-use anjuman_contracts::UserRole;
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{auth::AuthUser, permissions::can_administer_school, state::AppState};
 
 // ---------------------------------------------------------------------------
 // Row structs
@@ -104,7 +103,7 @@ pub async fn dashboard(
     let seven_days_ago = today - chrono::Duration::days(7);
 
     // --- Get all classes ---
-    let classes: Vec<ClassRow> = if claims.role == UserRole::Admin {
+    let classes: Vec<ClassRow> = if can_administer_school(&claims) {
         sqlx::query_as("SELECT id as class_id, name FROM classes WHERE school_id = $1 ORDER BY name")
             .bind(claims.school_id)
             .fetch_all(&state.db).await

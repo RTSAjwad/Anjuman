@@ -1906,7 +1906,7 @@ plan it properly (story list + acceptance criteria) when it becomes current work
 
 ---
 
-## 9. Permissions — consolidated authorization (RBAC → PBAC seam → ReBAC)   `[ ]`
+## 9. Permissions — consolidated authorization (RBAC → PBAC seam → ReBAC)   `[x]`
 
 Consolidate the organically-grown authorization into a single, scalable model
 behind a capability seam. Today authorization is three overlapping layers: a
@@ -2009,17 +2009,22 @@ school), not a separate special case.
       handler files (build is warning-free).
 - [x] Existing `server/tests/` cover the student-denied parity (tags, deck
       permissions, teacher-admin study); full suite green.
-- [ ] (Note, deferred to US-9.4) the remaining `claims.role == Admin` *branches*
-      in `dashboard`/`classes`/`decks`/`notes` are **query-shaping** (admin sees
-      all vs. teacher's own), not deny-gates; leave for the final consistency pass.
 
 #### US-9.4 — Backfill + DoD gate
 
-- Delete every now-dead `check_teacher_or_admin` copy; `grep`-assert exactly one
-  definition remains.
-- `server/tests/` named test **per capability** in the table.
-- OpenAPI route coverage unchanged; `cargo build`/`cargo test` green; no new
-  warnings; flip the stage checkbox.
+- [x] Converted the remaining `claims.role == Admin` *query-shaping* branches in
+      `dashboard`/`classes`/`decks`/`notes`/`is_deck_collaborator` to
+      `can_administer_school`/`can_view_*`/`deck_permission`. The two leftover
+      `claims.role == Teacher|Student` checks in `list_decks`/`deck_counts` are
+      **tri-partite role dispatch** (three disjoint queries), intentionally kept
+      as explicit role checks — not boolean capabilities.
+- [x] `grep`-asserted exactly one definition of `require_teacher_or_admin` and
+      `require_admin` (both in `permissions.rs`); zero remaining `match claims.role`
+      bodies anywhere.
+- [x] `server/tests/` named test per capability (role-bundle predicates incl.
+      `can_view_dashboard`/`can_view_analytics`, governance levels).
+- [x] OpenAPI route coverage unchanged (no routes added/removed); `cargo build`/
+      `cargo test` green; no new warnings.
 
 ### Remaining open (not blocking — resolve only if it bites)
 

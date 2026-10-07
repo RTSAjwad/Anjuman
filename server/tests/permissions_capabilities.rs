@@ -12,7 +12,8 @@ mod common;
 use anjuman_server::auth::Claims;
 use anjuman_server::permissions::{
     DeckGovernance, can_administer_school, can_manage_classes, can_manage_decks, can_manage_notes,
-    can_manage_note_types, can_manage_presets, can_manage_tags, can_manage_users, deck_governance,
+    can_manage_note_types, can_manage_presets, can_manage_tags, can_manage_users, can_view_analytics,
+    can_view_dashboard, deck_governance,
 };
 use common::{UserRole, create_user};
 
@@ -69,6 +70,17 @@ fn role_bundle_admin_can_administer_and_manage_users() {
     assert!(can_manage_users(&claims(1, UserRole::Admin)));
     assert!(!can_administer_school(&claims(1, UserRole::Teacher)));
     assert!(!can_manage_users(&claims(1, UserRole::Teacher)));
+}
+
+#[test]
+fn role_bundle_dashboard_and_analytics_teacher_admin_only() {
+    assert!(can_view_dashboard(&claims(1, UserRole::Admin)));
+    assert!(can_view_dashboard(&claims(1, UserRole::Teacher)));
+    assert!(!can_view_dashboard(&claims(1, UserRole::Student)));
+
+    assert!(can_view_analytics(&claims(1, UserRole::Admin)));
+    assert!(can_view_analytics(&claims(1, UserRole::Teacher)));
+    assert!(!can_view_analytics(&claims(1, UserRole::Student)));
 }
 
 // ---------------------------------------------------------------------------
