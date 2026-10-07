@@ -860,11 +860,11 @@ injected `HttpResponse`s, never a running server).
       the shell agent); card styling (note-type CSS) is US-4.6 (done core+server;
       shell injection + dark-mode inversion pending); deck authorization
       predicate is US-4.7 (done) and teacher/admin study + real counts is
-      US-4.8 (done); notes + cards remain.
-- [ ] **Deferred client-side behaviours** — now in scope: on-screen timer, audio
-      playback, auto-advance (US-2.14), timebox popup (US-3.2), leech "Tag Only"
-      popup, `response_time_ms` stopwatch (US-2.15), theme/answer-key bindings
-      (see [`docs/support/screens.md`](../support/screens.md)). Each gets its own story.
+      US-4.8 (done). Cards browser is US-4.12; notes browser US-4.13; tagging UI
+      US-4.14; classes/dashboard US-4.15; user admin US-4.16.
+- [ ] **Deferred client-side behaviours** — now in scope: on-screen timer + max
+      answer seconds (US-4.17), audio/auto-advance/timebox/leech popup (US-4.18),
+      preferences + theme/answer-keys (US-4.19). See [`docs/support/screens.md`](../support/screens.md).
 - [ ] **Deck-options/preferences UI** — the settings screens that CRUD
       `deck-options` and `/preferences`. Deck-options: US-4.9 (view a preset,
       done), US-4.10 (edit + save a preset, done), and US-4.11 (assign a deck's
@@ -1678,6 +1678,254 @@ id-0 semantics consistent with the read path (US-4.9) and the write path
 - [ ] When the loaded preset is the global default (id 0), the edit/save
       affordance stays read-only; assigning one of the school's own presets
       enables editing.
+
+---
+
+### US-4.12 — Card browser (list cards, filter/sort/page, per-card actions)
+
+**As** a signed-in user browsing a deck,
+**I want** to list the cards in a deck (filterable by note type / state / flag,
+sortable, paginated) and act on an individual card,
+**so that** I can find and manage cards without going through the study loop.
+
+**Background**
+
+The server already exposes `GET /cards` (`CardBrowserQuery` filters: `deck_id`,
+`note_type_id`, `state`, `flag`, `q`, `sort`, `page`, `per_page`) returning a
+`CardBrowserPage { cards, page, per_page, total }`, and the per-card action
+endpoints built for US-4.5b (`suspend`/`unsuspend`/`bury`/`unbury`/`reschedule`/
+`flag`). The client has **no** browser surface: no events, no `Model`/`ViewModel`
+fields, no tests.
+
+**Prerequisite (contracts)** — `CardBrowserResponse`/`CardBrowserPage` derive
+`Serialize` only (wire *responses*); they need `Deserialize` for the client.
+`CardBrowserQuery` derives `Deserialize` only (wire *request*); it needs
+`Serialize` to build query params.
+
+**Acceptance criteria**
+
+- [ ] `Event::CardsRequested { .. }` emits `GET /cards` with the query params
+      (deck/note-type/state/flag/q/sort/page/per-page) + bearer header.
+- [ ] `CardsResult(Ok)` populates `Model.cards` + page/total, surface via a
+      `CardBrowserView` (Facet mirror of `CardBrowserResponse`); `Err` sets
+      `cards_error`.
+- [ ] Reusing the US-4.5b actions, a selected browser card supports
+      `SuspendCard`/`BuryCard`/`RescheduleCard`/`FlagCard` (by card id, without a
+      `Model.current_card` — i.e. the browser must carry its own selected card).
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] Render the card table (front/back preview, deck, state, due, flag,
+      suspended/buried), the filter/sort controls, and pagination.
+- [ ] Per-row action menu (suspend/bury/reschedule/flag) forwarding the events.
+
+**Out of scope**
+
+- Card *edit* (fields/templates) — that's the notes browser (US-4.13); move-to-
+  another-deck is a follow-up.
+
+---
+
+### US-4.13 — Notes browser (list/edit notes, note-type CRUD)
+
+**As** a signed-in teacher/admin,
+**I want** to browse and edit notes (change fields, note type, delete) and manage
+note types + templates,
+**so that** I can author content the way Anki's browser does.
+
+**Background**
+
+The server exposes `GET /notes` (list, optional `deck_id` filter),
+`POST/PATCH/DELETE /notes/{id}` (create/update/delete with `CreateNote`/
+`UpdateNote`), and the note-type/template endpoints
+(`GET/PATCH/DELETE /note-types`, `…/templates`). The client has **no** notes
+model (this is why US-6.5b per-note tag CRUD was deferred). Note scoping:
+teacher/admin only (gate via `vm.permissions.can_manage_notes` in the shell).
+
+**Prerequisite (contracts)** — `NoteResponse` derives `Serialize` only; needs
+`Deserialize`. `CreateNote`/`UpdateNote` derive `Deserialize` only; need
+`Serialize`.
+
+**Acceptance criteria**
+
+- [ ] `Event::NotesRequested { deck_id }` emits `GET /notes` (+ bearer);
+      `NotesResult(Ok)` populates `Model.notes` → `NoteView` (Facet mirror).
+- [ ] `Event::NoteSave`/`NoteCreate`/`NoteDelete` emit `PATCH`/`POST`/`DELETE
+      /notes/{id}` with the appropriate body; results refresh the list.
+- [ ] `Event::NoteTypesRequested` emits `GET /note-types`; results populate a
+      `note_types` view (name + fields + templates).
+- [ ] Each criterion has a `shared` test named after it.
+
+**Shell contract**
+
+- [ ] Render the notes table + editor (fields keyed by note-type field names),
+      gate on `vm.permissions.can_manage_notes`, and forward the events.
+
+**Out of scope**
+
+- Note-type/template *editing UI* (front/back pattern + styling) is a follow-up
+  if not already server-covered; card generation preview.
+
+---
+
+### US-4.14 — Tagging UI (sidebar tree + per-note tag CRUD)
+
+**As** a signed-in teacher/admin viewing notes,
+**I want** to see the tag tree and add/remove tags on a note,
+**so that** I can organise content by taxonomy.
+
+**Background**
+
+The core already ships the distinct tag list + `::` tree (`ViewModel.tags` /
+`tag_tree`, US-6.5a). What's missing is **per-note** tag CRUD — deferred as
+US-6.5b because there was no notes browser to hang it on. Now that US-4.13
+provides notes, this story adds the note-tag actions.
+
+**Acceptance criteria**
+
+- [ ] `Event::AddTags { note_id, tags }` emits `POST /notes/{id}/tags` with
+      `AddTags`; `Event::RemoveTags { note_id, tags }` emits `DELETE
+      /notes/{id}/tags` with `RemoveTags`.
+- [ ] Results refresh the note's `tags` (re-fetch or merge) and re-render.
+- [ ] Each criterion has a `shared` test named after it.
+
+**Shell contract**
+
+- [ ] Render the tag tree in the sidebar (already in `ViewModel.tag_tree`), and
+      per-note tag add/remove controls gate on `vm.permissions.can_manage_tags`.
+
+---
+
+### US-4.15 — Classes / roster / dashboard (teacher + admin)
+
+**As** a signed-in teacher/admin,
+**I want** to manage classes (create/rename/archive/delete, add/remove members)
+and view the dashboard + analytics,
+**so that** I can run my school's groups and see their progress.
+
+**Background**
+
+The server exposes the full `/classes` surface, plus `/dashboard` and
+`/analytics`. The client has nothing. Gate on `vm.permissions.can_manage_classes`
+/ `can_view_dashboard` / `can_view_analytics`.
+
+**Acceptance criteria**
+
+- [ ] `Event::ClassesRequested` emits `GET /classes`; results populate a
+      `ClassSummary` list.
+- [ ] `Event::ClassCreate`/`ClassRename`/`ClassDelete`/`ClassArchive` emit the
+      matching `/classes`/`/classes/{id}` requests (admin vs. teacher shaping
+      per role, matching the server).
+- [ ] `Event::DashboardRequested` / `AnalyticsRequested` emit `GET /dashboard` /
+      `GET /analytics/me`; results populate their views.
+- [ ] Each criterion has a `shared` test named after it.
+
+**Shell contract**
+
+- [ ] Render the classes list/roster + dashboard, gated on the permissions
+      object; forward the events.
+
+---
+
+### US-4.16 — User administration (admin only)
+
+**As** a signed-in admin,
+**I want** to list, view, create, update, and delete users in my school,
+**so that** I can onboard and manage accounts.
+
+**Background**
+
+The server exposes `/users` (`GET` list, `POST` create, `GET/PATCH/DELETE
+/users/{id}`). Gate on `vm.permissions.can_manage_users` /
+`can_administer_school`.
+
+**Acceptance criteria**
+
+- [ ] `Event::UsersRequested` emits `GET /users`; `UsersResult` populates a
+      `UserSummary` list.
+- [ ] `Event::UserCreate`/`UserUpdate`/`UserDelete` emit the matching
+      `/users`/`/users/{id}` requests; results refresh the list.
+- [ ] Each criterion has a `shared` test named after it.
+
+**Shell contract**
+
+- [ ] Render the admin users screen, gated on `can_manage_users`; forward the
+      events.
+
+---
+
+### US-4.17 — Client-side behaviours I (on-screen timer, max answer seconds)
+
+**As** a student mid-study,
+**I want** an on-screen timer that shows my per-card time (and clamps it to
+`maximum_answer_seconds`), and for that time to be sent as `response_time_ms`,
+**so that** I can see my pace and the analytics get accurate timing.
+
+**Background**
+
+Server already persists `show_on_screen_timer`, `stop_timer_on_answer`,
+`maximum_answer_seconds`; the client must implement the behaviour (see
+`screens.md` "deferred behaviours"). These are pure shell behaviours — no new
+core surface, but each still needs a story + (where testable) a `shared` test.
+
+**Acceptance criteria**
+
+- [ ] `Answer { response_time_ms }` is extended so the core sends the elapsed
+      ms (add the field to the `Answer` event; already `Option<i64>` on the
+      wire body).
+- [ ] The shell runs the timer, stops on answer reveal per `stop_timer_on_answer`,
+      clamps to `maximum_answer_seconds`.
+
+---
+
+### US-4.18 — Client-side behaviours II (audio, auto-advance, timebox, leech popup)
+
+**As** a student mid-study,
+**I want** audio playback honours the audio prefs, auto-advance fires per the
+config, a timebox popup appears per `timebox_time_limit`, and leech cards show a
+popup,
+**so that** the study experience matches the persisted preferences.
+
+**Background**
+
+Server persists `dont_play_audio_automatically`, `skip_question_when_replaying_
+answer`, `auto_advance_*`, `timebox_time_limit`, `leech_action`. Pure shell
+behaviours (see `screens.md`). Any that need a core signal (e.g. exposing the
+auto-advance action enum to the shell) get a small core surface + test.
+
+**Acceptance criteria**
+
+- [ ] Any newly-required core surface (e.g. the resolved `auto_advance_*` action
+      as a shell-facing enum) is added with a `shared` test.
+- [ ] The shell implements the behaviours listed, respecting the persisted flags.
+
+---
+
+### US-4.19 — Preferences UI + form-factor settings (theme, answer keys)
+
+**As** a signed-in user,
+**I want** to view and edit my preferences and form-factor settings (theme,
+answer keys),
+**so that** I can personalise the app.
+
+**Background**
+
+`/preferences` (get/patch) is server-persisted; the client has no settings screen
+(US-3 stage was server-only). Theme is client-owned (follow-system/dark/light).
+Answer-key bindings are form-factor specific (shell-owned).
+
+**Acceptance criteria**
+
+- [ ] `Event::PreferencesRequested` emits `GET /preferences`; results populate a
+      `PreferencesView`.
+- [ ] `Event::PreferencesSave` emits `PATCH /preferences` with the changed fields.
+- [ ] Each criterion has a `shared` test named after it.
+
+**Shell contract**
+
+- [ ] Render the settings screen (server prefs + client-only form-factor items
+      like theme/answer keys), forward save.
 
 ---
 
