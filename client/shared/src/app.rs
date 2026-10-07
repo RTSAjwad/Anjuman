@@ -22,6 +22,7 @@ use anjuman_contracts::cards::{
 };
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
+use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::reviews::{FlagResponse, SetFlag};
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 use anjuman_contracts::tags::{Tag, TagNode};
@@ -103,6 +104,11 @@ pub struct Model {
     pub browser_filter: Option<CardBrowserFilter>,
     /// A human-readable error from the last card-browser fetch, if any.
     pub browser_error: Option<String>,
+    /// The school's note types (from `GET /note-types`), for the browser's
+    /// note-type filter dropdown (US-4.12 carve-out).
+    pub note_types: Vec<NoteTypeResponse>,
+    /// A human-readable error from the last note-types fetch, if any.
+    pub note_types_error: Option<String>,
 }
 
 /// Authentication state.
@@ -165,6 +171,8 @@ pub enum Event {
     TagsRequested,
     /// Fetch the distinct tag namespace as a `::` tree (for the sidebar).
     TagTreeRequested,
+    /// Fetch the school's note types (for the card-browser note-type filter).
+    NoteTypesRequested,
     /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
     Answer {
         rating: i32,
@@ -295,6 +303,10 @@ pub enum Event {
 
     #[serde(skip)]
     #[facet(skip)]
+    NoteTypesResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<NoteTypeResponse>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
     CardsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<CardBrowserPage>>),
 
     #[serde(skip)]
@@ -387,6 +399,10 @@ pub struct ViewModel {
     pub browser_selected: Option<CardBrowserView>,
     /// A human-readable error from the last card-browser fetch, if any.
     pub browser_error: Option<String>,
+    /// The school's note types (id + name) for the browser's filter dropdown.
+    pub note_types: Vec<NoteTypeView>,
+    /// A human-readable error from the last note-types fetch, if any.
+    pub note_types_error: Option<String>,
 }
 
 /// The shell-facing view of the user's global capabilities (a Facet mirror of
@@ -499,6 +515,23 @@ impl From<&CardBrowserResponse> for CardBrowserView {
             flag: c.flag.unwrap_or(0),
             suspended: c.suspended.unwrap_or(false),
             buried: c.buried_at.is_some(),
+        }
+    }
+}
+
+/// A shell-facing note type (id + name) for filter dropdowns (a Facet mirror of
+/// the wire `NoteTypeResponse`, carrying only the fields a picker needs).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct NoteTypeView {
+    pub id: i64,
+    pub name: String,
+}
+
+impl From<&NoteTypeResponse> for NoteTypeView {
+    fn from(n: &NoteTypeResponse) -> Self {
+        NoteTypeView {
+            id: n.id,
+            name: n.name.clone(),
         }
     }
 }
@@ -1091,6 +1124,8 @@ impl crux_core::App for Anjuman {
                 model.browser_selected = None;
                 model.browser_filter = None;
                 model.browser_error = None;
+                model.note_types.clear();
+                model.note_types_error = None;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
             }
@@ -1326,6 +1361,30 @@ impl crux_core::App for Anjuman {
 
             Event::TagTreeResult(Err(e)) => {
                 model.tags_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteTypesRequested => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                Http::get(format!("{API_URL}/note-types"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypesResult)
+            }
+
+            Event::NoteTypesResult(Ok(mut response)) => {
+                model.note_types = response.take_body().expect("note-types response has a body");
+                model.note_types_error = None;
+                render::render()
+            }
+
+            Event::NoteTypesResult(Err(e)) => {
+                model.note_types_error = Some(e.to_string());
                 render::render()
             }
 
@@ -1802,6 +1861,8 @@ impl crux_core::App for Anjuman {
                 browser_total: model.browser_total,
                 browser_selected: model.browser_selected.as_ref().map(CardBrowserView::from),
                 browser_error: model.browser_error.clone(),
+                note_types: model.note_types.iter().map(NoteTypeView::from).collect(),
+                note_types_error: model.note_types_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
                 email: String::new(),
@@ -1831,6 +1892,8 @@ impl crux_core::App for Anjuman {
                 browser_total: 0,
                 browser_selected: None,
                 browser_error: None,
+                note_types: Vec::new(),
+                note_types_error: None,
             },
         }
     }
@@ -2177,6 +2240,18 @@ mod tests {
             page: 1,
             per_page: 50,
             total,
+        }
+    }
+
+    fn note_type(id: i64, name: &str) -> NoteTypeResponse {
+        NoteTypeResponse {
+            id,
+            name: name.to_string(),
+            field_names: vec![],
+            sort_field: String::new(),
+            styling: String::new(),
+            templates: vec![],
+            note_count: 0,
         }
     }
 
@@ -3649,5 +3724,52 @@ mod tests {
         let q = f.to_wire_query();
         assert_eq!(q.deck_id, "1,2");
         assert_eq!(q.flag, "1,3");
+    }
+
+    // --------------------------------------------------------------------
+    // US-4.12 carve-out — note-type list for the browser filter dropdown
+    // --------------------------------------------------------------------
+
+    /// `NoteTypesRequested` emits `GET /note-types` with the bearer header.
+    #[test]
+    fn note_types_requested_emits_get_with_bearer() {
+        let mut model = authenticated_model();
+        let effects = update(Event::NoteTypesRequested, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/note-types"
+                );
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A canned note-type list populates the model and is exposed (id + name) in
+    /// the view.
+    #[test]
+    fn note_types_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(vec![note_type(1, "Basic"), note_type(2, "Reversed")])
+            .build();
+        let _ = update(Event::NoteTypesResult(Ok(response)), &mut model);
+
+        assert!(model.note_types_error.is_none());
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.note_types.len(), 2);
+        assert_eq!(vm.note_types[0].id, 1);
+        assert_eq!(vm.note_types[0].name, "Basic");
+        assert_eq!(vm.note_types[1].name, "Reversed");
     }
 }

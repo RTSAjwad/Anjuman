@@ -55,7 +55,7 @@ pub struct Template {
 }
 
 /// A note type as returned to clients.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NoteTypeResponse {
     pub id: i64,
