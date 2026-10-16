@@ -10,6 +10,7 @@
 //! `IntoFragment` error).
 
 use leptos::prelude::*;
+use leptos::task;
 use shared::app::{
     CardBrowserFilter, DeckOptionsEdit, DeckOptionsView, DeckSummary, DeckView, NoteView,
     PresetSummary, StudyCardView, StudyCountsView,
@@ -19,7 +20,8 @@ use std::collections::{HashMap, HashSet};
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
     BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
-    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Select, SelectSize, Switch,
+    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Select, SelectSize, Switch, Table,
+    TableBody, TableHeader, TableHeaderCell,
 };
 
 use crate::core_link;
@@ -39,6 +41,10 @@ struct CardBrowserState {
     flag: RwSignal<String>,
     sort: RwSignal<String>,
     query: RwSignal<String>,
+    /// Guards the one-time "load first page + note types" fetch, so it only
+    /// fires when the browser is first shown, not on every ViewModel-driven
+    /// re-render (which would reset the user's active filter).
+    initialized: RwSignal<bool>,
 }
 
 /// Microsoft Fluent System Icons `Settings` 16-regular, vendored as an
@@ -58,6 +64,10 @@ static SETTINGS_16_REGULAR: icondata_core::Icon = &icondata_core::IconData {
     fill: None, // inherits `currentColor` (thaw's `Icon` default)
     data: r##"<path d="M7.99994 6C6.89537 6 5.99994 6.89543 5.99994 8C5.99994 9.10457 6.89537 10 7.99994 10C9.10451 10 9.99994 9.10457 9.99994 8C9.99994 6.89543 9.10451 6 7.99994 6ZM6.99994 8C6.99994 7.44772 7.44765 7 7.99994 7C8.55222 7 8.99994 7.44772 8.99994 8C8.99994 8.55228 8.55222 9 7.99994 9C7.44765 9 6.99994 8.55228 6.99994 8ZM10.618 4.39833C10.233 4.46825 9.86392 4.21413 9.7937 3.83074L9.53397 2.41496C9.50816 2.27427 9.39961 2.16301 9.25912 2.13325C8.84818 2.04621 8.42685 2.00195 8 2.00195C7.57289 2.00195 7.1513 2.04627 6.74013 2.13341C6.5996 2.16321 6.49104 2.27452 6.46529 2.41527L6.20629 3.8308C6.1994 3.86844 6.18942 3.90551 6.17647 3.9416C6.04476 4.30859 5.6392 4.49978 5.27062 4.36863L3.91115 3.88463C3.77603 3.83652 3.62511 3.87431 3.52891 3.98033C2.96005 4.60729 2.52892 5.34708 2.2672 6.15302C2.22305 6.28899 2.26562 6.43805 2.37502 6.53053L3.47694 7.46206C3.50626 7.48685 3.53352 7.51399 3.55843 7.5432C3.81177 7.84027 3.77528 8.28558 3.47693 8.53783L2.37502 9.46935C2.26562 9.56183 2.22305 9.71089 2.2672 9.84685C2.52892 10.6528 2.96005 11.3926 3.52891 12.0196C3.62511 12.1256 3.77603 12.1634 3.91115 12.1153L5.27068 11.6312C5.30687 11.6184 5.3441 11.6084 5.38196 11.6015C5.76701 11.5316 6.13608 11.7857 6.2063 12.1691L6.46529 13.5846C6.49104 13.7254 6.5996 13.8367 6.74013 13.8665C7.1513 13.9536 7.57289 13.9979 8 13.9979C8.42685 13.9979 8.84818 13.9537 9.25912 13.8666C9.39961 13.8369 9.50816 13.7256 9.53397 13.5849L9.79368 12.1692C9.8006 12.1314 9.81058 12.0944 9.82353 12.0583C9.95524 11.6913 10.3608 11.5001 10.7294 11.6312L12.0888 12.1153C12.224 12.1634 12.3749 12.1256 12.4711 12.0196C13.04 11.3926 13.4711 10.6528 13.7328 9.84685C13.777 9.71089 13.7344 9.56183 13.625 9.46935L12.5231 8.53782C12.4937 8.51303 12.4665 8.48589 12.4416 8.45667C12.1882 8.1596 12.2247 7.71429 12.5231 7.46205L13.625 6.53053C13.7344 6.43805 13.777 6.28899 13.7328 6.15302C13.4711 5.34708 13.04 4.60729 12.4711 3.98033C12.3749 3.87431 12.224 3.83652 12.0888 3.88463L10.7293 4.36865C10.6931 4.38152 10.6559 4.39146 10.618 4.39833ZM3.99863 4.97726L4.93522 5.3107C5.82017 5.62559 6.79872 5.16815 7.11769 4.2794C7.14903 4.19207 7.17324 4.1021 7.18996 4.01078L7.36738 3.04113C7.5757 3.01512 7.78684 3.00195 8 3.00195C8.213 3.00195 8.42397 3.0151 8.63214 3.04107L8.81011 4.01117C8.98053 4.9408 9.87266 5.55003 10.7967 5.38225C10.8877 5.36572 10.9775 5.34176 11.0647 5.31073L12.0014 4.97726C12.2564 5.31084 12.4684 5.67476 12.6319 6.06064L11.8774 6.6984C11.1566 7.30787 11.0675 8.38649 11.6807 9.10555C11.7408 9.17609 11.8067 9.24166 11.8775 9.3015L12.6319 9.93924C12.4684 10.3251 12.2564 10.689 12.0014 11.0226L11.0646 10.6891C10.1797 10.3742 9.20128 10.8317 8.88231 11.7205C8.85096 11.8078 8.82677 11.8978 8.81004 11.9891L8.63214 12.9588C8.42397 12.9848 8.213 12.9979 8 12.9979C7.78684 12.9979 7.5757 12.9847 7.36738 12.9587L7.18994 11.989C7.01965 11.0592 6.12743 10.4498 5.2033 10.6176C5.11227 10.6342 5.0225 10.6581 4.93528 10.6892L3.99863 11.0226C3.74357 10.689 3.53161 10.3251 3.36814 9.93924L4.12257 9.30148C4.84343 8.69201 4.93254 7.61339 4.31933 6.89433C4.25917 6.82378 4.19332 6.75822 4.12254 6.69838L3.36814 6.06064C3.53161 5.67476 3.74357 5.31084 3.99863 4.97726Z"></path>"##,
 };
+
+/// Search icon for the card-browser filter (from `icondata_ai`, an already-
+/// present transitive dep of thaw). Rendered via `thaw::Icon`.
+static SEARCH_ICON: icondata_core::Icon = icondata_ai::AiSearchOutlined;
 
 #[component]
 pub fn RootComponent() -> impl IntoView {
@@ -142,6 +152,7 @@ pub fn RootComponent() -> impl IntoView {
         flag: RwSignal::new(String::new()),
         sort: RwSignal::new("created_at".to_string()),
         query: RwSignal::new(String::new()),
+        initialized: RwSignal::new(false),
     };
 
     view! {
@@ -411,20 +422,34 @@ fn card_browser(
     let vm = vm_sig.get();
 
     // Request the first page on entry (no filter, default sort/page), plus the
-    // note-type list for the filter sidebar.
+    // note-type list for the filter sidebar. Guarded by `initialized` so it only
+    // fires the first time the browser is shown — not on every ViewModel-driven
+    // re-render, which would clobber the user's active filter with an unfiltered
+    // refetch.
+    let initialized = state.initialized;
     Effect::new(move |_| {
+        if initialized.get() {
+            return;
+        }
+        initialized.set(true);
         set_event.set(Event::NoteTypesRequested);
-        set_event.set(Event::CardsRequested {
-            filter: CardBrowserFilter {
-                deck_ids: Vec::new(),
-                note_type_ids: Vec::new(),
-                q: None,
-                states: Vec::new(),
-                flags: Vec::new(),
-                sort: "created_at".to_string(),
-                page: 1,
-                per_page: 50,
-            },
+        // The event bridge carries one event at a time; a second `set_event.set`
+        // in the same tick would clobber the note-types request above. Defer the
+        // cards fetch so both reach the core.
+        let set_event = set_event;
+        task::spawn_local(async move {
+            set_event.set(Event::CardsRequested {
+                filter: CardBrowserFilter {
+                    deck_ids: Vec::new(),
+                    note_type_ids: Vec::new(),
+                    q: None,
+                    states: Vec::new(),
+                    flags: Vec::new(),
+                    sort: "created_at".to_string(),
+                    page: 1,
+                    per_page: 50,
+                },
+            });
         });
     });
 
@@ -523,42 +548,61 @@ fn card_browser(
         }
     });
 
-    // Selecting a leaf sets its category's filter value and re-applies. These
-    // take just the value (no `MouseEvent`), because the hand-rolled tree uses
-    // native `<button>` elements whose `on:click` provides the event and we
-    // ignore it.
+    // Selecting a leaf sets its category's filter value and re-applies; clicking
+    // the already-selected leaf de-selects it (resets that category's filter).
     let select_deck = {
         let fire_filter = fire_filter.clone();
         move |id: String| {
-            deck_value.set(id);
+            if deck_value.get() == id {
+                deck_value.set(String::new());
+            } else {
+                deck_value.set(id);
+            }
             fire_filter();
         }
     };
     let select_note_type = {
         let fire_filter = fire_filter.clone();
         move |id: String| {
-            note_type_value.set(id);
+            if note_type_value.get() == id {
+                note_type_value.set(String::new());
+            } else {
+                note_type_value.set(id);
+            }
             fire_filter();
         }
     };
     let select_state = {
         let fire_filter = fire_filter.clone();
         move |s: String| {
-            state_value.set(s);
+            if state_value.get() == s {
+                state_value.set(String::new());
+            } else {
+                state_value.set(s);
+            }
             fire_filter();
         }
     };
     let select_flag = {
         let fire_filter = fire_filter.clone();
         move |f: String| {
-            flag_value.set(f);
+            if flag_value.get() == f {
+                flag_value.set(String::new());
+            } else {
+                flag_value.set(f);
+            }
             fire_filter();
         }
     };
     let select_sort = {
         let fire_filter = fire_filter.clone();
         move |s: String| {
-            sort_value.set(s);
+            // Sort always defaults to a value; clicking the active one resets it.
+            if sort_value.get() == s {
+                sort_value.set("created_at".to_string());
+            } else {
+                sort_value.set(s);
+            }
             fire_filter();
         }
     };
@@ -589,8 +633,11 @@ fn card_browser(
             <aside class="card-browser__sidebar">
                 <div class="card-browser__sidebar-search">
                     <Input value=q_value placeholder="Search…" />
-                    <Button appearance=ButtonAppearance::Primary on_click=search_apply>
-                        "Search"
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=search_apply
+                    >
+                        <Icon icon=SEARCH_ICON width="1.25em" height="1.25em" />
                     </Button>
                 </div>
 
@@ -601,28 +648,37 @@ fn card_browser(
                     <p class="deck-options__error">"Could not load note types: " {err}</p>
                 })}
 
-                <div class="card-browser__tree" role="tree">
-                    <FilterBranch id="decks" label="Decks" open_items=open_items>
-                        {flat_decks_view.into_iter().map(|(title, id)| {
+                <div class="thaw-tree card-browser__tree" role="tree">
+                    {filter_branch(
+                        "decks",
+                        "Decks",
+                        open_items,
+                        flat_decks_view.into_iter().map(|(title, id)| {
                             let id_str = id.to_string();
                             let active = deck_active.get() == id_str;
                             let sel = deck_sel.clone();
                             filter_leaf(active, id_str, title, move |id| sel(id))
-                        }).collect_view()}
-                    </FilterBranch>
+                        }).collect_view(),
+                    )}
 
-                    <FilterBranch id="note-types" label="Note types" open_items=open_items>
-                        {note_types_view.into_iter().map(|nt| {
+                    {filter_branch(
+                        "note-types",
+                        "Note types",
+                        open_items,
+                        note_types_view.into_iter().map(|nt| {
                             let id_str = nt.id.to_string();
                             let active = note_active.get() == id_str;
                             let name = nt.name.clone();
                             let sel = note_sel.clone();
                             filter_leaf(active, id_str, name, move |id| sel(id))
-                        }).collect_view()}
-                    </FilterBranch>
+                        }).collect_view(),
+                    )}
 
-                    <FilterBranch id="state" label="State" open_items=open_items>
-                        {["new", "learning", "review", "relearning"].into_iter().map(|s| {
+                    {filter_branch(
+                        "state",
+                        "State",
+                        open_items,
+                        ["new", "learning", "review", "relearning"].into_iter().map(|s| {
                             let s_val = s.to_string();
                             let active = state_active.get() == s_val;
                             let sel = state_sel.clone();
@@ -634,11 +690,14 @@ fn card_browser(
                                 _ => unreachable!(),
                             };
                             filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
-                        }).collect_view()}
-                    </FilterBranch>
+                        }).collect_view(),
+                    )}
 
-                    <FilterBranch id="flag" label="Flag" open_items=open_items>
-                        {["1", "2", "3", "4", "5", "6", "7"].into_iter().map(|f| {
+                    {filter_branch(
+                        "flag",
+                        "Flag",
+                        open_items,
+                        ["1", "2", "3", "4", "5", "6", "7"].into_iter().map(|f| {
                             let f_val = f.to_string();
                             let active = flag_active.get() == f_val;
                             let sel = flag_sel.clone();
@@ -653,11 +712,14 @@ fn card_browser(
                                 _ => unreachable!(),
                             };
                             filter_leaf(active, f_val, label.to_string(), move |id| sel(id))
-                        }).collect_view()}
-                    </FilterBranch>
+                        }).collect_view(),
+                    )}
 
-                    <FilterBranch id="sort" label="Sort" open_items=open_items>
-                        {["created_at", "due_at", "deck", "question"].into_iter().map(|s| {
+                    {filter_branch(
+                        "sort",
+                        "Sort",
+                        open_items,
+                        ["created_at", "due_at", "deck", "question"].into_iter().map(|s| {
                             let s_val = s.to_string();
                             let active = sort_active.get() == s_val;
                             let sel = sort_sel.clone();
@@ -669,48 +731,59 @@ fn card_browser(
                                 _ => unreachable!(),
                             };
                             filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
-                        }).collect_view()}
-                    </FilterBranch>
+                        }).collect_view(),
+                    )}
                 </div>
             </aside>
 
             <div class="card-browser__main">
-                <div class="card-browser__table" role="table">
-                    <div class="thaw-deck-header" role="row">
-                        <span class="thaw-deck-col">"Card"</span>
-                        <span class="thaw-deck-col">"Deck"</span>
-                        <span class="thaw-deck-col">"State"</span>
-                        <span class="thaw-deck-col">"Flag"</span>
-                    </div>
-                    <div class="card-browser__tbody">
-                        {vm.browser_cards.iter().map(|c| {
-                            let card_id = c.card_id;
-                            let is_selected = selected_card_id == Some(card_id);
-                            let front = c.front.clone();
-                            let deck_title = c.deck_title.clone();
-                            let state = c.state.clone();
-                            let flag = c.flag;
-                            let suspended = c.suspended;
-                            let buried = c.buried;
-                            view! {
-                                <div
-                                    class="card-browser__row"
-                                    class:card-browser__row--selected=is_selected
-                                    role="row"
-                                    on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
-                                >
-                                    <div class="card-browser__front">
-                                        {front}
-                                        {if suspended { " (suspended)" } else { "" }}
-                                        {if buried { " (buried)" } else { "" }}
-                                    </div>
-                                    <span class="card-browser__cell">{deck_title}</span>
-                                    <span class="card-browser__cell">{state}</span>
-                                    <span class="card-browser__flag">{flag_label(flag)}</span>
-                                </div>
-                            }
-                        }).collect_view()}
-                    </div>
+                <div class="card-browser__table">
+                    <Table>
+                        <TableHeader>
+                            <TableHeaderCell resizable=true min_width=120.0 max_width=600.0>
+                                "Card"
+                            </TableHeaderCell>
+                            <TableHeaderCell resizable=true min_width=80.0 max_width=400.0>
+                                "Deck"
+                            </TableHeaderCell>
+                            <TableHeaderCell resizable=true min_width=80.0 max_width=200.0>
+                                "State"
+                            </TableHeaderCell>
+                            <TableHeaderCell resizable=true min_width=60.0 max_width=200.0>
+                                "Flag"
+                            </TableHeaderCell>
+                        </TableHeader>
+                        <TableBody>
+                            {vm.browser_cards.iter().map(|c| {
+                                let card_id = c.card_id;
+                                let is_selected = selected_card_id == Some(card_id);
+                                let front = c.front.clone();
+                                let deck_title = c.deck_title.clone();
+                                let state = c.state.clone();
+                                let flag = c.flag;
+                                let suspended = c.suspended;
+                                let buried = c.buried;
+                                view! {
+                                    <tr
+                                        class="thaw-table-row"
+                                        class:card-browser__row--selected=is_selected
+                                        on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
+                                    >
+                                        <td class="thaw-table-cell">
+                                            <span class="card-browser__front">
+                                                {front}
+                                                {if suspended { " (suspended)" } else { "" }}
+                                                {if buried { " (buried)" } else { "" }}
+                                            </span>
+                                        </td>
+                                        <td class="thaw-table-cell">{deck_title}</td>
+                                        <td class="thaw-table-cell">{state}</td>
+                                        <td class="thaw-table-cell">{flag_label(flag)}</td>
+                                    </tr>
+                                }
+                            }).collect_view()}
+                        </TableBody>
+                    </Table>
                 </div>
 
                 <div class="card-browser__actions">
@@ -779,31 +852,24 @@ fn card_browser(
     }
 }
 
-/// A collapsible filter branch in the card browser's sidebar. `id` is the
-/// stable key (stored in the parent's `open_items` set); `label` is the header;
-/// `children` are its leaves. Renders a plain `<button>` toggle (matching the
-/// deck-list's hand-rolled expander) so expand/collapse is under our control —
-/// thaw's `Tree`/`TreeItem` event handling was not firing in this shell, and the
-/// repo already hand-rolls its deck tree (see `deck_list`) for the same reason.
-#[component]
+/// A collapsible filter branch in the card browser's sidebar, styled like thaw's
+/// `Tree`/`TreeItem` (`.thaw-tree-item--branch` with a layout row and expand
+/// chevron). A plain `fn` (not `#[component]`) so it sits inline in the
+/// reactive `view!` and re-renders when its data (e.g. the async-loaded note
+/// types) arrives — a `#[component]` here would memoize on its reactive signal
+/// props only and keep stale children.
 fn filter_branch(
     id: &'static str,
     label: &'static str,
     open_items: RwSignal<HashSet<String>>,
-    children: Children,
+    leaves: impl IntoView,
 ) -> impl IntoView {
     let is_open = move || open_items.get().contains(id);
 
-    // `Children` is `FnOnce`, so evaluate the leaves exactly once this render;
-    // the open/close toggle only reveals/hides the already-rendered leaves via
-    // the `hidden` attribute (reactive, so no re-evaluating the `FnOnce`).
-    let leaves = children();
-
     view! {
-        <div class="card-browser__branch" role="treeitem">
-            <button
-                class="card-browser__branch-header"
-                aria-expanded=is_open
+        <div class="thaw-tree-item thaw-tree-item--branch" role="treeitem">
+            <div
+                class="thaw-tree-item-layout"
                 on:click=move |_| {
                     open_items.update(|set| {
                         if set.contains(id) {
@@ -814,18 +880,32 @@ fn filter_branch(
                     });
                 }
             >
-                <span class="card-browser__branch-chevron">{move || if is_open() { "▾" } else { "▸" }}</span>
-                <span class="card-browser__branch-label">{label}</span>
-            </button>
-            <div class="card-browser__leaves" hidden=move || !is_open()>
+                <div class="thaw-tree-item-layout__expand-icon">
+                    <svg
+                        style=move || {
+                            if is_open() { "transform: rotate(90deg)".to_string() } else { "transform: rotate(0deg)".to_string() }
+                        }
+                        fill="currentColor"
+                        aria-hidden="true"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <path d="M4.65 2.15a.5.5 0 0 0 0 .7L7.79 6 4.65 9.15a.5.5 0 1 0 .7.7l3.5-3.5a.5.5 0 0 0 0-.7l-3.5-3.5a.5.5 0 0 0-.7 0Z" fill="currentColor"></path>
+                    </svg>
+                </div>
+                <div class="thaw-tree-item-layout__main">{label}</div>
+            </div>
+            <div class="thaw-subtree card-browser__leaves" hidden=move || !is_open()>
                 {leaves}
             </div>
         </div>
     }
 }
 
-/// A single selectable filter leaf (a native `<button>`), highlighted when it is
-/// the active selection for its category.
+/// A single selectable filter leaf (a native `<button>`), styled like thaw's
+/// leaf `TreeItem` (`.thaw-tree-item--leaf`), highlighted when active.
 fn filter_leaf(
     active: bool,
     value: String,
@@ -833,14 +913,15 @@ fn filter_leaf(
     on_select: impl Fn(String) + 'static,
 ) -> impl IntoView {
     view! {
-        <button
-            class="card-browser__leaf"
-            class:card-browser__leaf--active=active
-            role="treeitem"
-            on:click=move |_| on_select(value.clone())
-        >
-            {label}
-        </button>
+        <div class="thaw-tree-item thaw-tree-item--leaf" role="treeitem">
+            <div
+                class="thaw-tree-item-layout"
+                class:card-browser__leaf--active=active
+                on:click=move |_| on_select(value.clone())
+            >
+                <div class="thaw-tree-item-layout__main">{label}</div>
+            </div>
+        </div>
     }
 }
 
@@ -853,10 +934,15 @@ fn notes_browser(vm: Signal<ViewModel>, set_event: WriteSignal<Event>) -> impl I
     let vm_sig = vm;
     let vm = vm_sig.get();
 
-    // Load notes (all decks) and note types on entry.
+    // Load notes (all decks) and note types on entry. The bridge carries one
+    // event at a time, so defer the notes fetch a tick so it doesn't clobber the
+    // note-types request.
     Effect::new(move |_| {
         set_event.set(Event::NoteTypesRequested);
-        set_event.set(Event::NotesRequested { deck_id: None });
+        let set_event = set_event;
+        task::spawn_local(async move {
+            set_event.set(Event::NotesRequested { deck_id: None });
+        });
     });
 
     // The selected note id (shell-local — the core tracks no notes-browser

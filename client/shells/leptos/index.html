@@ -247,8 +247,8 @@
         flex: 0 0 16rem;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
-        padding: 0.75rem;
+        gap: 0;
+        padding: 0;
         border-right: 1px solid var(--colorNeutralStroke2);
         overflow-y: auto;
       }
@@ -256,63 +256,89 @@
         display: flex;
         gap: 0.5rem;
         align-items: center;
+        padding: 0.5rem 0.5rem;
+        border-bottom: 1px solid var(--colorNeutralStroke2);
       }
       .card-browser__sidebar-search .thaw-input {
         flex: 1 1 auto;
         min-width: 0;
       }
-      .card-browser__leaf {
-        display: block;
-        width: 100%;
-        text-align: left;
-        background: none;
-        border: none;
+      /* The filter tree replicates thaw's `Tree`/`TreeItem` CSS (the component
+         logic is hand-rolled — see `filter_branch` — but the visuals match).
+         Rows are full-width, non-truncating, with the expand chevron and easy
+         hover/active states. */
+      .card-browser .thaw-tree {
+        display: flex;
+        flex-direction: column;
+        row-gap: var(--spacingVerticalXXS);
+      }
+      .card-browser .thaw-tree-item {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
         cursor: pointer;
-        padding: 0.125rem 0.5rem;
-        color: var(--colorNeutralForeground1);
-        font: inherit;
       }
-      .card-browser__leaf:hover {
-        color: var(--colorBrandForeground1);
-        background-color: var(--colorNeutralBackground1Hover);
-      }
-      .card-browser__leaf--active {
-        color: var(--colorBrandForeground1);
-        font-weight: var(--fontWeightSemibold);
-      }
-      .card-browser__branch-header {
+      .card-browser .thaw-tree-item-layout {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
-        width: 100%;
-        text-align: left;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 0.25rem 0.5rem;
+        min-height: 32px;
+        box-sizing: border-box;
+        padding: var(--spacingVerticalXS) var(--spacingHorizontalNone);
         color: var(--colorNeutralForeground2);
-        font: inherit;
-        font-weight: var(--fontWeightSemibold);
+        font-family: var(--fontFamilyBase);
+        font-weight: var(--fontWeightRegular);
+        font-size: var(--fontSizeBase300);
+        line-height: var(--lineHeightBase300);
       }
-      .card-browser__branch-header:hover {
-        color: var(--colorNeutralForeground1);
-        background-color: var(--colorNeutralBackground1Hover);
+      .card-browser .thaw-tree-item-layout:hover {
+        color: var(--colorNeutralForeground2Hover);
+        background-color: var(--colorSubtleBackgroundHover);
       }
-      .card-browser__branch-chevron {
-        width: 1rem;
-        text-align: center;
+      .card-browser .thaw-tree-item-layout:active {
+        color: var(--colorNeutralForeground2Pressed);
+        background-color: var(--colorSubtleBackgroundPressed);
+      }
+      .card-browser .thaw-tree-item-layout__expand-icon {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        box-sizing: border-box;
         color: var(--colorNeutralForeground3);
       }
-      .card-browser__branch-label {
-        flex: 1 1 auto;
+      .card-browser .thaw-tree-item-layout:hover .thaw-tree-item-layout__expand-icon {
+        color: var(--colorNeutralForeground3Hover);
       }
+      .card-browser .thaw-tree-item-layout__main {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0 var(--spacingHorizontalXXS);
+        overflow-wrap: break-word;
+      }
+      .card-browser .thaw-tree-item-layout__expand-icon svg {
+        transition: transform var(--durationNormal, 200ms) var(--curveEasyEaseMax, ease);
+      }
+      /* Indent only the row content (the layout) of leaves, matching thaw's
+         `--thaw-tree-item--level` approach: the `.thaw-tree-item` stays full
+         width (so hover/active backgrounds span the sidebar) while the layout
+         and its text shift right. */
       .card-browser__leaves {
         display: flex;
         flex-direction: column;
-        padding-left: 1.5rem;
+      }
+      .card-browser__leaves .thaw-tree-item-layout {
+        padding-left: calc(var(--spacingHorizontalXXL, 24px) * 2);
       }
       .card-browser__leaves[hidden] {
         display: none;
+      }
+      /* Active filter leaf (brand colour + subtle emphasis). */
+      .card-browser .thaw-tree-item-layout.card-browser__leaf--active {
+        color: var(--colorBrandForeground1);
+        background-color: var(--colorBrandBackground2, var(--colorSubtleBackground));
+        font-weight: var(--fontWeightSemibold);
       }
       .card-browser__main {
         flex: 1 1 auto;
@@ -324,46 +350,26 @@
       .card-browser__table {
         flex: 1 1 auto;
         min-height: 0;
-        display: flex;
-        flex-direction: column;
         overflow-y: auto;
       }
-      .card-browser__table .thaw-deck-header {
-        grid-template-columns: minmax(0, 1fr) 8rem 6rem 5rem;
-        position: sticky;
-        top: 0;
-        background-color: var(--colorNeutralBackground1);
-        z-index: 1;
+      /* Left-align the header and cells consistently (thaw's header button
+         inherits alignment, so pin both to the left). */
+      .card-browser__table .thaw-table-header-cell,
+      .card-browser__table .thaw-table-header-cell__button,
+      .card-browser__table .thaw-table-cell {
+        text-align: left;
       }
-      .card-browser__tbody {
-        display: flex;
-        flex-direction: column;
-        gap: 0.125rem;
-      }
-      .card-browser__row {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 8rem 6rem 5rem;
-        gap: 0.5rem;
-        align-items: center;
-        padding: 0.25rem 0.5rem;
+      .card-browser__table .thaw-table-row {
         cursor: pointer;
       }
-      .card-browser__row:hover {
-        background-color: var(--colorNeutralBackground1Hover);
-      }
-      .card-browser__row--selected {
-        background-color: var(--colorBrandBackground2, var(--colorNeutralBackground2));
+      .card-browser__table .thaw-table-row.card-browser__row--selected {
+        background-color: var(--colorBrandBackground2, var(--colorSubtleBackground));
       }
       .card-browser__front {
+        display: block;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-      }
-      .card-browser__cell {
-        color: var(--colorNeutralForeground2);
-      }
-      .card-browser__flag {
-        color: var(--colorNeutralForeground3);
       }
       .card-browser__actions {
         display: flex;
