@@ -173,7 +173,7 @@ pub async fn browse_cards(
 
     // Fetch
     let fetch_sql = format!(
-        "SELECT c.id as card_id, c.note_id, c.deck_id, c.template_id, d.title as deck_title, n.note_type_id, nt.name as note_type_name, n.fields_json, c.created_at, scs.state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason {} {} ORDER BY {} LIMIT {} OFFSET {}",
+        "SELECT c.id as card_id, c.note_id, c.deck_id, c.template_id, d.title as deck_title, n.note_type_id, nt.name as note_type_name, n.fields_json, c.created_at, scs.state::text as state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason {} {} ORDER BY {} LIMIT {} OFFSET {}",
         base_from, base_where, order, per_page, offset
     );
 
