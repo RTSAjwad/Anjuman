@@ -49,6 +49,24 @@ struct CardBrowserState {
     initialized: RwSignal<bool>,
 }
 
+impl CardBrowserState {
+    /// Reset all filter/fetch state to defaults. Called on logout so a fresh
+    /// login starts from a clean slate (the `initialized` gate otherwise stays
+    /// latched `true` from the previous session and never re-fires the fetch,
+    /// leaving the browser table empty).
+    fn reset(&self) {
+        self.open_items.set(HashSet::new());
+        self.deck.set(String::new());
+        self.note_type.set(String::new());
+        self.state.set(String::new());
+        self.flag.set(String::new());
+        self.sort.set("created_at".to_string());
+        self.query.set(String::new());
+        self.page.set(1);
+        self.initialized.set(false);
+    }
+}
+
 /// Microsoft Fluent System Icons `Settings` 16-regular, vendored as an
 /// `icondata_core::Icon` (there is no published Fluent crate; the official path
 /// data comes from microsoft/fluentui-system-icons). Rendered via `thaw::Icon`.
@@ -153,6 +171,18 @@ pub fn RootComponent() -> impl IntoView {
         page: RwSignal::new(1),
         initialized: RwSignal::new(false),
     };
+
+    // Reset the card-browser state on logout so a subsequent login starts fresh.
+    // `browser_state` is app-lifetime and its `initialized` gate latches `true`
+    // after the first browse; without this reset, re-logging in leaves the table
+    // empty (the fetch never re-fires). `nav_selected` is reset back to Decks too.
+    Effect::new(move |_| {
+        if !view.get().authenticated {
+            browser_state.reset();
+            nav_selected.set("decks".to_string());
+            revealed.set(false);
+        }
+    });
 
     view! {
         <ConfigProvider>
