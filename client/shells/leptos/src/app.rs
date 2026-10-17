@@ -20,8 +20,8 @@ use std::collections::{HashMap, HashSet};
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
     BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
-    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Pagination, Select, SelectSize,
-    Switch, Table, TableBody, TableHeader, TableHeaderCell,
+    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Pagination, Select, SelectSize, Switch,
+    Table, TableBody, TableHeader, TableHeaderCell,
 };
 
 use crate::core_link;
@@ -759,16 +759,16 @@ fn card_browser(
                 <div class="card-browser__table">
                     <Table>
                         <TableHeader>
-                            <TableHeaderCell resizable=true min_width=120.0 max_width=600.0>
+                            <TableHeaderCell resizable=true>
                                 "Card"
                             </TableHeaderCell>
-                            <TableHeaderCell resizable=true min_width=80.0 max_width=400.0>
+                            <TableHeaderCell resizable=true>
                                 "Deck"
                             </TableHeaderCell>
-                            <TableHeaderCell resizable=true min_width=80.0 max_width=200.0>
+                            <TableHeaderCell resizable=true>
                                 "State"
                             </TableHeaderCell>
-                            <TableHeaderCell resizable=true min_width=60.0 max_width=200.0>
+                            <TableHeaderCell resizable=true>
                                 "Flag"
                             </TableHeaderCell>
                         </TableHeader>
