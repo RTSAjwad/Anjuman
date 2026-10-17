@@ -1414,15 +1414,39 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
 
     view! {
         <div class="study-actions">
-            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryCard)>
-                "Bury"
-            </Button>
+            {if card.buried {
+                view! {
+                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnburyCard)>
+                        "Unbury"
+                    </Button>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryCard)>
+                        "Bury"
+                    </Button>
+                }
+                .into_any()
+            }}
             <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryNote)>
                 "Bury note"
             </Button>
-            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendCard)>
-                "Suspend"
-            </Button>
+            {if card.suspended {
+                view! {
+                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnsuspendCard)>
+                        "Unsuspend"
+                    </Button>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendCard)>
+                        "Suspend"
+                    </Button>
+                }
+                .into_any()
+            }}
             <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendNote)>
                 "Suspend note"
             </Button>
