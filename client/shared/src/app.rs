@@ -657,6 +657,10 @@ pub struct StudyCardView {
     pub styling: String,
     /// Anki-style card flag (0-7; 0 = no flag).
     pub flag: i64,
+    /// True when the card is currently suspended.
+    pub suspended: bool,
+    /// True when the card is currently buried (`buried_at` set).
+    pub buried: bool,
 }
 
 /// The shell-facing per-state counts for a study session (a Facet-friendly
@@ -696,6 +700,8 @@ impl From<&StudyCard> for StudyCardView {
             }),
             styling: c.styling.clone(),
             flag: c.flag,
+            suspended: c.suspended,
+            buried: c.buried_at.is_some(),
         }
     }
 }
@@ -3916,6 +3922,33 @@ mod tests {
         let card_view = vm.current_card.as_ref().expect("current card");
         assert_eq!(card_view.note_id, 99);
         assert_eq!(card_view.flag, 4);
+    }
+
+    /// `StudyCard.suspended`/`buried_at` are mapped into `StudyCardView.suspended`/
+    /// `buried` so the study screen can gate `UnsuspendCard`/`UnburyCard`.
+    #[test]
+    fn study_maps_suspended_and_buried() {
+        let mut model = study_ready_model();
+        let mut card = study_card(7);
+        card.suspended = true;
+        card.buried_at = Some(chrono::Utc::now());
+        let response = ResponseBuilder::ok().body(study_advance(Some(card))).build();
+        let _ = update(Event::StudyStarted(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+        let card_view = vm.current_card.as_ref().expect("current card");
+        assert!(card_view.suspended);
+        assert!(card_view.buried);
+
+        // An unsuspended/unburied card maps both to false.
+        let mut card2 = study_card(8);
+        card2.suspended = false;
+        card2.buried_at = None;
+        let response2 = ResponseBuilder::ok().body(study_advance(Some(card2))).build();
+        let _ = update(Event::StudyStarted(Ok(response2)), &mut model);
+        let card_view2 = Anjuman.view(&model).current_card.expect("current card");
+        assert!(!card_view2.suspended);
+        assert!(!card_view2.buried);
     }
 
     // --------------------------------------------------------------------
