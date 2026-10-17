@@ -211,6 +211,10 @@ pub enum Event {
     BuryNote,
     /// Suspend the current card.
     SuspendCard,
+    /// Unsuspend the current card.
+    UnsuspendCard,
+    /// Bury the current card until the next day-start.
+    UnburyCard,
     /// Suspend all cards of the current card's note.
     SuspendNote,
     /// Reschedule the current card to `days` days from now (Anki "set due date").
@@ -233,8 +237,16 @@ pub enum Event {
     BrowserSuspendCard {
         card_id: i64,
     },
+    /// Unsuspend a browser card by id.
+    BrowserUnsuspendCard {
+        card_id: i64,
+    },
     /// Bury a browser card by id.
     BrowserBuryCard {
+        card_id: i64,
+    },
+    /// Unbury a browser card by id.
+    BrowserUnburyCard {
         card_id: i64,
     },
     /// Reschedule a browser card by id to `days` from now.
@@ -1755,6 +1767,40 @@ impl crux_core::App for Anjuman {
                     .then_send(Event::CardActionDone)
             }
 
+            Event::UnsuspendCard => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let card_id = card.card_id;
+                model.card_action_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/unsuspend"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::CardActionDone)
+            }
+
+            Event::UnburyCard => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let card_id = card.card_id;
+                model.card_action_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/unbury"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::CardActionDone)
+            }
+
             Event::SuspendNote => {
                 let Some(card) = &model.current_card else {
                     return render::render();
@@ -1928,6 +1974,32 @@ impl crux_core::App for Anjuman {
                 };
                 model.browser_error = None;
                 Http::post(format!("{API_URL}/cards/{card_id}/bury"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserCardActionDone)
+            }
+
+            Event::BrowserUnsuspendCard { card_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/unsuspend"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserCardActionDone)
+            }
+
+            Event::BrowserUnburyCard { card_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/unbury"))
                     .header("authorization", format!("Bearer {token}"))
                     .expect_json()
                     .build()
@@ -3677,6 +3749,44 @@ mod tests {
         }
     }
 
+    /// `UnsuspendCard` emits `POST /cards/{id}/unsuspend`.
+    #[test]
+    fn unsuspend_card_emits_post() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::UnsuspendCard, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/unsuspend"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `UnburyCard` emits `POST /cards/{id}/unbury`.
+    #[test]
+    fn unbury_card_emits_post() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::UnburyCard, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/unbury"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
     /// `SuspendNote` emits `POST /notes/{note_id}/suspend`.
     #[test]
     fn suspend_note_emits_post() {
@@ -3908,6 +4018,42 @@ mod tests {
                 assert_eq!(
                     req.operation.url.as_str(),
                     "http://127.0.0.1:3000/cards/42/bury"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserUnsuspendCard` emits `POST /cards/{id}/unsuspend`.
+    #[test]
+    fn browser_unsuspend_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserUnsuspendCard { card_id: 42 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/unsuspend"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserUnburyCard` emits `POST /cards/{id}/unbury`.
+    #[test]
+    fn browser_unbury_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserUnburyCard { card_id: 42 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/unbury"
                 );
             }
             other => panic!("expected one Http effect, got {other:?}"),
