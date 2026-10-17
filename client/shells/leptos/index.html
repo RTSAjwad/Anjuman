@@ -371,6 +371,29 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      /* The notes browser (US-4.13) still uses the hand-rolled grid rows; keep
+         those classes intact (the card browser's own table now uses thaw's
+         `.thaw-table-*` classes instead). */
+      .card-browser__row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 8rem 6rem 5rem;
+        gap: 0.5rem;
+        align-items: center;
+        padding: 0.25rem 0.5rem;
+        cursor: pointer;
+      }
+      .card-browser__row:hover {
+        background-color: var(--colorNeutralBackground1Hover);
+      }
+      .card-browser__row--selected {
+        background-color: var(--colorBrandBackground2, var(--colorNeutralBackground2));
+      }
+      .card-browser__cell {
+        color: var(--colorNeutralForeground2);
+      }
+      .card-browser__flag {
+        color: var(--colorNeutralForeground3);
+      }
       .card-browser__actions {
         display: flex;
         align-items: center;

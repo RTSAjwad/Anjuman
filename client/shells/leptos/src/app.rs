@@ -20,8 +20,8 @@ use std::collections::{HashMap, HashSet};
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
     BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
-    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Select, SelectSize, Switch, Table,
-    TableBody, TableHeader, TableHeaderCell,
+    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Pagination, Select, SelectSize,
+    Switch, Table, TableBody, TableHeader, TableHeaderCell,
 };
 
 use crate::core_link;
@@ -41,6 +41,8 @@ struct CardBrowserState {
     flag: RwSignal<String>,
     sort: RwSignal<String>,
     query: RwSignal<String>,
+    /// Current page (1-based, `usize` for thaw's `Pagination`).
+    page: RwSignal<usize>,
     /// Guards the one-time "load first page + note types" fetch, so it only
     /// fires when the browser is first shown, not on every ViewModel-driven
     /// re-render (which would reset the user's active filter).
@@ -152,6 +154,7 @@ pub fn RootComponent() -> impl IntoView {
         flag: RwSignal::new(String::new()),
         sort: RwSignal::new("created_at".to_string()),
         query: RwSignal::new(String::new()),
+        page: RwSignal::new(1),
         initialized: RwSignal::new(false),
     };
 
@@ -462,6 +465,7 @@ fn card_browser(
     let sort_value = state.sort;
     let q_value = state.query;
     let open_items = state.open_items;
+    let page = state.page;
 
     // The note-type list and a flattened deck list, captured once for the
     // sidebar (owned titles/ids), each cloned for the `view!` moves below.
@@ -509,15 +513,30 @@ fn card_browser(
     };
 
     let apply = move |_: leptos::ev::MouseEvent| {
+        page.set(1);
         let filter = with_filter(1);
         set_event.set(Event::CardsRequested { filter });
     };
 
     // A no-arg variant for the tree leaves (which don't receive a useful event).
     let fire_filter = move || {
+        page.set(1);
         let filter = with_filter(1);
         set_event.set(Event::CardsRequested { filter });
     };
+
+    // Watch the pagination signal (thaw's `Pagination` mutates it directly) and
+    // fire a fetch when the page changes away from what the core last returned.
+    // Self-syncing (no explicit guard): after the fetch, `browser_page` catches up
+    // to `page`, so the effect stops firing.
+    Effect::new(move |_| {
+        let p = page.get();
+        let current = vm_sig.get().browser_page.max(1) as usize;
+        if p != current {
+            let filter = with_filter(p as i64);
+            set_event.set(Event::CardsRequested { filter });
+        }
+    });
 
     let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
 
@@ -824,28 +843,17 @@ fn card_browser(
 
                 <div class="card-browser__pagination">
                     <span>
-                        {vm.browser_total.to_string()}" cards · page "{vm.browser_page.to_string()}
+                        {vm.browser_total.to_string()}" cards"
                     </span>
-                    <Button
-                        appearance=ButtonAppearance::Subtle
-                        disabled=Signal::derive(move || vm.browser_page <= 1)
-                        on_click=move |_| {
-                            let filter = with_filter(vm.browser_page - 1);
-                            set_event.set(Event::CardsRequested { filter });
-                        }
-                    >
-                        "Prev"
-                    </Button>
-                    <Button
-                        appearance=ButtonAppearance::Subtle
-                        disabled=Signal::derive(move || vm.browser_page * vm.browser_per_page >= vm.browser_total)
-                        on_click=move |_| {
-                            let filter = with_filter(vm.browser_page + 1);
-                            set_event.set(Event::CardsRequested { filter });
-                        }
-                    >
-                        "Next"
-                    </Button>
+                    <Pagination
+                        page=page
+                        page_count=Signal::derive(move || {
+                            let total = vm.browser_total.max(0) as usize;
+                            let per = vm.browser_per_page.max(1) as usize;
+                            ((total + per - 1) / per).max(1)
+                        })
+                        sibling_count=Signal::derive(|| 1)
+                    />
                 </div>
             </div>
         </div>
