@@ -493,10 +493,9 @@ fn card_browser(
     let open_items = state.open_items;
     let page = state.page;
 
-    // The note-type list and a flattened deck list, captured once for the
-    // sidebar (owned titles/ids), each cloned for the `view!` moves below.
-    let mut flat_decks: Vec<(String, i64)> = Vec::new();
-    flatten_decks(&vm.decks, &mut flat_decks);
+    // The deck tree (hierarchy preserved for the sidebar) and the note-type list,
+    // captured once and cloned for the `view!` moves below.
+    let decks_tree = vm.decks.clone();
     let note_types = vm.note_types.clone();
 
     // Build a filter from the current signal state and fire `CardsRequested`.
@@ -647,7 +646,7 @@ fn card_browser(
     let flag_active = flag_value.clone();
     let sort_active = sort_value.clone();
 
-    let flat_decks_view = flat_decks.clone();
+    let decks_tree_view = decks_tree.clone();
     let note_types_view = note_types.clone();
 
     // Search fires on Enter (the form's submit). `fire_filter` resets the page
@@ -679,12 +678,13 @@ fn card_browser(
                         "decks",
                         "Decks",
                         open_items,
-                        flat_decks_view.into_iter().map(|(title, id)| {
-                            let id_str = id.to_string();
-                            let active = deck_active.get() == id_str;
-                            let sel = deck_sel.clone();
-                            filter_leaf(active, id_str, title, move |id| sel(id))
-                        }).collect_view(),
+                        deck_filter_tree(
+                            decks_tree_view,
+                            0,
+                            open_items,
+                            deck_active,
+                            deck_sel,
+                        ),
                     )}
 
                     {filter_branch(
@@ -1076,6 +1076,137 @@ fn filter_leaf(
             >
                 <div class="thaw-tree-item-layout__main">{label}</div>
             </div>
+        </div>
+    }
+}
+
+/// Renders the deck hierarchy as a nested, selectable tree inside the filter
+/// sidebar. Unlike the other filter categories (flat leaf lists), decks have a
+/// real parent/child structure (from `DeckSummary.children`), so each branch node
+/// is **both** selectable (clicking the label filters to that deck) **and**
+/// expandable (clicking the chevron reveals its subdecks). Leaves are plain
+/// selectable rows. Keys the per-node open state as `"deck-node-{id}"` to avoid
+/// colliding with the top-level category ids (e.g. `"decks"`, `"note-types"`).
+fn deck_filter_tree(
+    decks: Vec<DeckSummary>,
+    depth: usize,
+    open_items: RwSignal<HashSet<String>>,
+    active: RwSignal<String>,
+    on_select: impl Fn(String) + Clone + 'static,
+) -> impl IntoView {
+    decks
+        .into_iter()
+        .map(|deck| deck_filter_node(deck, depth, open_items, active.clone(), on_select.clone()))
+        .collect_view()
+}
+
+/// A single deck node in the filter tree. Renders as a branch (with expander)
+/// when it has children, or a leaf otherwise; the node's label is always a
+/// selectable filter entry. Indentation is applied per-level to the row *content*
+/// (the `.thaw-tree-item-layout`) only, so hover/active backgrounds still span
+/// the full sidebar width.
+fn deck_filter_node(
+    deck: DeckSummary,
+    depth: usize,
+    open_items: RwSignal<HashSet<String>>,
+    active: RwSignal<String>,
+    on_select: impl Fn(String) + Clone + 'static,
+) -> impl IntoView {
+    let id = deck.id;
+    let id_str = id.to_string();
+    let has_children = !deck.children.is_empty();
+    let children = deck.children;
+    let node_key = format!("deck-node-{id}");
+    // `is_open` borrows `node_key`; clone it for the closures that also reference
+    // the key (the `toggle_open` updater and the `hidden`/style readers).
+    let is_open = {
+        let node_key = node_key.clone();
+        move || open_items.get().contains(&node_key)
+    };
+    let is_open_style = is_open.clone();
+    let is_open_hidden = is_open.clone();
+    // Indent the row content one step per level below the "Decks" header.
+    let indent = format!("padding-left: calc(var(--spacingHorizontalXXL, 24px) * {})", depth + 1);
+
+    let toggle_open = {
+        let open_items = open_items;
+        let node_key = node_key.clone();
+        move |_| {
+            open_items.update(|set| {
+                if set.contains(&node_key) {
+                    set.remove(&node_key);
+                } else {
+                    set.insert(node_key.clone());
+                }
+            });
+        }
+    };
+
+    let select = {
+        let on_select = on_select.clone();
+        let id_str = id_str.clone();
+        move |_| on_select(id_str.clone())
+    };
+
+    // The active-state reader borrows `id_str`; give the `select` closure its own
+    // clone so the two don't fight over ownership.
+    let active_id = id_str.clone();
+
+    view! {
+        <div class="thaw-tree-item thaw-tree-item--branch" role="treeitem">
+            <div class="thaw-tree-item-layout" style=indent>
+                {if has_children {
+                    view! {
+                        <div
+                            class="thaw-tree-item-layout__expand-icon"
+                            on:click=toggle_open
+                        >
+                            <svg
+                                style=move || {
+                                    if is_open_style() { "transform: rotate(90deg)".to_string() } else { "transform: rotate(0deg)".to_string() }
+                                }
+                                fill="currentColor"
+                                aria-hidden="true"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 12 12"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path d="M4.65 2.15a.5.5 0 0 0 0 .7L7.79 6 4.65 9.15a.5.5 0 1 0 .7.7l3.5-3.5a.5.5 0 0 0 0-.7l-3.5-3.5a.5.5 0 0 0-.7 0Z" fill="currentColor"></path>
+                            </svg>
+                        </div>
+                    }
+                    .into_any()
+                } else {
+                    view! {
+                        <div class="thaw-tree-item-layout__expand-icon-holder" aria-hidden="true"></div>
+                    }
+                    .into_any()
+                }}
+                <div
+                    class="thaw-tree-item-layout__main"
+                    class:card-browser__leaf--active=move || active.get() == active_id
+                    on:click=select
+                >
+                    {deck.title}
+                </div>
+            </div>
+            {if has_children {
+                view! {
+                    <div class="thaw-subtree" hidden=move || !is_open_hidden()>
+                        {deck_filter_tree(
+                            children,
+                            depth + 1,
+                            open_items,
+                            active.clone(),
+                            on_select,
+                        )}
+                    </div>
+                }
+                .into_any()
+            } else {
+                ().into_any()
+            }}
         </div>
     }
 }
