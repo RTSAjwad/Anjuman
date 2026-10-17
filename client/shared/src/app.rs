@@ -807,6 +807,17 @@ fn refresh_browser(model: &Model) -> Command<Effect, Event> {
     render::render().and(Command::event(Event::CardsRequested { filter }))
 }
 
+/// Re-sync `browser_selected` to the matching card in `browser_cards` (the single
+/// source of truth), so the shell's inspector reflects the freshest data after a
+/// list refresh or an in-place flag update. Clears to `None` when the selected
+/// card is no longer in the list.
+fn resync_browser_selected(model: &mut Model) {
+    let Some(sel_id) = model.browser_selected.as_ref().map(|c| c.card_id) else {
+        return;
+    };
+    model.browser_selected = model.browser_cards.iter().find(|c| c.card_id == sel_id).cloned();
+}
+
 /// Re-fetch the notes list using the last stored filter (deck id).
 fn refresh_notes(model: &Model) -> Command<Effect, Event> {
     render::render().and(Command::event(Event::NotesRequested {
@@ -1882,6 +1893,7 @@ impl crux_core::App for Anjuman {
                 model.browser_per_page = page.per_page;
                 model.browser_total = page.total;
                 model.browser_error = None;
+                resync_browser_selected(model);
                 render::render()
             }
 
@@ -1988,6 +2000,7 @@ impl crux_core::App for Anjuman {
                     card.flag = Some(flag.flag);
                 }
                 model.browser_error = None;
+                resync_browser_selected(model);
                 render::render()
             }
 
@@ -3964,6 +3977,53 @@ mod tests {
         let q = f.to_wire_query();
         assert_eq!(q.deck_id, "1,2");
         assert_eq!(q.flag, "1,3");
+    }
+
+    /// After a list refresh, `browser_selected` is re-synced to the freshest card
+    /// with the same id (not left as a stale pre-action clone).
+    #[test]
+    fn cards_result_resyncs_selected_card() {
+        let mut model = authenticated_model();
+        // A stale selection: suspended=false.
+        model.browser_selected = Some(browser_card(42));
+
+        // The refreshed page contains the same card id but now suspended=true.
+        let mut updated = browser_card(42);
+        updated.suspended = Some(true);
+        let response = ResponseBuilder::ok().body(browser_page(vec![updated])).build();
+        let _ = update(Event::CardsResult(Ok(response)), &mut model);
+
+        let sel = model.browser_selected.as_ref().expect("still selected");
+        assert_eq!(sel.card_id, 42);
+        assert_eq!(sel.suspended, Some(true), "selected card reflects the fresh data");
+    }
+
+    /// If the refreshed page no longer contains the selected card, the selection
+    /// clears to `None`.
+    #[test]
+    fn cards_result_clears_selected_when_card_absent() {
+        let mut model = authenticated_model();
+        model.browser_selected = Some(browser_card(42));
+
+        let response = ResponseBuilder::ok().body(browser_page(vec![browser_card(99)])).build();
+        let _ = update(Event::CardsResult(Ok(response)), &mut model);
+
+        assert!(model.browser_selected.is_none());
+    }
+
+    /// `BrowserFlagDone(Ok)` re-syncs the selection too (flag updates the list in
+    /// place and must not leave `browser_selected.flag` stale).
+    #[test]
+    fn browser_flag_done_resyncs_selected_card() {
+        let mut model = authenticated_model();
+        model.browser_cards = vec![browser_card(42)];
+        model.browser_selected = Some(browser_card(42));
+
+        let response = ResponseBuilder::ok().body(flag_response(3)).build();
+        let _ = update(Event::BrowserFlagDone(Ok(response)), &mut model);
+
+        let sel = model.browser_selected.as_ref().expect("still selected");
+        assert_eq!(sel.flag, Some(3), "selected card flag reflects the fresh data");
     }
 
     // --------------------------------------------------------------------
