@@ -462,8 +462,17 @@
       .card-browser__inspector-actions .thaw-input {
         width: 5rem;
       }
-      .card-browser__inspector-switch {
+      .card-browser__switch {
         display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+      }
+      .card-browser__switch input {
+        cursor: pointer;
+      }
+      .card-browser__switch-label {
+        user-select: none;
       }
       .card-browser__inspector-reschedule {
         display: flex;

@@ -43,17 +43,6 @@ struct CardBrowserState {
     query: RwSignal<String>,
     /// Current page (1-based, `usize` for thaw's `Pagination`).
     page: RwSignal<usize>,
-    /// Selected card's suspend/bury state, kept as writable `RwSignal<bool>`s
-    /// because thaw's `Switch` is a controlled component that writes its
-    /// checked state back into the signal. Synced from `browser_selected`.
-    selected_suspend: RwSignal<bool>,
-    selected_bury: RwSignal<bool>,
-    /// Last value written into the mirrors (guards the forward Effects so a core
-    /// sync does not re-emit). Stable `StoredValue`s.
-    suspend_last: StoredValue<bool>,
-    bury_last: StoredValue<bool>,
-    /// The selected card id whose state is currently in the mirrors.
-    selected_card_id: StoredValue<i64>,
     /// Guards the one-time "load first page + note types" fetch, so it only
     /// fires when the browser is first shown, not on every ViewModel-driven
     /// re-render (which would reset the user's active filter).
@@ -162,11 +151,6 @@ pub fn RootComponent() -> impl IntoView {
         sort: RwSignal::new("created_at".to_string()),
         query: RwSignal::new(String::new()),
         page: RwSignal::new(1),
-        selected_suspend: RwSignal::new(false),
-        selected_bury: RwSignal::new(false),
-        suspend_last: StoredValue::new(false),
-        bury_last: StoredValue::new(false),
-        selected_card_id: StoredValue::new(-1),
         initialized: RwSignal::new(false),
     };
 
@@ -547,63 +531,17 @@ fn card_browser(
     let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
     let selected_card = vm.browser_selected.clone();
 
-    // Suspend/bury are writable mirrors (thaw `Switch` writes them back on
-    // toggle), synced from `browser_selected`. Flag stays a read-only derived
-    // signal (the plain `<select>` only displays it).
-    let selected_suspend = state.selected_suspend;
-    let selected_bury = state.selected_bury;
-    let suspend_last = state.suspend_last;
-    let bury_last = state.bury_last;
-    let selected_card_id_guard = state.selected_card_id;
+    // Suspend/bury/flag are read-only derived signals over the live
+    // `browser_selected`. The custom `CardSwitch` mirrors state from these (never
+    // writes locally) and emits the directional event on click.
+    let selected_suspend = Signal::derive(move || {
+        vm_sig.get().browser_selected.as_ref().map(|c| c.suspended).unwrap_or(false)
+    });
+    let selected_bury = Signal::derive(move || {
+        vm_sig.get().browser_selected.as_ref().map(|c| c.buried).unwrap_or(false)
+    });
     let selected_flag = Signal::derive(move || {
         vm_sig.get().browser_selected.as_ref().map(|c| c.flag.to_string()).unwrap_or_default()
-    });
-
-    // Sync the mirrors from the core when the selected card changes (also
-    // records the last-known value so the forward Effects below don't re-emit).
-    Effect::new(move |_| {
-        let card = vm_sig.get().browser_selected.clone();
-        let cid = card.as_ref().map(|c| c.card_id).unwrap_or(-1);
-        if selected_card_id_guard.get_value() != cid {
-            selected_card_id_guard.set_value(cid);
-            if let Some(c) = card {
-                selected_suspend.set(c.suspended);
-                selected_bury.set(c.buried);
-                suspend_last.set_value(c.suspended);
-                bury_last.set_value(c.buried);
-            }
-        }
-    });
-
-    // Forward toggles directionally. thaw's `Switch` writes the mirror; when it
-    // differs from the last-synced value, emit the inverse-aware event.
-    Effect::new(move |_| {
-        let v = selected_suspend.get();
-        if v != suspend_last.get_value() {
-            suspend_last.set_value(v);
-            let cid = vm_sig.get_untracked().browser_selected.as_ref().map(|c| c.card_id);
-            if let Some(cid) = cid {
-                if v {
-                    set_event.set(Event::BrowserSuspendCard { card_id: cid });
-                } else {
-                    set_event.set(Event::BrowserUnsuspendCard { card_id: cid });
-                }
-            }
-        }
-    });
-    Effect::new(move |_| {
-        let v = selected_bury.get();
-        if v != bury_last.get_value() {
-            bury_last.set_value(v);
-            let cid = vm_sig.get_untracked().browser_selected.as_ref().map(|c| c.card_id);
-            if let Some(cid) = cid {
-                if v {
-                    set_event.set(Event::BrowserBuryCard { card_id: cid });
-                } else {
-                    set_event.set(Event::BrowserUnburyCard { card_id: cid });
-                }
-            }
-        }
     });
 
     // Selecting a leaf sets its category's filter value and re-applies; clicking
@@ -886,8 +824,8 @@ fn card_browser(
 #[component]
 fn CardInspector(
     card: CardBrowserView,
-    suspend: RwSignal<bool>,
-    bury: RwSignal<bool>,
+    suspend: Signal<bool>,
+    bury: Signal<bool>,
     flag: Signal<String>,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
@@ -942,12 +880,28 @@ fn CardInspector(
             </dl>
 
             <div class="card-browser__inspector-actions">
-                <div class="card-browser__inspector-switch">
-                    <Switch checked=suspend label="Suspend" />
-                </div>
-                <div class="card-browser__inspector-switch">
-                    <Switch checked=bury label="Bury" />
-                </div>
+                <CardSwitch
+                    checked=suspend
+                    label="Suspend"
+                    on_toggle=move || {
+                        if suspend.get() {
+                            set_event.set(Event::BrowserUnsuspendCard { card_id });
+                        } else {
+                            set_event.set(Event::BrowserSuspendCard { card_id });
+                        }
+                    }
+                />
+                <CardSwitch
+                    checked=bury
+                    label="Bury"
+                    on_toggle=move || {
+                        if bury.get() {
+                            set_event.set(Event::BrowserUnburyCard { card_id });
+                        } else {
+                            set_event.set(Event::BrowserBuryCard { card_id });
+                        }
+                    }
+                />
                 <div class="card-browser__inspector-reschedule">
                     <Input value=reschedule_days placeholder="days" input_type=Signal::derive(|| InputType::Number) />
                     <Button
@@ -982,6 +936,44 @@ fn CardInspector(
                 </div>
             </div>
         </aside>
+    }
+}
+
+/// An unidirectional suspend/bury toggle. This is **purely reflective**: it has
+/// no writable state of its own — the checked state comes only from the `checked`
+/// signal (derived from the core's `ViewModel`), and a click emits a *directional*
+/// event via `on_toggle` (suspend vs unsuspend, bury vs unbury). The core's
+/// response re-syncs `checked`, which drives the visible checkbox back to truth.
+///
+/// We deliberately render a **visible native checkbox** and mirror state onto its
+/// `.checked` property via a `NodeRef` + `Effect` (rather than `prop:checked`,
+/// which only sets the *attribute* once and diverges after the first user click).
+/// A visible control avoids the invisible-overlay click-delivery failures that
+/// broke the earlier `opacity: 0` wrapper. No `thaw::Switch` because that is a
+/// controlled component that writes back into a writable `Model<bool>` — the
+/// shadow state we're explicitly avoiding.
+#[component]
+fn CardSwitch(
+    checked: Signal<bool>,
+    label: &'static str,
+    on_toggle: impl Fn() + 'static,
+) -> impl IntoView {
+    let input_ref = NodeRef::<leptos::html::Input>::new();
+
+    // Mirror core truth onto the DOM's `checked` *property* every time `checked`
+    // changes (across cards too). The property — not the attribute — is what the
+    // browser uses after any interaction.
+    Effect::new(move |_| {
+        if let Some(input) = input_ref.get() {
+            let _ = input.set_checked(checked.get());
+        }
+    });
+
+    view! {
+        <label class="card-browser__switch">
+            <input type="checkbox" node_ref=input_ref on:click=move |_| on_toggle() />
+            <span class="card-browser__switch-label">{label}</span>
+        </label>
     }
 }
 
