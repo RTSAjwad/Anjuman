@@ -12,8 +12,8 @@
 use leptos::prelude::*;
 use leptos::task;
 use shared::app::{
-    CardBrowserFilter, DeckOptionsEdit, DeckOptionsView, DeckSummary, DeckView, NoteView,
-    PresetSummary, StudyCardView, StudyCountsView,
+    CardBrowserFilter, CardBrowserView, DeckOptionsEdit, DeckOptionsView, DeckSummary, DeckView,
+    NoteView, PresetSummary, StudyCardView, StudyCountsView,
 };
 use shared::{Event, ViewModel};
 use std::collections::{HashMap, HashSet};
@@ -529,32 +529,19 @@ fn card_browser(
     });
 
     let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
+    let selected_card = vm.browser_selected.clone();
 
-    // Per-card action inputs (bound to the selected card's actions).
-    let reschedule_days = RwSignal::new(String::new());
-    let browser_flag = RwSignal::new(String::new());
-    let browser_flag_last = StoredValue::new(-1i64);
-
-    // Forward a flag selection to the selected card (thaw's Select has no user
-    // on:change hook; watch the signal, guarded against the initial render).
-    Effect::new(move |_| {
-        if let Ok(f) = browser_flag.get().parse::<i64>() {
-            if browser_flag_last.get_value() != f {
-                browser_flag_last.set_value(f);
-                if let Some(card_id) = vm_sig
-                    .get_untracked()
-                    .browser_selected
-                    .as_ref()
-                    .map(|c| c.card_id)
-                {
-                    set_event.set(Event::BrowserFlagCard {
-                        card_id,
-                        flag: f as i32,
-                    });
-                    browser_flag.set(String::new());
-                }
-            }
-        }
+    // The selected card's suspend/bury/flag are read-only derived signals over
+    // the live `browser_selected`. The custom `CardSwitch` mirrors `checked` from
+    // these and fires a toggle on click (no shell-local mirror state).
+    let selected_suspend = Signal::derive(move || {
+        vm_sig.get().browser_selected.as_ref().map(|c| c.suspended).unwrap_or(false)
+    });
+    let selected_bury = Signal::derive(move || {
+        vm_sig.get().browser_selected.as_ref().map(|c| c.buried).unwrap_or(false)
+    });
+    let selected_flag = Signal::derive(move || {
+        vm_sig.get().browser_selected.as_ref().map(|c| c.flag.to_string()).unwrap_or_default()
     });
 
     // Selecting a leaf sets its category's filter value and re-applies; clicking
@@ -746,107 +733,215 @@ fn card_browser(
             </aside>
 
             <div class="card-browser__main">
-                <div class="card-browser__table">
-                    <Table>
-                        <TableHeader>
-                            <TableHeaderCell resizable=true>
-                                "Card"
-                            </TableHeaderCell>
-                            <TableHeaderCell resizable=true>
-                                "Deck"
-                            </TableHeaderCell>
-                            <TableHeaderCell resizable=true>
-                                "State"
-                            </TableHeaderCell>
-                            <TableHeaderCell resizable=true>
-                                "Flag"
-                            </TableHeaderCell>
-                        </TableHeader>
-                        <TableBody>
-                            {vm.browser_cards.iter().map(|c| {
-                                let card_id = c.card_id;
-                                let is_selected = selected_card_id == Some(card_id);
-                                let front = c.front.clone();
-                                let deck_title = c.deck_title.clone();
-                                let state = c.state.clone();
-                                let flag = c.flag;
-                                let suspended = c.suspended;
-                                let buried = c.buried;
-                                view! {
-                                    <tr
-                                        class="thaw-table-row"
-                                        class:card-browser__row--selected=is_selected
-                                        on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
-                                    >
-                                        <td class="thaw-table-cell">
-                                            <span class="card-browser__front">
-                                                {front}
-                                                {if suspended { " (suspended)" } else { "" }}
-                                                {if buried { " (buried)" } else { "" }}
-                                            </span>
-                                        </td>
-                                        <td class="thaw-table-cell">{deck_title}</td>
-                                        <td class="thaw-table-cell">{state}</td>
-                                        <td class="thaw-table-cell">{flag_label(flag)}</td>
-                                    </tr>
-                                }
-                            }).collect_view()}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                <div class="card-browser__actions">
-                    {if let Some(card_id) = selected_card_id {
-                        view! {
-                            <span class="card-browser__actions-label">"Selected: "{card_id.to_string()}</span>
-                            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BrowserSuspendCard { card_id })>
-                                "Suspend"
-                            </Button>
-                            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BrowserBuryCard { card_id })>
-                                "Bury"
-                            </Button>
-                            <Input value=reschedule_days placeholder="days" input_type=Signal::derive(|| InputType::Number) />
-                            <Button
-                                appearance=ButtonAppearance::Subtle
-                                on_click=move |_| {
-                                    if let Ok(d) = reschedule_days.get().trim().parse::<i64>() {
-                                        set_event.set(Event::BrowserRescheduleCard { card_id, days: d });
-                                        reschedule_days.set(String::new());
+                <div class="card-browser__content">
+                    <div class="card-browser__table">
+                        <Table>
+                            <TableHeader>
+                                <TableHeaderCell resizable=true>
+                                    "Card"
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=true>
+                                    "Deck"
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=true>
+                                    "State"
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=true>
+                                    "Flag"
+                                </TableHeaderCell>
+                            </TableHeader>
+                            <TableBody>
+                                {vm.browser_cards.iter().map(|c| {
+                                    let card_id = c.card_id;
+                                    let is_selected = selected_card_id == Some(card_id);
+                                    let front = c.front.clone();
+                                    let deck_title = c.deck_title.clone();
+                                    let state = c.state.clone();
+                                    let flag = c.flag;
+                                    let suspended = c.suspended;
+                                    let buried = c.buried;
+                                    view! {
+                                        <tr
+                                            class="thaw-table-row"
+                                            class:card-browser__row--selected=is_selected
+                                            on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
+                                        >
+                                            <td class="thaw-table-cell">
+                                                <span class="card-browser__front">
+                                                    {front}
+                                                    {if suspended { " (suspended)" } else { "" }}
+                                                    {if buried { " (buried)" } else { "" }}
+                                                </span>
+                                            </td>
+                                            <td class="thaw-table-cell">{deck_title}</td>
+                                            <td class="thaw-table-cell">{state}</td>
+                                            <td class="thaw-table-cell">{flag_label(flag)}</td>
+                                        </tr>
                                     }
-                                }
-                            >
-                                "Reschedule"
-                            </Button>
-                            <Select value=browser_flag size=SelectSize::Medium>
-                                <option value="">"Flag…"</option>
-                                {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
-                                    let v = *f;
-                                    view! { <option value=v>{flag_label(v.parse::<i64>().unwrap())}</option> }
                                 }).collect_view()}
-                            </Select>
-                        }
-                        .into_any()
-                    } else {
-                        view! { <span class="card-browser__hint">"Select a card to act on it."</span> }.into_any()
-                    }}
+                            </TableBody>
+                        </Table>
+                    </div>
+
+                    <div class="card-browser__pagination">
+                        <span>
+                            {vm.browser_total.to_string()}" cards"
+                        </span>
+                        <Pagination
+                            page=page
+                            page_count=Signal::derive(move || {
+                                let total = vm.browser_total.max(0) as usize;
+                                let per = vm.browser_per_page.max(1) as usize;
+                                ((total + per - 1) / per).max(1)
+                            })
+                            sibling_count=Signal::derive(|| 1)
+                        />
+                    </div>
                 </div>
 
-                <div class="card-browser__pagination">
-                    <span>
-                        {vm.browser_total.to_string()}" cards"
-                    </span>
-                    <Pagination
-                        page=page
-                        page_count=Signal::derive(move || {
-                            let total = vm.browser_total.max(0) as usize;
-                            let per = vm.browser_per_page.max(1) as usize;
-                            ((total + per - 1) / per).max(1)
-                        })
-                        sibling_count=Signal::derive(|| 1)
-                    />
-                </div>
+                {if let Some(card) = selected_card {
+                    view! {
+                        <CardInspector
+                            card=card
+                            suspend=selected_suspend
+                            bury=selected_bury
+                            flag=selected_flag
+                            set_event=set_event
+                        />
+                    }
+                    .into_any()
+                } else {
+                    ().into_any()
+                }}
             </div>
         </div>
+    }
+}
+
+/// The selected card's information pane (right-hand side of the browser). Shows
+/// every field the core exposes for a `CardBrowserView` plus the per-card
+/// actions (Suspend / Bury / Reschedule / Flag).
+#[component]
+fn CardInspector(
+    card: CardBrowserView,
+    suspend: Signal<bool>,
+    bury: Signal<bool>,
+    flag: Signal<String>,
+    set_event: WriteSignal<Event>,
+) -> impl IntoView {
+    let card_id = card.card_id;
+    let reschedule_days = RwSignal::new(String::new());
+
+    view! {
+        <aside class="card-browser__inspector">
+            <h3 class="card-browser__inspector-title">"Selected card"</h3>
+
+            <dl class="card-browser__inspector-fields">
+                <div class="card-browser__inspector-row">
+                    <dt>"Card"</dt>
+                    <dd>{card.card_id.to_string()}</dd>
+                </div>
+                <div class="card-browser__inspector-row">
+                    <dt>"Note"</dt>
+                    <dd>{card.note_id.to_string()}</dd>
+                </div>
+                <div class="card-browser__inspector-row">
+                    <dt>"Deck"</dt>
+                    <dd>{card.deck_title}</dd>
+                </div>
+                <div class="card-browser__inspector-row">
+                    <dt>"Note type"</dt>
+                    <dd>{card.note_type_name}</dd>
+                </div>
+                <div class="card-browser__inspector-row">
+                    <dt>"State"</dt>
+                    <dd>{card.state}</dd>
+                </div>
+                <div class="card-browser__inspector-row">
+                    <dt>"Flag"</dt>
+                    <dd>{flag_label(card.flag)}</dd>
+                </div>
+                <div class="card-browser__inspector-row">
+                    <dt>"Suspended"</dt>
+                    <dd>{if card.suspended { "Yes" } else { "No" }}</dd>
+                </div>
+                <div class="card-browser__inspector-row">
+                    <dt>"Buried"</dt>
+                    <dd>{if card.buried { "Yes" } else { "No" }}</dd>
+                </div>
+                <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
+                    <dt>"Front"</dt>
+                    <dd class="card-browser__inspector-text">{card.front}</dd>
+                </div>
+                <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
+                    <dt>"Back"</dt>
+                    <dd class="card-browser__inspector-text">{card.back}</dd>
+                </div>
+            </dl>
+
+            <div class="card-browser__inspector-actions">
+                <label class="card-browser__checkbox">
+                    <input
+                        type="checkbox"
+                        prop:checked=suspend
+                        on:click=move |_| {
+                            if suspend.get() {
+                                set_event.set(Event::BrowserUnsuspendCard { card_id });
+                            } else {
+                                set_event.set(Event::BrowserSuspendCard { card_id });
+                            }
+                        }
+                    />
+                    <span>"Suspend"</span>
+                </label>
+                <label class="card-browser__checkbox">
+                    <input
+                        type="checkbox"
+                        prop:checked=bury
+                        on:click=move |_| {
+                            if bury.get() {
+                                set_event.set(Event::BrowserUnburyCard { card_id });
+                            } else {
+                                set_event.set(Event::BrowserBuryCard { card_id });
+                            }
+                        }
+                    />
+                    <span>"Bury"</span>
+                </label>
+                <div class="card-browser__inspector-reschedule">
+                    <Input value=reschedule_days placeholder="days" input_type=Signal::derive(|| InputType::Number) />
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| {
+                            if let Ok(d) = reschedule_days.get().trim().parse::<i64>() {
+                                set_event.set(Event::BrowserRescheduleCard { card_id, days: d });
+                                reschedule_days.set(String::new());
+                            }
+                        }
+                    >
+                        "Reschedule"
+                    </Button>
+                </div>
+                <div class="card-browser__inspector-flag">
+                    <select
+                        class="thaw-select__select"
+                        prop:value=move || flag.get()
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            if let Ok(f) = value.parse::<i64>() {
+                                set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
+                            }
+                        }
+                    >
+                        <option value="0">"No flag"</option>
+                        {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
+                            let v = *f;
+                            view! { <option value=v>{flag_label(v.parse::<i64>().unwrap())}</option> }
+                        }).collect_view()}
+                    </select>
+                </div>
+            </div>
+        </aside>
     }
 }
 
