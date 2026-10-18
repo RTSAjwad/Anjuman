@@ -13,11 +13,11 @@ use leptos::prelude::*;
 use leptos::task;
 use shared::app::{
     CardBrowserFilter, CardBrowserView, CurrentRoute, DeckOptionsEdit, DeckOptionsView,
-    DeckSummary, DeckView, NoteBrowserFilter, NoteTypeView, NoteView, PresetSummary,
-    StudyCardView, StudyCountsView,
+    DeckSummary, DeckView, NoteBrowserFilter, NoteView, PresetSummary, StudyCardView,
+    StudyCountsView,
 };
 use shared::{Event, ViewModel};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
     BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
@@ -61,10 +61,6 @@ struct BrowserState {
     note_query: RwSignal<String>,
     /// Note-view page (1-based).
     note_page: RwSignal<usize>,
-    /// Editor draft buffer: the selected note's field values (field name → text),
-    /// synced from `ViewModel.notes_selected` (not a source of truth).
-    edit_fields: RwSignal<Vec<(String, RwSignal<String>)>>,
-    edit_note_type: RwSignal<String>,
     /// Guards first-fetch of the note list (fires once when Notes view opens).
     notes_initialized: RwSignal<bool>,
 }
@@ -89,8 +85,6 @@ impl BrowserState {
         self.note_sort.set("created_at".to_string());
         self.note_query.set(String::new());
         self.note_page.set(1);
-        self.edit_fields.set(Vec::new());
-        self.edit_note_type.set("0".to_string());
         self.notes_initialized.set(false);
     }
 }
@@ -204,8 +198,6 @@ pub fn RootComponent() -> impl IntoView {
         note_sort: RwSignal::new("created_at".to_string()),
         note_query: RwSignal::new(String::new()),
         note_page: RwSignal::new(1),
-        edit_fields: RwSignal::new(Vec::new()),
-        edit_note_type: RwSignal::new("0".to_string()),
         notes_initialized: RwSignal::new(false),
     };
 
@@ -793,13 +785,7 @@ fn browser(
     let note_sort = state.note_sort;
     let note_query = state.note_query;
     let note_page = state.note_page;
-    let edit_fields = state.edit_fields;
-    let edit_note_type = state.edit_note_type;
     let notes_initialized = state.notes_initialized;
-    // Tracks which note id is currently mirrored into `edit_fields`/`edit_note_type`,
-    // so the draft buffer is (re)seeded only when the core's `notes_selected`
-    // changes — not on every unrelated core render.
-    let editor_seeded_id = StoredValue::new(-1i64);
 
     // Lazy first fetch of the note list when the Notes view is toggled on.
     Effect::new(move |_| {
@@ -894,53 +880,6 @@ fn browser(
             set_event.set(Event::NotesRequested { filter: with_note_filter(p as i64) });
         }
     });
-
-    // The note editor's draft buffer is seeded from the core-owned selection
-    // (`vm.notes_selected`) whenever the selected note changes. Row clicks fire
-    // `NoteBrowserSelectNote` (core); this effect only mirrors the resolved note
-    // into the editable inputs — it never holds the selection identity.
-    Effect::new(move |_| {
-        let selected = vm_sig.get().notes_selected.clone();
-        let Some(note) = selected else {
-            if editor_seeded_id.get_value() != -1 {
-                editor_seeded_id.set_value(-1);
-                edit_fields.set(Vec::new());
-                edit_note_type.set("0".to_string());
-            }
-            return;
-        };
-        if editor_seeded_id.get_value() == note.id {
-            return;
-        }
-        editor_seeded_id.set_value(note.id);
-        edit_note_type.set(note.note_type_id.to_string());
-        let mut keys: Vec<String> = note.fields.keys().cloned().collect();
-        keys.sort();
-        edit_fields.set(
-            keys.into_iter()
-                .map(|k| {
-                    let v = note.fields.get(&k).cloned().unwrap_or_default();
-                    (k, RwSignal::new(v))
-                })
-                .collect(),
-        );
-    });
-
-    let save_note = move |_| {
-        let Some(note) = vm_sig.get().notes_selected.clone() else {
-            return;
-        };
-        let fields: HashMap<String, String> = edit_fields
-            .get()
-            .into_iter()
-            .map(|(k, s)| (k, s.get()))
-            .collect();
-        let note_type_id = match edit_note_type.get().parse::<i64>() {
-            Ok(t) if t != 0 => Some(t),
-            _ => None,
-        };
-        set_event.set(Event::NoteSave { note_id: note.id, note_type_id, fields: Some(fields) });
-    };
 
     // Stable derived signals read by the render (created once in the component
     // body — creating a `Signal::derive` inside the per-render closure would leak
@@ -1284,11 +1223,6 @@ fn browser(
 
                         <NoteInspector
                             note=notes_selected_signal
-                            fields=edit_fields
-                            note_type_id=edit_note_type
-                            note_types=vm_sig.get().note_types
-                            save=Callback::new(save_note)
-                            set_event=set_event
                         />
                     }
                     .into_any(),
@@ -1421,26 +1355,24 @@ fn CardInspector(
     }
 }
 
-/// The note-view information/action pane (mirrors `CardInspector`). Shows the
-/// selected note's fields (editable), a note-type change selector, and
-/// Save/Delete actions.
+/// The note-view information pane (mirrors `CardInspector`). Read-only: shows
+/// the selected note's fields, note type, and tags. Note editing/creation/delete
+/// are out of scope for now, so there are no inputs or actions here.
 #[component]
 fn NoteInspector(
     note: Signal<Option<NoteView>>,
-    fields: RwSignal<Vec<(String, RwSignal<String>)>>,
-    note_type_id: RwSignal<String>,
-    note_types: Vec<NoteTypeView>,
-    save: Callback<(), ()>,
-    set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     view! {
         <aside class="card-browser__inspector">
             <h3 class="card-browser__inspector-title">"Note"</h3>
 
             {if let Some(note) = note.get() {
-                let note_id = note.id;
                 let note_type_name = note.note_type_name.clone();
                 let tags = note.tags.clone();
+                let mut fields: Vec<(String, String)> = note.fields.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                fields.sort_by(|a, b| a.0.cmp(&b.0));
                 view! {
                     <dl class="card-browser__inspector-fields">
                         <div class="card-browser__inspector-row">
@@ -1455,41 +1387,22 @@ fn NoteInspector(
                             <dt>"Tags"</dt>
                             <dd>{tags.join(", ")}</dd>
                         </div>
-                    </dl>
-
-                    <div class="notes-browser__fieldlist">
-                        {fields.get().into_iter().map(|(name, v)| {
-                            let name_label = name.clone();
+                        {fields.iter().map(|(name, value)| {
+                            let name = name.clone();
+                            let value = value.clone();
                             view! {
-                                <label class="notes-browser__field">
-                                    <span>{name_label}</span>
-                                    <Input value=v />
-                                </label>
+                                <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
+                                    <dt>{name}</dt>
+                                    <dd class="card-browser__inspector-text">{value}</dd>
+                                </div>
                             }
                         }).collect_view()}
-                    </div>
-
-                    <div class="card-browser__inspector-actions">
-                        <Select value=note_type_id size=SelectSize::Medium>
-                            <option value="0">"Same type"</option>
-                            {note_types.iter().map(|nt| {
-                                let id = nt.id.to_string();
-                                let name = nt.name.clone();
-                                view! { <option value=id>{name}</option> }
-                            }).collect_view()}
-                        </Select>
-                        <Button appearance=ButtonAppearance::Primary on_click=move |_| save.run(())>
-                            "Save"
-                        </Button>
-                        <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::NoteDelete { note_id })>
-                            "Delete"
-                        </Button>
-                    </div>
+                    </dl>
                 }
                 .into_any()
             } else {
                 view! {
-                    <span class="card-browser__hint">"Select a note to view and edit it."</span>
+                    <span class="card-browser__hint">"Select a note to view it."</span>
                 }
                 .into_any()
             }}
