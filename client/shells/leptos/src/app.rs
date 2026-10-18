@@ -1246,7 +1246,6 @@ fn browser(
                                     <TableBody>
                                         {notes_table.iter().map(|n| {
                                             let note_id = n.id;
-                                            let is_selected = selected_note_id.get() == Some(note_id);
                                             let note_type_name = n.note_type_name.clone();
                                             let preview = n.fields.values().next().cloned().unwrap_or_default();
                                             let tags = n.tags.join(", ");
@@ -1254,7 +1253,7 @@ fn browser(
                                             view! {
                                                 <tr
                                                     class="thaw-table-row"
-                                                    class:card-browser__row--selected=is_selected
+                                                    class:card-browser__row--selected=move || selected_note_id.get() == Some(note_id)
                                                     on:click=move |_| select_note(note.clone())
                                                 >
                                                     <td class="thaw-table-cell">
