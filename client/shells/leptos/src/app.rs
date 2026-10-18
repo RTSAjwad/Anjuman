@@ -604,7 +604,6 @@ fn browser(
     can_manage_notes: bool,
 ) -> impl IntoView {
     let vm_sig = vm;
-    let vm = vm_sig.get();
 
     // Request the first page on entry (no filter, default sort/page), plus the
     // note-type list for the filter sidebar. Guarded by `initialized` so it only
@@ -650,10 +649,8 @@ fn browser(
     let page = state.page;
     let view_mode = state.view;
 
-    // The deck tree (hierarchy preserved for the sidebar) and the note-type list,
-    // captured once and cloned for the `view!` moves below.
-    let decks_tree = vm.decks.clone();
-    let note_types = vm.note_types.clone();
+    // The deck tree (hierarchy preserved for the sidebar) and the note-type list
+    // are read reactively inside the render closure below (never snapshotted here).
 
     // Build a filter from the current signal state and fire `CardsRequested`.
     // `page` defaults to 1 (a filter change resets to the first page).
@@ -713,9 +710,6 @@ fn browser(
             set_event.set(Event::CardsRequested { filter });
         }
     });
-
-    let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
-    let selected_card = vm.browser_selected.clone();
 
     // Suspend/bury/flag are read-only derived signals over the live
     // `browser_selected`. The custom `CardSwitch` mirrors state from these (never
@@ -803,9 +797,6 @@ fn browser(
     let flag_active = flag_value.clone();
     let sort_active = sort_value.clone();
 
-    let decks_tree_view = decks_tree.clone();
-    let note_types_view = note_types.clone();
-
     // Search fires on Enter (the form's submit). `fire_filter` resets the page
     // and applies the current filter (including the query).
     let search_apply = fire_filter.clone();
@@ -839,8 +830,6 @@ fn browser(
             filter: NoteBrowserFilter::default(),
         });
     });
-
-    let editor_note_types = vm.note_types.clone();
 
     let with_note_filter = move |page: i64| -> NoteBrowserFilter {
         let mut deck_ids = Vec::new();
@@ -950,11 +939,21 @@ fn browser(
         set_event.set(Event::NoteSave { note_id, note_type_id, fields: Some(fields) });
     };
 
-    // Owned snapshot of the note list (reused by both the table and the inspector).
-    let notes_table = vm.notes.clone();
-    let notes_inspector = vm.notes.clone();
+    // Owned snapshot of the note list is re-read reactively inside the render
+    // closure below (never captured once here).
 
     view! {
+        {move || {
+            let vm = vm_sig.get();
+            let decks_tree = vm.decks.clone();
+            let note_types = vm.note_types.clone();
+            let editor_note_types = vm.note_types.clone();
+            let notes_table = vm.notes.clone();
+            let notes_inspector = vm.notes.clone();
+            let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
+            let selected_card = vm.browser_selected.clone();
+
+            view! {
         <div class="card-browser">
             <div class="browser__toolbar">
                 <button
@@ -1007,7 +1006,7 @@ fn browser(
                                 "Decks",
                                 open_items,
                                 deck_filter_tree(
-                                    decks_tree_view.clone(),
+                                    decks_tree.clone(),
                                     0,
                                     open_items,
                                     deck_active,
@@ -1019,7 +1018,7 @@ fn browser(
                                 "note-types",
                                 "Note types",
                                 open_items,
-                                note_types_view.clone().into_iter().map(|nt| {
+                                note_types.clone().into_iter().map(|nt| {
                                     let id_str = nt.id.to_string();
                                     let active = note_active.get() == id_str;
                                     let name = nt.name.clone();
@@ -1114,7 +1113,7 @@ fn browser(
                                 "Decks",
                                 open_items,
                                 deck_filter_tree(
-                                    decks_tree_view,
+                                    decks_tree,
                                     0,
                                     open_items,
                                     note_deck_filter,
@@ -1126,7 +1125,7 @@ fn browser(
                                 "note-types",
                                 "Note types",
                                 open_items,
-                                note_types_view.into_iter().map(|nt| {
+                                note_types.into_iter().map(|nt| {
                                     let id_str = nt.id.to_string();
                                     let active = note_note_type.get() == id_str;
                                     let name = nt.name.clone();
@@ -1297,6 +1296,8 @@ fn browser(
             </div>
         </div>
         </div>
+            }
+        }}
     }
 }
 
