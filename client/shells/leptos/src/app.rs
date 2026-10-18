@@ -13,8 +13,8 @@ use leptos::prelude::*;
 use leptos::task;
 use shared::app::{
     CardBrowserFilter, CardBrowserView, CurrentRoute, DeckOptionsEdit, DeckOptionsView,
-    DeckSummary, DeckView, NoteBrowserFilter, NoteView, PresetSummary, StudyCardView,
-    StudyCountsView,
+    DeckSummary, DeckView, NoteBrowserFilter, NoteTypeView, NoteView, PresetSummary,
+    StudyCardView, StudyCountsView,
 };
 use shared::{Event, ViewModel};
 use std::collections::{HashMap, HashSet};
@@ -65,8 +65,11 @@ struct BrowserState {
     // --- Note-view state ---
     /// The selected note id in the note editor (None = nothing selected).
     selected_note_id: RwSignal<Option<i64>>,
-    /// Note-view deck filter ("0" = all decks).
+    /// Note-view filters (deck, note type, sort, search).
     note_deck_filter: RwSignal<String>,
+    note_note_type: RwSignal<String>,
+    note_sort: RwSignal<String>,
+    note_query: RwSignal<String>,
     /// Note-view page (1-based).
     note_page: RwSignal<usize>,
     /// Editor: selected note's field values (field name → text).
@@ -100,6 +103,9 @@ impl BrowserState {
         self.initialized.set(false);
         self.selected_note_id.set(None);
         self.note_deck_filter.set("0".to_string());
+        self.note_note_type.set(String::new());
+        self.note_sort.set("created_at".to_string());
+        self.note_query.set(String::new());
         self.note_page.set(1);
         self.edit_fields.set(Vec::new());
         self.edit_note_type.set("0".to_string());
@@ -218,6 +224,9 @@ pub fn RootComponent() -> impl IntoView {
         initialized: RwSignal::new(false),
         selected_note_id: RwSignal::new(None),
         note_deck_filter: RwSignal::new("0".to_string()),
+        note_note_type: RwSignal::new(String::new()),
+        note_sort: RwSignal::new("created_at".to_string()),
+        note_query: RwSignal::new(String::new()),
         note_page: RwSignal::new(1),
         edit_fields: RwSignal::new(Vec::new()),
         edit_note_type: RwSignal::new("0".to_string()),
@@ -816,12 +825,16 @@ fn browser(
     let search_apply = fire_filter.clone();
 
     // -----------------------------------------------------------------
-    // Note view. Mirrors the card view but drives the notes core surface:
-    // `NotesRequested { filter }` (paginated + filterable), `notes_page/total/
-    // per_page` for pagination, and `NoteCreate`/`NoteSave`/`NoteDelete`.
+    // Note view. Mirrors the card view: a filter sidebar (deck/note-type/sort),
+    // a table, a right-hand inspector pane, and bottom pagination. Drives the
+    // notes core surface (`NotesRequested { filter }`, `notes_page/total/per_page`,
+    // `NoteCreate`/`NoteSave`/`NoteDelete`).
 
     let selected_note_id = state.selected_note_id;
     let note_deck_filter = state.note_deck_filter;
+    let note_note_type = state.note_note_type;
+    let note_sort = state.note_sort;
+    let note_query = state.note_query;
     let note_page = state.note_page;
     let edit_fields = state.edit_fields;
     let edit_note_type = state.edit_note_type;
@@ -845,14 +858,8 @@ fn browser(
         });
     });
 
-    // A flattened deck list for the note create-form deck picker + the note filter
-    // dropdown.
-    let mut flat_decks: Vec<(String, i64)> = Vec::new();
-    flatten_decks(&vm.decks, &mut flat_decks);
     let editor_note_types = vm.note_types.clone();
     let create_note_types = vm.note_types.clone();
-    let filter_decks = flat_decks.clone();
-    let create_decks = flat_decks;
 
     let with_note_filter = move |page: i64| -> NoteBrowserFilter {
         let mut deck_ids = Vec::new();
@@ -861,11 +868,21 @@ fn browser(
                 deck_ids.push(d);
             }
         }
+        let mut note_type_ids = Vec::new();
+        if let Ok(n) = note_note_type.get().parse::<i64>() {
+            if n != 0 {
+                note_type_ids.push(n);
+            }
+        }
         NoteBrowserFilter {
             deck_ids,
-            note_type_ids: Vec::new(),
-            q: None,
-            sort: "created_at".to_string(),
+            note_type_ids,
+            q: if note_query.get().trim().is_empty() {
+                None
+            } else {
+                Some(note_query.get().trim().to_string())
+            },
+            sort: note_sort.get(),
             page,
             per_page: 50,
         }
@@ -876,9 +893,40 @@ fn browser(
         set_event.set(Event::NotesRequested { filter: with_note_filter(page) });
     };
 
-    let apply_note_filter = {
+    // Selecting a note-view filter leaf sets the value and re-applies; clicking
+    // the active leaf de-selects it.
+    let select_note_deck = {
         let fire_note_filter = fire_note_filter.clone();
-        move |_| fire_note_filter(1)
+        move |id: String| {
+            if note_deck_filter.get() == id {
+                note_deck_filter.set("0".to_string());
+            } else {
+                note_deck_filter.set(id);
+            }
+            fire_note_filter(1);
+        }
+    };
+    let select_note_type_filter = {
+        let fire_note_filter = fire_note_filter.clone();
+        move |id: String| {
+            if note_note_type.get() == id {
+                note_note_type.set(String::new());
+            } else {
+                note_note_type.set(id);
+            }
+            fire_note_filter(1);
+        }
+    };
+    let select_note_sort = {
+        let fire_note_filter = fire_note_filter.clone();
+        move |s: String| {
+            if note_sort.get() == s {
+                note_sort.set("created_at".to_string());
+            } else {
+                note_sort.set(s);
+            }
+            fire_note_filter(1);
+        }
     };
 
     // Watch the note pagination signal and fetch a new page when it changes.
@@ -959,6 +1007,13 @@ fn browser(
         }
     });
 
+    // Flattened deck list for the note create-form deck picker.
+    let mut create_decks: Vec<(String, i64)> = Vec::new();
+    flatten_decks(&vm.decks, &mut create_decks);
+    // Owned snapshot of the note list (reused by both the table and the inspector).
+    let notes_table = vm.notes.clone();
+    let notes_inspector = vm.notes.clone();
+
     view! {
         <div class="card-browser">
             <div class="browser__toolbar">
@@ -987,110 +1042,181 @@ fn browser(
 
             <div class="card-browser__body">
             <aside class="card-browser__sidebar">
-                <form
-                    class="card-browser__sidebar-search"
-                    on:submit=move |e: leptos::ev::SubmitEvent| {
-                        e.prevent_default();
-                        search_apply();
+                {match view_mode.get() {
+                    BrowserView::Cards => view! {
+                        <form
+                            class="card-browser__sidebar-search"
+                            on:submit=move |e: leptos::ev::SubmitEvent| {
+                                e.prevent_default();
+                                search_apply();
+                            }
+                        >
+                            <Input value=q_value placeholder="Search…" />
+                        </form>
+
+                        {vm.browser_error.clone().map(|err| view! {
+                            <p class="deck-options__error">"Could not load cards: " {err}</p>
+                        })}
+                        {vm.note_types_error.clone().map(|err| view! {
+                            <p class="deck-options__error">"Could not load note types: " {err}</p>
+                        })}
+
+                        <div class="thaw-tree card-browser__tree" role="tree">
+                            {filter_branch(
+                                "decks",
+                                "Decks",
+                                open_items,
+                                deck_filter_tree(
+                                    decks_tree_view.clone(),
+                                    0,
+                                    open_items,
+                                    deck_active,
+                                    deck_sel,
+                                ),
+                            )}
+
+                            {filter_branch(
+                                "note-types",
+                                "Note types",
+                                open_items,
+                                note_types_view.clone().into_iter().map(|nt| {
+                                    let id_str = nt.id.to_string();
+                                    let active = note_active.get() == id_str;
+                                    let name = nt.name.clone();
+                                    let sel = note_sel.clone();
+                                    filter_leaf(active, id_str, name, move |id| sel(id))
+                                }).collect_view(),
+                            )}
+
+                            {filter_branch(
+                                "state",
+                                "State",
+                                open_items,
+                                ["new", "learning", "review", "relearning"].into_iter().map(|s| {
+                                    let s_val = s.to_string();
+                                    let active = state_active.get() == s_val;
+                                    let sel = state_sel.clone();
+                                    let label: &'static str = match s {
+                                        "new" => "New",
+                                        "learning" => "Learning",
+                                        "review" => "Review",
+                                        "relearning" => "Relearning",
+                                        _ => unreachable!(),
+                                    };
+                                    filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
+                                }).collect_view(),
+                            )}
+
+                            {filter_branch(
+                                "flag",
+                                "Flag",
+                                open_items,
+                                ["1", "2", "3", "4", "5", "6", "7"].into_iter().map(|f| {
+                                    let f_val = f.to_string();
+                                    let active = flag_active.get() == f_val;
+                                    let sel = flag_sel.clone();
+                                    let label: &'static str = match f {
+                                        "1" => "Red",
+                                        "2" => "Orange",
+                                        "3" => "Green",
+                                        "4" => "Blue",
+                                        "5" => "Pink",
+                                        "6" => "Turquoise",
+                                        "7" => "Purple",
+                                        _ => unreachable!(),
+                                    };
+                                    filter_leaf(active, f_val, label.to_string(), move |id| sel(id))
+                                }).collect_view(),
+                            )}
+
+                            {filter_branch(
+                                "sort",
+                                "Sort",
+                                open_items,
+                                ["created_at", "due_at", "deck", "question"].into_iter().map(|s| {
+                                    let s_val = s.to_string();
+                                    let active = sort_active.get() == s_val;
+                                    let sel = sort_sel.clone();
+                                    let label: &'static str = match s {
+                                        "created_at" => "Created",
+                                        "due_at" => "Due",
+                                        "deck" => "Deck",
+                                        "question" => "Question",
+                                        _ => unreachable!(),
+                                    };
+                                    filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
+                                }).collect_view(),
+                            )}
+                        </div>
                     }
-                >
-                    <Input value=q_value placeholder="Search…" />
-                </form>
+                    .into_any(),
+                    BrowserView::Notes => view! {
+                        <form
+                            class="card-browser__sidebar-search"
+                            on:submit=move |e: leptos::ev::SubmitEvent| {
+                                e.prevent_default();
+                                fire_note_filter(1);
+                            }
+                        >
+                            <Input value=note_query placeholder="Search…" />
+                        </form>
 
-                {vm.browser_error.clone().map(|err| view! {
-                    <p class="deck-options__error">"Could not load cards: " {err}</p>
-                })}
-                {vm.note_types_error.clone().map(|err| view! {
-                    <p class="deck-options__error">"Could not load note types: " {err}</p>
-                })}
+                        {vm.notes_error.clone().map(|err| view! {
+                            <p class="deck-options__error">"Could not load notes: " {err}</p>
+                        })}
+                        {vm.note_types_error.clone().map(|err| view! {
+                            <p class="deck-options__error">"Could not load note types: " {err}</p>
+                        })}
 
-                <div class="thaw-tree card-browser__tree" role="tree">
-                    {filter_branch(
-                        "decks",
-                        "Decks",
-                        open_items,
-                        deck_filter_tree(
-                            decks_tree_view,
-                            0,
-                            open_items,
-                            deck_active,
-                            deck_sel,
-                        ),
-                    )}
+                        <div class="thaw-tree card-browser__tree" role="tree">
+                            {filter_branch(
+                                "decks",
+                                "Decks",
+                                open_items,
+                                deck_filter_tree(
+                                    decks_tree_view,
+                                    0,
+                                    open_items,
+                                    note_deck_filter,
+                                    select_note_deck,
+                                ),
+                            )}
 
-                    {filter_branch(
-                        "note-types",
-                        "Note types",
-                        open_items,
-                        note_types_view.into_iter().map(|nt| {
-                            let id_str = nt.id.to_string();
-                            let active = note_active.get() == id_str;
-                            let name = nt.name.clone();
-                            let sel = note_sel.clone();
-                            filter_leaf(active, id_str, name, move |id| sel(id))
-                        }).collect_view(),
-                    )}
+                            {filter_branch(
+                                "note-types",
+                                "Note types",
+                                open_items,
+                                note_types_view.into_iter().map(|nt| {
+                                    let id_str = nt.id.to_string();
+                                    let active = note_note_type.get() == id_str;
+                                    let name = nt.name.clone();
+                                    let sel = select_note_type_filter.clone();
+                                    filter_leaf(active, id_str, name, move |id| sel(id))
+                                }).collect_view(),
+                            )}
 
-                    {filter_branch(
-                        "state",
-                        "State",
-                        open_items,
-                        ["new", "learning", "review", "relearning"].into_iter().map(|s| {
-                            let s_val = s.to_string();
-                            let active = state_active.get() == s_val;
-                            let sel = state_sel.clone();
-                            let label: &'static str = match s {
-                                "new" => "New",
-                                "learning" => "Learning",
-                                "review" => "Review",
-                                "relearning" => "Relearning",
-                                _ => unreachable!(),
-                            };
-                            filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
-                        }).collect_view(),
-                    )}
-
-                    {filter_branch(
-                        "flag",
-                        "Flag",
-                        open_items,
-                        ["1", "2", "3", "4", "5", "6", "7"].into_iter().map(|f| {
-                            let f_val = f.to_string();
-                            let active = flag_active.get() == f_val;
-                            let sel = flag_sel.clone();
-                            let label: &'static str = match f {
-                                "1" => "Red",
-                                "2" => "Orange",
-                                "3" => "Green",
-                                "4" => "Blue",
-                                "5" => "Pink",
-                                "6" => "Turquoise",
-                                "7" => "Purple",
-                                _ => unreachable!(),
-                            };
-                            filter_leaf(active, f_val, label.to_string(), move |id| sel(id))
-                        }).collect_view(),
-                    )}
-
-                    {filter_branch(
-                        "sort",
-                        "Sort",
-                        open_items,
-                        ["created_at", "due_at", "deck", "question"].into_iter().map(|s| {
-                            let s_val = s.to_string();
-                            let active = sort_active.get() == s_val;
-                            let sel = sort_sel.clone();
-                            let label: &'static str = match s {
-                                "created_at" => "Created",
-                                "due_at" => "Due",
-                                "deck" => "Deck",
-                                "question" => "Question",
-                                _ => unreachable!(),
-                            };
-                            filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
-                        }).collect_view(),
-                    )}
-                </div>
+                            {filter_branch(
+                                "sort",
+                                "Sort",
+                                open_items,
+                                ["created_at", "note_type", "deck", "question"].into_iter().map(|s| {
+                                    let s_val = s.to_string();
+                                    let active = note_sort.get() == s_val;
+                                    let sel = select_note_sort.clone();
+                                    let label: &'static str = match s {
+                                        "created_at" => "Created",
+                                        "note_type" => "Note type",
+                                        "deck" => "Deck",
+                                        "question" => "Question",
+                                        _ => unreachable!(),
+                                    };
+                                    filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
+                                }).collect_view(),
+                            )}
+                        </div>
+                    }
+                    .into_any(),
+                }}
             </aside>
 
             <div class="card-browser__main">
@@ -1170,50 +1296,37 @@ fn browser(
                     .into_any(),
                     BrowserView::Notes => view! {
                         <div class="card-browser__content">
-                            {vm.notes_error.clone().map(|err| view! {
-                                <p class="deck-options__error">"Could not load notes: " {err}</p>
-                            })}
-
-                            <div class="card-browser__filters">
-                                <Select value=note_deck_filter default_value="0" size=SelectSize::Medium>
-                                    <option value="0">"All decks"</option>
-                                    {filter_decks.iter().map(|(title, id)| {
-                                        let id_str = id.to_string();
-                                        let title = title.clone();
-                                        view! { <option value=id_str>{title}</option> }
-                                    }).collect_view()}
-                                </Select>
-                                <Button appearance=ButtonAppearance::Primary on_click=apply_note_filter>
-                                    "Apply"
-                                </Button>
-                            </div>
-
-                            <div class="notes-browser__table" role="table">
-                                <div class="thaw-deck-header" role="row">
-                                    <span class="thaw-deck-col">"Note"</span>
-                                    <span class="thaw-deck-col">"Type"</span>
-                                    <span class="thaw-deck-col">"Tags"</span>
-                                </div>
-                                {vm.notes.iter().map(|n| {
-                                    let note_id = n.id;
-                                    let is_selected = selected_note_id.get() == Some(note_id);
-                                    let note_type_name = n.note_type_name.clone();
-                                    let preview = n.fields.values().next().cloned().unwrap_or_default();
-                                    let tags = n.tags.join(", ");
-                                    let note = n.clone();
-                                    view! {
-                                        <div
-                                            class="card-browser__row"
-                                            class:card-browser__row--selected=is_selected
-                                            role="row"
-                                            on:click=move |_| select_note(note.clone())
-                                        >
-                                            <div class="card-browser__front">{preview}</div>
-                                            <span class="card-browser__cell">{note_type_name}</span>
-                                            <span class="card-browser__cell">{tags}</span>
-                                        </div>
-                                    }
-                                }).collect_view()}
+                            <div class="card-browser__table">
+                                <Table>
+                                    <TableHeader>
+                                        <TableHeaderCell resizable=true>"Note"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true>"Note type"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true>"Tags"</TableHeaderCell>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {notes_table.iter().map(|n| {
+                                            let note_id = n.id;
+                                            let is_selected = selected_note_id.get() == Some(note_id);
+                                            let note_type_name = n.note_type_name.clone();
+                                            let preview = n.fields.values().next().cloned().unwrap_or_default();
+                                            let tags = n.tags.join(", ");
+                                            let note = n.clone();
+                                            view! {
+                                                <tr
+                                                    class="thaw-table-row"
+                                                    class:card-browser__row--selected=is_selected
+                                                    on:click=move |_| select_note(note.clone())
+                                                >
+                                                    <td class="thaw-table-cell">
+                                                        <span class="card-browser__front">{preview}</span>
+                                                    </td>
+                                                    <td class="thaw-table-cell">{note_type_name}</td>
+                                                    <td class="thaw-table-cell">{tags}</td>
+                                                </tr>
+                                            }
+                                        }).collect_view()}
+                                    </TableBody>
+                                </Table>
                             </div>
 
                             <div class="card-browser__pagination">
@@ -1228,81 +1341,23 @@ fn browser(
                                     sibling_count=Signal::derive(|| 1)
                                 />
                             </div>
-
-                            {if let Some(note_id) = selected_note_id.get() {
-                                view! {
-                                    <div class="notes-browser__editor">
-                                        <h3 class="deck-options-group__title">"Edit note"</h3>
-                                        <div class="notes-browser__fieldlist">
-                                            {edit_fields.get().into_iter().map(|(name, v)| {
-                                                let name_label = name.clone();
-                                                view! {
-                                                    <label class="notes-browser__field">
-                                                        <span>{name_label}</span>
-                                                        <Input value=v />
-                                                    </label>
-                                                }
-                                            }).collect_view()}
-                                        </div>
-                                        <div class="notes-browser__row-actions">
-                                            <Select value=edit_note_type size=SelectSize::Medium>
-                                                <option value="0">"Unchanged type"</option>
-                                                {editor_note_types.iter().map(|nt| {
-                                                    let id = nt.id.to_string();
-                                                    let name = nt.name.clone();
-                                                    view! { <option value=id>{name}</option> }
-                                                }).collect_view()}
-                                            </Select>
-                                            <Button appearance=ButtonAppearance::Primary on_click=move |_| save_note(note_id)>
-                                                "Save"
-                                            </Button>
-                                            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::NoteDelete { note_id })>
-                                                "Delete"
-                                            </Button>
-                                        </div>
-                                    </div>
-                                }
-                                .into_any()
-                            } else {
-                                view! { <span class="card-browser__hint">"Select a note to edit it, or create a new one below."</span> }.into_any()
-                            }}
-
-                            <div class="notes-browser__create">
-                                <h3 class="deck-options-group__title">"New note"</h3>
-                                <div class="notes-browser__create-controls">
-                                    <Select value=create_note_type default_value="0" size=SelectSize::Medium>
-                                        <option value="0">"Note type…"</option>
-                                        {create_note_types.iter().map(|nt| {
-                                            let id = nt.id.to_string();
-                                            let name = nt.name.clone();
-                                            view! { <option value=id>{name}</option> }
-                                        }).collect_view()}
-                                    </Select>
-                                    <Select value=create_deck default_value="0" size=SelectSize::Medium>
-                                        <option value="0">"Deck…"</option>
-                                        {create_decks.iter().map(|(title, id)| {
-                                            let id_str = id.to_string();
-                                            let title = title.clone();
-                                            view! { <option value=id_str>{title}</option> }
-                                        }).collect_view()}
-                                    </Select>
-                                    <Button appearance=ButtonAppearance::Primary on_click=create_note>
-                                        "Create"
-                                    </Button>
-                                </div>
-                                <div class="notes-browser__fieldlist">
-                                    {create_fields.get().into_iter().map(|(name, v)| {
-                                        let name_label = name.clone();
-                                        view! {
-                                            <label class="notes-browser__field">
-                                                <span>{name_label}</span>
-                                                <Input value=v />
-                                            </label>
-                                        }
-                                    }).collect_view()}
-                                </div>
-                            </div>
                         </div>
+
+                        <NoteInspector
+                            note_id=selected_note_id
+                            notes=notes_inspector
+                            fields=edit_fields
+                            note_type_id=edit_note_type
+                            note_types=editor_note_types
+                            create_note_type=create_note_type
+                            create_deck=create_deck
+                            create_fields=create_fields
+                            create_decks=create_decks
+                            create_note_types=create_note_types
+                            save=Callback::new(save_note)
+                            create=Callback::new(move |_: ()| create_note(()))
+                            set_event=set_event
+                        />
                     }
                     .into_any(),
                 }}
@@ -1427,6 +1482,125 @@ fn CardInspector(
                             view! { <option value=v>{flag_label(v.parse::<i64>().unwrap())}</option> }
                         }).collect_view()}
                     </select>
+                </div>
+            </div>
+        </aside>
+    }
+}
+
+/// The note-view information/action pane (mirrors `CardInspector`). Shows the
+/// selected note's fields (editable), a note-type change selector, Save/Delete
+/// actions, and — when nothing is selected — a "New note" create form.
+#[component]
+fn NoteInspector(
+    note_id: RwSignal<Option<i64>>,
+    notes: Vec<NoteView>,
+    fields: RwSignal<Vec<(String, RwSignal<String>)>>,
+    note_type_id: RwSignal<String>,
+    note_types: Vec<NoteTypeView>,
+    create_note_type: RwSignal<String>,
+    create_deck: RwSignal<String>,
+    create_fields: RwSignal<Vec<(String, RwSignal<String>)>>,
+    create_decks: Vec<(String, i64)>,
+    create_note_types: Vec<NoteTypeView>,
+    save: Callback<i64, ()>,
+    create: Callback<(), ()>,
+    set_event: WriteSignal<Event>,
+) -> impl IntoView {
+    view! {
+        <aside class="card-browser__inspector">
+            <h3 class="card-browser__inspector-title">"Note"</h3>
+
+            {if let Some(note) = note_id.get().and_then(|id| notes.iter().find(|n| n.id == id).cloned()) {
+                let note_id = note.id;
+                let note_type_name = note.note_type_name.clone();
+                let tags = note.tags.clone();
+                view! {
+                    <dl class="card-browser__inspector-fields">
+                        <div class="card-browser__inspector-row">
+                            <dt>"ID"</dt>
+                            <dd>{note.id.to_string()}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Note type"</dt>
+                            <dd>{note_type_name}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Tags"</dt>
+                            <dd>{tags.join(", ")}</dd>
+                        </div>
+                    </dl>
+
+                    <div class="notes-browser__fieldlist">
+                        {fields.get().into_iter().map(|(name, v)| {
+                            let name_label = name.clone();
+                            view! {
+                                <label class="notes-browser__field">
+                                    <span>{name_label}</span>
+                                    <Input value=v />
+                                </label>
+                            }
+                        }).collect_view()}
+                    </div>
+
+                    <div class="card-browser__inspector-actions">
+                        <Select value=note_type_id size=SelectSize::Medium>
+                            <option value="0">"Same type"</option>
+                            {note_types.iter().map(|nt| {
+                                let id = nt.id.to_string();
+                                let name = nt.name.clone();
+                                view! { <option value=id>{name}</option> }
+                            }).collect_view()}
+                        </Select>
+                        <Button appearance=ButtonAppearance::Primary on_click=move |_| save.run(note_id)>
+                            "Save"
+                        </Button>
+                        <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::NoteDelete { note_id })>
+                            "Delete"
+                        </Button>
+                    </div>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <span class="card-browser__hint">"Select a note, or create a new one below."</span>
+                }
+                .into_any()
+            }}
+
+            <div class="notes-browser__create">
+                <h3 class="deck-options-group__title">"New note"</h3>
+                <div class="notes-browser__create-controls">
+                    <Select value=create_note_type default_value="0" size=SelectSize::Medium>
+                        <option value="0">"Note type…"</option>
+                        {create_note_types.iter().map(|nt| {
+                            let id = nt.id.to_string();
+                            let name = nt.name.clone();
+                            view! { <option value=id>{name}</option> }
+                        }).collect_view()}
+                    </Select>
+                    <Select value=create_deck default_value="0" size=SelectSize::Medium>
+                        <option value="0">"Deck…"</option>
+                        {create_decks.iter().map(|(title, id)| {
+                            let id_str = id.to_string();
+                            let title = title.clone();
+                            view! { <option value=id_str>{title}</option> }
+                        }).collect_view()}
+                    </Select>
+                    <Button appearance=ButtonAppearance::Primary on_click=move |_| create.run(())>
+                        "Create"
+                    </Button>
+                </div>
+                <div class="notes-browser__fieldlist">
+                    {create_fields.get().into_iter().map(|(name, v)| {
+                        let name_label = name.clone();
+                        view! {
+                            <label class="notes-browser__field">
+                                <span>{name_label}</span>
+                                <Input value=v />
+                            </label>
+                        }
+                    }).collect_view()}
                 </div>
             </div>
         </aside>
