@@ -28,26 +28,17 @@ use thaw::{
 use crate::core_link;
 use crate::router;
 
-/// Which sub-view of the merged Browser is showing: the card table or the note
-/// table. Shell-local UI state (the core has no BrowserView route; the toggle
-/// swaps which data/table the Browser renders).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-enum BrowserView {
-    #[default]
-    Cards,
-    Notes,
-}
-
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
 /// note view. Leptos `#[component]`s re-run their body whenever a prop signal
 /// they read changes; the browser reads `vm` every render, so any state created
 /// inside its body would be wiped on each ViewModel update (which happens after
 /// every fetch/filter/action). Hoisting these `RwSignal`s here (created once in
 /// `RootComponent`) keeps them stable for the app's lifetime.
+///
+/// Note: the card/note *view* is NOT here — it is the core-owned
+/// `CurrentRoute::{Cards, Notes}` (`vm.route`), driven by `ShowCards`/`ShowNotes`.
 #[derive(Clone, Copy)]
 struct BrowserState {
-    /// Card/note toggle.
-    view: RwSignal<BrowserView>,
     // --- Card-view filter sidebar ---
     open_items: RwSignal<HashSet<String>>,
     deck: RwSignal<String>,
@@ -84,7 +75,6 @@ impl BrowserState {
     /// latched `true` from the previous session and never re-fires the fetch,
     /// leaving the browser table empty).
     fn reset(&self) {
-        self.view.set(BrowserView::Cards);
         self.open_items.set(HashSet::new());
         self.deck.set(String::new());
         self.note_type.set(String::new());
@@ -200,7 +190,6 @@ pub fn RootComponent() -> impl IntoView {
     // Browser state (card + note view), hoisted so it survives component
     // re-renders (see `BrowserState`). Created once for the app's lifetime.
     let browser_state = BrowserState {
-        view: RwSignal::new(BrowserView::Cards),
         open_items: RwSignal::new(HashSet::new()),
         deck: RwSignal::new(String::new()),
         note_type: RwSignal::new(String::new()),
@@ -644,7 +633,6 @@ fn browser(
     let q_value = state.query;
     let open_items = state.open_items;
     let page = state.page;
-    let view_mode = state.view;
 
     // The deck tree (hierarchy preserved for the sidebar) and the note-type list
     // are read reactively inside the render closure below (never snapshotted here).
@@ -819,7 +807,7 @@ fn browser(
 
     // Lazy first fetch of the note list when the Notes view is toggled on.
     Effect::new(move |_| {
-        if view_mode.get() != BrowserView::Notes {
+        if vm_sig.get().route != CurrentRoute::Notes {
             return;
         }
         if notes_initialized.get() {
@@ -901,7 +889,7 @@ fn browser(
 
     // Watch the note pagination signal and fetch a new page when it changes.
     Effect::new(move |_| {
-        if view_mode.get() != BrowserView::Notes {
+        if vm_sig.get().route != CurrentRoute::Notes {
             return;
         }
         let p = note_page.get();
@@ -964,6 +952,7 @@ fn browser(
     view! {
         {move || {
             let vm = vm_sig.get();
+            let route = vm.route;
             let decks_tree = vm.decks.clone();
             let note_types = vm.note_types.clone();
             let editor_note_types = vm.note_types.clone();
@@ -978,8 +967,8 @@ fn browser(
             <div class="browser__toolbar">
                 <button
                     class="browser__toggle"
-                    class:browser__toggle--active=move || view_mode.get() == BrowserView::Cards
-                    on:click=move |_| view_mode.set(BrowserView::Cards)
+                    class:browser__toggle--active=move || route == CurrentRoute::Cards
+                    on:click=move |_| set_event.set(Event::ShowCards)
                 >
                     "Cards"
                 </button>
@@ -987,8 +976,8 @@ fn browser(
                     view! {
                         <button
                             class="browser__toggle"
-                            class:browser__toggle--active=move || view_mode.get() == BrowserView::Notes
-                            on:click=move |_| view_mode.set(BrowserView::Notes)
+                            class:browser__toggle--active=move || route == CurrentRoute::Notes
+                            on:click=move |_| set_event.set(Event::ShowNotes)
                         >
                             "Notes"
                         </button>
@@ -1001,8 +990,8 @@ fn browser(
 
             <div class="card-browser__body">
             <aside class="card-browser__sidebar">
-                {match view_mode.get() {
-                    BrowserView::Cards => view! {
+                {match route {
+                    CurrentRoute::Cards => view! {
                         <form
                             class="card-browser__sidebar-search"
                             on:submit=move |e: leptos::ev::SubmitEvent| {
@@ -1109,7 +1098,7 @@ fn browser(
                         </div>
                     }
                     .into_any(),
-                    BrowserView::Notes => view! {
+                    CurrentRoute::Notes => view! {
                         <form
                             class="card-browser__sidebar-search"
                             on:submit=move |e: leptos::ev::SubmitEvent| {
@@ -1175,12 +1164,13 @@ fn browser(
                         </div>
                     }
                     .into_any(),
+                    _ => ().into_any(),
                 }}
             </aside>
 
             <div class="card-browser__main">
-                {match view_mode.get() {
-                    BrowserView::Cards => view! {
+                {match route {
+                    CurrentRoute::Cards => view! {
                         <div class="card-browser__content">
                             <div class="card-browser__table">
                                 <Table>
@@ -1253,7 +1243,7 @@ fn browser(
                         }}
                     }
                     .into_any(),
-                    BrowserView::Notes => view! {
+                    CurrentRoute::Notes => view! {
                         <div class="card-browser__content">
                             <div class="card-browser__table">
                                 <Table>
@@ -1310,6 +1300,7 @@ fn browser(
                         />
                     }
                     .into_any(),
+                    _ => ().into_any(),
                 }}
             </div>
         </div>
