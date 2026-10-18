@@ -23,7 +23,9 @@ use anjuman_contracts::cards::{
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
-use anjuman_contracts::notes::{CreateNote, ListNotesQuery, NoteResponse, UpdateNote};
+use anjuman_contracts::notes::{
+    CreateNote, ListNotesQuery, NoteBrowserPage, NoteResponse, UpdateNote,
+};
 use anjuman_contracts::reviews::{FlagResponse, SetFlag};
 use anjuman_contracts::MessageResponse;
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
@@ -137,8 +139,12 @@ pub struct Model {
     pub note_types_error: Option<String>,
     /// The notes browser result set (from `GET /notes`).
     pub notes: Vec<NoteResponse>,
-    /// The last notes filter (deck id) used, so create/delete can refresh.
-    pub notes_filter: Option<i64>,
+    /// Notes page info (page/per-page/total).
+    pub notes_page: i64,
+    pub notes_per_page: i64,
+    pub notes_total: i64,
+    /// The last notes filter used, so create/save/delete can refresh.
+    pub notes_filter: Option<NoteBrowserFilter>,
     /// A human-readable error from the last notes fetch, if any.
     pub notes_error: Option<String>,
 }
@@ -205,9 +211,10 @@ pub enum Event {
     TagTreeRequested,
     /// Fetch the school's note types (for the card-browser note-type filter).
     NoteTypesRequested,
-    /// Fetch notes (optionally filtered by deck).
+    /// Fetch notes with a filter (page/filter/sort), the note analog of
+    /// `CardsRequested`.
     NotesRequested {
-        deck_id: Option<i64>,
+        filter: NoteBrowserFilter,
     },
     /// Create a note (fields keyed by note-type field name → text value).
     NoteCreate {
@@ -377,7 +384,7 @@ pub enum Event {
 
     #[serde(skip)]
     #[facet(skip)]
-    NotesResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<NoteResponse>>>),
+    NotesResult(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteBrowserPage>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -494,6 +501,10 @@ pub struct ViewModel {
     pub note_types_error: Option<String>,
     /// The notes browser results to render (US-4.13).
     pub notes: Vec<NoteView>,
+    /// Notes page info.
+    pub notes_page: i64,
+    pub notes_per_page: i64,
+    pub notes_total: i64,
     /// A human-readable error from the last notes fetch/action, if any.
     pub notes_error: Option<String>,
 }
@@ -559,6 +570,38 @@ impl CardBrowserFilter {
             q: self.q.clone(),
             state: self.states.join(","),
             flag: csv_i64(&self.flags),
+            sort: if self.sort.is_empty() {
+                "created_at".to_string()
+            } else {
+                self.sort.clone()
+            },
+            page: if self.page > 0 { self.page } else { 1 },
+            per_page: if self.per_page > 0 { self.per_page } else { 50 },
+        }
+    }
+}
+
+/// The shell-facing note-browser filter (US-4.13, widened for the merged
+/// browser). Mirrors `CardBrowserFilter` but carries only note-appropriate
+/// filters (`deck_ids`, `note_type_ids`, `q`, `sort`, `page`, `per_page`).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct NoteBrowserFilter {
+    pub deck_ids: Vec<i64>,
+    pub note_type_ids: Vec<i64>,
+    pub q: Option<String>,
+    pub sort: String,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+impl NoteBrowserFilter {
+    /// Fold into the wire `ListNotesQuery` (comma-separated multi-values),
+    /// defaulting `sort`/`page`/`per_page` when unset.
+    pub fn to_wire_query(&self) -> ListNotesQuery {
+        ListNotesQuery {
+            deck_id: csv_i64(&self.deck_ids),
+            note_type_id: csv_i64(&self.note_type_ids),
+            q: self.q.clone(),
             sort: if self.sort.is_empty() {
                 "created_at".to_string()
             } else {
@@ -883,11 +926,15 @@ fn resync_browser_selected(model: &mut Model) {
     model.browser_selected = model.browser_cards.iter().find(|c| c.card_id == sel_id).cloned();
 }
 
-/// Re-fetch the notes list using the last stored filter (deck id).
+/// Re-fetch the notes list using the last stored filter.
 fn refresh_notes(model: &Model) -> Command<Effect, Event> {
-    render::render().and(Command::event(Event::NotesRequested {
-        deck_id: model.notes_filter,
-    }))
+    let Some(filter) = model.notes_filter.clone() else {
+        // No filter recorded yet — fall back to a default first page.
+        return render::render().and(Command::event(Event::NotesRequested {
+            filter: NoteBrowserFilter::default(),
+        }));
+    };
+    render::render().and(Command::event(Event::NotesRequested { filter }))
 }
 
 /// Convert the editor's `String`-valued fields into the wire `Map<String, Value>`.
@@ -1589,14 +1636,14 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
-            Event::NotesRequested { deck_id } => {
+            Event::NotesRequested { filter } => {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
                     Auth::Unauthenticated => return render::render(),
                 };
-                model.notes_filter = deck_id;
+                model.notes_filter = Some(filter.clone());
                 model.notes_error = None;
-                let query = ListNotesQuery { deck_id };
+                let query = filter.to_wire_query();
                 Http::get(format!("{API_URL}/notes"))
                     .header("authorization", format!("Bearer {token}"))
                     .query(&query)
@@ -1607,7 +1654,11 @@ impl crux_core::App for Anjuman {
             }
 
             Event::NotesResult(Ok(mut response)) => {
-                model.notes = response.take_body().expect("notes response has a body");
+                let page = response.take_body().expect("notes response has a body");
+                model.notes = page.notes;
+                model.notes_page = page.page;
+                model.notes_per_page = page.per_page;
+                model.notes_total = page.total;
                 model.notes_error = None;
                 render::render()
             }
@@ -2246,6 +2297,9 @@ impl crux_core::App for Anjuman {
                 note_types: model.note_types.iter().map(NoteTypeView::from).collect(),
                 note_types_error: model.note_types_error.clone(),
                 notes: model.notes.iter().map(NoteView::from).collect(),
+                notes_page: model.notes_page,
+                notes_per_page: model.notes_per_page,
+                notes_total: model.notes_total,
                 notes_error: model.notes_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
@@ -2280,6 +2334,9 @@ impl crux_core::App for Anjuman {
                 note_types: Vec::new(),
                 note_types_error: None,
                 notes: Vec::new(),
+                notes_page: 1,
+                notes_per_page: 50,
+                notes_total: 0,
                 notes_error: None,
             },
         }
@@ -4385,36 +4442,56 @@ mod tests {
     // US-4.13 — notes browser
     // --------------------------------------------------------------------
 
-    /// `NotesRequested` emits `GET /notes` (+ optional `deck_id` query) + bearer.
+    /// `NotesRequested` emits `GET /notes` with the folded query + bearer.
     #[test]
     fn notes_requested_emits_get_with_query() {
         let mut model = authenticated_model();
-        let effects = update(Event::NotesRequested { deck_id: Some(5) }, &mut model);
+        let filter = NoteBrowserFilter {
+            deck_ids: vec![5],
+            note_type_ids: vec![1],
+            q: Some("hola".to_string()),
+            sort: "created_at".to_string(),
+            page: 2,
+            per_page: 25,
+        };
+        let effects = update(Event::NotesRequested { filter }, &mut model);
 
         match effects.as_slice() {
             [Effect::Http(req)] => {
                 assert_eq!(req.operation.method.as_str(), "GET");
-                assert!(req.operation.url.as_str().starts_with("http://127.0.0.1:3000/notes"), "{} {}", "", req.operation.url);
-                assert!(req.operation.url.as_str().contains("deck_id=5"), "{}", req.operation.url);
+                let url = req.operation.url.to_string();
+                assert!(url.starts_with("http://127.0.0.1:3000/notes?"), "url = {url}");
+                assert!(url.contains("deck_id=5"), "url = {url}");
+                assert!(url.contains("note_type_id=1"), "url = {url}");
+                assert!(url.contains("q=hola"), "url = {url}");
+                assert!(url.contains("page=2"), "url = {url}");
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
-        assert_eq!(model.notes_filter, Some(5));
+        assert_eq!(model.notes_filter.as_ref().map(|f| f.deck_ids.clone()), Some(vec![5]));
     }
 
-    /// `NotesResult(Ok)` populates the model and flattens fields + tags into the
-    /// view.
+    /// `NotesResult(Ok)` populates the page fields and flattens fields + tags into
+    /// the view.
     #[test]
     fn notes_result_populates_view() {
         let mut model = authenticated_model();
-        let response = ResponseBuilder::ok().body(vec![note(1), note(2)]).build();
+        let page = NoteBrowserPage {
+            notes: vec![note(1), note(2)],
+            page: 1,
+            per_page: 50,
+            total: 2,
+        };
+        let response = ResponseBuilder::ok().body(page).build();
         let _ = update(Event::NotesResult(Ok(response)), &mut model);
 
         assert_eq!(model.notes.len(), 2);
+        assert_eq!(model.notes_total, 2);
         assert!(model.notes_error.is_none());
 
         let vm = Anjuman.view(&model);
         assert_eq!(vm.notes.len(), 2);
+        assert_eq!(vm.notes_total, 2);
         assert_eq!(vm.notes[0].id, 1);
         assert_eq!(vm.notes[0].note_type_name, "Basic");
         assert_eq!(vm.notes[0].fields.get("Front").map(|s| s.as_str()), Some("hola"));

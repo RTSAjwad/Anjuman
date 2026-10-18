@@ -22,7 +22,9 @@ use axum::{
 use chrono::Utc;
 use serde_json::Value;
 
-use anjuman_contracts::notes::{CardSummary, CreateNote, ListNotesQuery, NoteResponse, UpdateNote};
+use anjuman_contracts::notes::{
+    CardSummary, CreateNote, ListNotesQuery, NoteBrowserPage, NoteResponse, UpdateNote,
+};
 use anjuman_contracts::MessageResponse;
 
 use crate::{
@@ -279,49 +281,91 @@ pub async fn create_note(
     Ok((StatusCode::CREATED, Json(note)))
 }
 
-/// `GET /notes` — List notes (optionally filtered by deck).
+/// Build a comma-separated integer list into an `IN (...)` clause fragment (empty
+/// string when the input is empty). All values come from parsed i64s — safe.
+fn in_clause(column: &str, csv: &str) -> String {
+    let vals: Vec<&str> = csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if vals.is_empty() {
+        String::new()
+    } else {
+        format!("AND {column} IN ({})", vals.join(","))
+    }
+}
+
+/// Map a note sort key to its ORDER BY clause (defaults to `created_at`).
+///
+/// Notes can span multiple decks, so the `deck` key orders by the
+/// alphabetically-first deck title (`MIN(d.title)`) — a representative value for
+/// the sort. The other keys (`created_at`/`question`/`note_type`) are
+/// single-valued per note.
+fn note_sort_clause(sort: &str) -> &'static str {
+    match sort {
+        "question" => "n.fields_json::text ASC, n.created_at DESC",
+        "deck" => "MIN(d.title) ASC, n.created_at DESC",
+        "note_type" => "nt.name ASC, n.created_at DESC",
+        _ => "n.created_at DESC",
+    }
+}
+
+/// `GET /notes` — List notes, paginated + filterable (mirroring `GET /cards`).
 pub async fn list_notes(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
     Query(params): Query<ListNotesQuery>,
-) -> Result<Json<Vec<NoteResponse>>, (StatusCode, &'static str)> {
+) -> Result<Json<NoteBrowserPage>, (StatusCode, &'static str)> {
     check_teacher_or_admin(&claims)?;
 
-    // Restrict to notes the caller can see. For admins: everything in school.
-    // For teachers: notes with at least one card in a deck they own/collaborate on.
-    if let Some(deck_id) = params.deck_id {
-        decks::check_deck_visible(&state.db, deck_id, claims.school_id, &claims).await?;
-    }
+    let page = params.page.max(1);
+    let per_page = params.per_page.max(1).min(100);
+    let offset = (page - 1) * per_page;
 
-    let rows: Vec<NoteIdRow> = if let Some(deck_id) = params.deck_id {
-        sqlx::query_as::<_, NoteIdRow>(
-            "SELECT DISTINCT n.id FROM notes n JOIN cards c ON c.note_id = n.id WHERE c.deck_id = $1 ORDER BY n.id",
-        )
-        .bind(deck_id)
-        .fetch_all(&state.db)
+    let deck_in = in_clause("c.deck_id", &params.deck_id);
+    let note_type_in = in_clause("n.note_type_id", &params.note_type_id);
+    let q_filter = params
+        .q
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+        .map(|q| format!("AND n.fields_json::text ILIKE '%{}%'", q.trim()))
+        .unwrap_or_default();
+    let order = note_sort_clause(&params.sort);
+
+    // Visibility: owner/collaborator of a note's decks (admins held to the same
+    // rule). Each note may span multiple decks via its cards.
+    let base_from = "FROM notes n JOIN note_types nt ON nt.id = n.note_type_id JOIN cards c ON c.note_id = n.id JOIN decks d ON d.id = c.deck_id LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id";
+    let base_where = format!(
+        "WHERE d.school_id = $1 AND (d.created_by = $2 OR dc.user_id = $3) {} {} {}",
+        deck_in, note_type_in, q_filter
+    );
+
+    // Count distinct notes (a note with cards in multiple decks must not be
+    // double-counted).
+    let count_sql = format!("SELECT COUNT(DISTINCT n.id) {base_from} {base_where}");
+    let total: i64 = sqlx::query_scalar(&count_sql)
+        .bind(claims.school_id)
+        .bind(claims.sub)
+        .bind(claims.sub)
+        .fetch_one(&state.db)
         .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    } else {
-        // Admins are held to the same owner/collaborator rule as teachers.
-        sqlx::query_as::<_, NoteIdRow>(
-            r#"
-            SELECT DISTINCT n.id
-            FROM notes n
-            JOIN cards c ON c.note_id = n.id
-            JOIN decks d ON d.id = c.deck_id
-            LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id
-            WHERE d.school_id = $1
-              AND (d.created_by = $2 OR dc.user_id = $3)
-            ORDER BY n.id
-            "#,
-        )
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    // Fetch a page of distinct note ids. `GROUP BY` (not `SELECT DISTINCT`) so the
+    // `ORDER BY` columns — which aren't in the `id` select list — remain
+    // functionally present; the multi-deck `MIN(d.title)` aggregate satisfies the
+    // `deck` sort key.
+    let fetch_sql = format!(
+        "SELECT n.id FROM notes n JOIN note_types nt ON nt.id = n.note_type_id JOIN cards c ON c.note_id = n.id JOIN decks d ON d.id = c.deck_id LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id {base_where} GROUP BY n.id, n.created_at, n.fields_json, nt.name ORDER BY {order} LIMIT {per_page} OFFSET {offset}"
+    );
+    let rows: Vec<NoteIdRow> = sqlx::query_as(&fetch_sql)
         .bind(claims.school_id)
         .bind(claims.sub)
         .bind(claims.sub)
         .fetch_all(&state.db)
         .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    };
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     let mut result = Vec::new();
     for n in rows {
@@ -331,7 +375,12 @@ pub async fn list_notes(
         result.push(note);
     }
 
-    Ok(Json(result))
+    Ok(Json(NoteBrowserPage {
+        notes: result,
+        page,
+        per_page,
+        total,
+    }))
 }
 
 /// `GET /notes/{id}` — Fetch a single note.
