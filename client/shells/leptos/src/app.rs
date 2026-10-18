@@ -1191,7 +1191,14 @@ fn browser(
                                         {move || vm_sig.get().notes.iter().map(|n| {
                                             let note_id = n.id;
                                             let note_type_name = n.note_type_name.clone();
-                                            let preview = n.fields.values().next().cloned().unwrap_or_default();
+                                            // Deterministic preview: first field by sorted name
+                                            // (HashMap iteration order is not stable across renders).
+                                            let mut names: Vec<&String> = n.fields.keys().collect();
+                                            names.sort();
+                                            let preview = names.first()
+                                                .and_then(|k| n.fields.get(*k))
+                                                .cloned()
+                                                .unwrap_or_default();
                                             let tags = n.tags.join(", ");
                                             view! {
                                                 <tr
