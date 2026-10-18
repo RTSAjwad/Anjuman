@@ -946,20 +946,27 @@ fn browser(
         set_event.set(Event::NoteSave { note_id: note.id, note_type_id, fields: Some(fields) });
     };
 
+    // Stable derived signals read by the render (created once in the component
+    // body — creating a `Signal::derive` inside the per-render closure would leak
+    // a new memo every render).
+    let notes_selected_signal = Signal::derive(move || vm_sig.get().notes_selected.clone());
+
+    // Pagination page-count derives (created once in the component body).
+    let browser_page_count = Signal::derive(move || {
+        let total = vm_sig.get().browser_total.max(0) as usize;
+        let per = vm_sig.get().browser_per_page.max(1) as usize;
+        ((total + per - 1) / per).max(1)
+    });
+    let notes_page_count = Signal::derive(move || {
+        let total = vm_sig.get().notes_total.max(0) as usize;
+        let per = vm_sig.get().notes_per_page.max(1) as usize;
+        ((total + per - 1) / per).max(1)
+    });
+
     // Owned snapshot of the note list is re-read reactively inside the render
     // closure below (never captured once here).
 
     view! {
-        {move || {
-            let vm = vm_sig.get();
-            let decks_tree = vm.decks.clone();
-            let note_types = vm.note_types.clone();
-            let editor_note_types = vm.note_types.clone();
-            let notes_table = vm.notes.clone();
-            let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
-            let selected_card = vm.browser_selected.clone();
-
-            view! {
         <div class="card-browser">
             <div class="browser__toolbar">
                 <button
@@ -999,10 +1006,10 @@ fn browser(
                             <Input value=q_value placeholder="Search…" />
                         </form>
 
-                        {vm.browser_error.clone().map(|err| view! {
+                        {move || vm_sig.get().browser_error.clone().map(|err| view! {
                             <p class="deck-options__error">"Could not load cards: " {err}</p>
                         })}
-                        {vm.note_types_error.clone().map(|err| view! {
+                        {move || vm_sig.get().note_types_error.clone().map(|err| view! {
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
@@ -1012,7 +1019,7 @@ fn browser(
                                 "Decks",
                                 open_items,
                                 deck_filter_tree(
-                                    decks_tree.clone(),
+                                    vm_sig.get().decks.clone(),
                                     0,
                                     open_items,
                                     deck_active,
@@ -1024,13 +1031,13 @@ fn browser(
                                 "note-types",
                                 "Note types",
                                 open_items,
-                                note_types.clone().into_iter().map(|nt| {
+                                {move || vm_sig.get().note_types.iter().map(|nt| {
                                     let id_str = nt.id.to_string();
                                     let active = note_active.get() == id_str;
                                     let name = nt.name.clone();
                                     let sel = note_sel.clone();
                                     filter_leaf(active, id_str, name, move |id| sel(id))
-                                }).collect_view(),
+                                }).collect_view()},
                             )}
 
                             {filter_branch(
@@ -1106,10 +1113,10 @@ fn browser(
                             <Input value=note_query placeholder="Search…" />
                         </form>
 
-                        {vm.notes_error.clone().map(|err| view! {
+                        {move || vm_sig.get().notes_error.clone().map(|err| view! {
                             <p class="deck-options__error">"Could not load notes: " {err}</p>
                         })}
-                        {vm.note_types_error.clone().map(|err| view! {
+                        {move || vm_sig.get().note_types_error.clone().map(|err| view! {
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
@@ -1119,7 +1126,7 @@ fn browser(
                                 "Decks",
                                 open_items,
                                 deck_filter_tree(
-                                    decks_tree,
+                                    vm_sig.get().decks.clone(),
                                     0,
                                     open_items,
                                     note_deck_filter,
@@ -1131,13 +1138,13 @@ fn browser(
                                 "note-types",
                                 "Note types",
                                 open_items,
-                                note_types.into_iter().map(|nt| {
+                                {move || vm_sig.get().note_types.iter().map(|nt| {
                                     let id_str = nt.id.to_string();
                                     let active = note_note_type.get() == id_str;
                                     let name = nt.name.clone();
                                     let sel = select_note_type_filter.clone();
                                     filter_leaf(active, id_str, name, move |id| sel(id))
-                                }).collect_view(),
+                                }).collect_view()},
                             )}
 
                             {filter_branch(
@@ -1178,9 +1185,9 @@ fn browser(
                                         <TableHeaderCell resizable=true>"Flag"</TableHeaderCell>
                                     </TableHeader>
                                     <TableBody>
-                                        {vm.browser_cards.iter().map(|c| {
+                                        {move || vm_sig.get().browser_cards.iter().map(|c| {
                                             let card_id = c.card_id;
-                                            let is_selected = selected_card_id == Some(card_id);
+                                            let is_selected = vm_sig.get().browser_selected.as_ref().map(|c| c.card_id) == Some(card_id);
                                             let front = c.front.clone();
                                             let deck_title = c.deck_title.clone();
                                             let state = c.state.clone();
@@ -1211,20 +1218,16 @@ fn browser(
                             </div>
 
                             <div class="card-browser__pagination">
-                                <span>{vm.browser_total.to_string()}{" cards"}</span>
+                                <span>{move || vm_sig.get().browser_total.to_string()}{" cards"}</span>
                                 <Pagination
                                     page=page
-                                    page_count=Signal::derive(move || {
-                                        let total = vm.browser_total.max(0) as usize;
-                                        let per = vm.browser_per_page.max(1) as usize;
-                                        ((total + per - 1) / per).max(1)
-                                    })
+                                    page_count=browser_page_count
                                     sibling_count=Signal::derive(|| 1)
                                 />
                             </div>
                         </div>
 
-                        {if let Some(card) = selected_card {
+                        {if let Some(card) = vm_sig.get().browser_selected {
                             view! {
                                 <CardInspector
                                     card=card
@@ -1250,7 +1253,7 @@ fn browser(
                                         <TableHeaderCell resizable=true>"Tags"</TableHeaderCell>
                                     </TableHeader>
                                     <TableBody>
-                                        {notes_table.iter().map(|n| {
+                                        {move || vm_sig.get().notes.iter().map(|n| {
                                             let note_id = n.id;
                                             let note_type_name = n.note_type_name.clone();
                                             let preview = n.fields.values().next().cloned().unwrap_or_default();
@@ -1274,24 +1277,20 @@ fn browser(
                             </div>
 
                             <div class="card-browser__pagination">
-                                <span>{vm.notes_total.to_string()}{" notes"}</span>
+                                <span>{move || vm_sig.get().notes_total.to_string()}{" notes"}</span>
                                 <Pagination
                                     page=note_page
-                                    page_count=Signal::derive(move || {
-                                        let total = vm.notes_total.max(0) as usize;
-                                        let per = vm.notes_per_page.max(1) as usize;
-                                        ((total + per - 1) / per).max(1)
-                                    })
+                                    page_count=notes_page_count
                                     sibling_count=Signal::derive(|| 1)
                                 />
                             </div>
                         </div>
 
                         <NoteInspector
-                            note=Signal::derive(move || vm_sig.get().notes_selected.clone())
+                            note=notes_selected_signal
                             fields=edit_fields
                             note_type_id=edit_note_type
-                            note_types=editor_note_types
+                            note_types=vm_sig.get().note_types
                             save=Callback::new(save_note)
                             set_event=set_event
                         />
@@ -1302,8 +1301,6 @@ fn browser(
             </div>
         </div>
         </div>
-            }
-        }}
     }
 }
 
