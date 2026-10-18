@@ -50,6 +50,27 @@ pub enum DeckView {
     Options,
 }
 
+/// The single top-level route the user is on. This is the **core-owned** source
+/// of truth for navigation — every shell renders `ViewModel.route`, and never
+/// holds its own routing state.
+///
+/// The flat variants cover every top-level destination:
+/// - `DeckList`    — the deck list (default when authenticated, nothing selected).
+/// - `Cards`       — the card browser (US-4.12).
+/// - `Notes`       — the notes browser (US-4.13).
+/// - `Study`       — a deck, on its Study panel.
+/// - `DeckOptions` — a deck, on its Options panel.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
+pub enum CurrentRoute {
+    #[default]
+    DeckList,
+    Cards,
+    Notes,
+    Study,
+    DeckOptions,
+}
+
 /// The entire application state.
 #[derive(Default, Serialize, Deserialize)]
 pub struct Model {
@@ -70,6 +91,9 @@ pub struct Model {
     pub selected_deck: Option<DeckSummary>,
     /// Which sub-view of the selected deck is showing (Study or Options).
     pub selected_deck_view: DeckView,
+    /// The top-level route the user is on (the single navigation source of
+    /// truth). Derived in `view()` from selection + this explicit field.
+    pub route: CurrentRoute,
     /// The card currently shown, if study has started and a card is due.
     pub current_card: Option<StudyCard>,
     /// Due counts for the deck being studied.
@@ -262,6 +286,12 @@ pub enum Event {
     /// Leave the study screen and return to the deck list: clear the selection
     /// and reset in-flight study state (keeps auth + deck data intact).
     CloseDeck,
+    /// Navigate to the deck list (top-level nav — clears any open deck).
+    ShowDeckList,
+    /// Navigate to the card browser (top-level nav — clears any open deck).
+    ShowCards,
+    /// Navigate to the notes browser (top-level nav — clears any open deck).
+    ShowNotes,
 
     // --- Core-local completion events (never cross the FFI boundary) ---
 
@@ -419,6 +449,9 @@ pub struct ViewModel {
     pub selected_deck: Option<DeckSummary>,
     /// Which sub-view of the selected deck is showing (Study or Options).
     pub selected_deck_view: DeckView,
+    /// The top-level route to render (`DeckList` | `Cards` | `Notes` | `Study` |
+    /// `DeckOptions`). The shell renders this; it never holds routing state.
+    pub route: CurrentRoute,
     /// A human-readable error from the last decks fetch, if any.
     pub decks_error: Option<String>,
     /// The card currently shown during study, or `None` when nothing is due
@@ -543,6 +576,20 @@ fn csv_i64(vals: &[i64]) -> String {
         .map(|v| v.to_string())
         .collect::<Vec<_>>()
         .join(",")
+}
+
+/// Clear the deck selection + any in-flight study/options state (shared by
+/// `CloseDeck` and the top-level `Show*` navigation events). Does not touch
+/// auth, decks, tags, or the card/notes browser data.
+fn clear_deck_selection(model: &mut Model) {
+    model.selected_deck = None;
+    model.selected_deck_view = DeckView::Study;
+    model.current_card = None;
+    model.counts = StudyCounts::default();
+    model.study_error = None;
+    model.deck_options = None;
+    model.deck_options_error = None;
+    model.card_action_error = None;
 }
 
 /// A shell-facing browser card (a Facet mirror of the wire `CardBrowserResponse`).
@@ -1256,6 +1303,10 @@ impl crux_core::App for Anjuman {
                 model.browser_error = None;
                 model.note_types.clear();
                 model.note_types_error = None;
+                model.notes.clear();
+                model.notes_filter = None;
+                model.notes_error = None;
+                model.route = CurrentRoute::DeckList;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
             }
@@ -1267,6 +1318,7 @@ impl crux_core::App for Anjuman {
                 if let Some(summary) = find_deck(&model.decks, deck_id) {
                     model.selected_deck = Some(summary);
                     model.selected_deck_view = DeckView::Study;
+                    model.route = CurrentRoute::Study;
                     return render::render().and(Command::event(Event::StartStudy));
                 }
                 render::render()
@@ -1278,6 +1330,7 @@ impl crux_core::App for Anjuman {
                 if let Some(summary) = find_deck(&model.decks, deck_id) {
                     model.selected_deck = Some(summary);
                     model.selected_deck_view = DeckView::Options;
+                    model.route = CurrentRoute::DeckOptions;
                     return render::render().and(Command::event(Event::DeckOptionsRequested {
                         deck_id,
                     }));
@@ -1289,14 +1342,32 @@ impl crux_core::App for Anjuman {
                 // Back-navigation: drop the selection and any in-flight study
                 // state, but keep auth + decks (unlike `Logout`). Re-opening a
                 // deck always starts on the Study sub-view.
-                model.selected_deck = None;
-                model.selected_deck_view = DeckView::Study;
-                model.current_card = None;
-                model.counts = StudyCounts::default();
-                model.study_error = None;
-                model.deck_options = None;
-                model.deck_options_error = None;
-                model.card_action_error = None;
+                clear_deck_selection(model);
+                model.route = CurrentRoute::DeckList;
+                render::render()
+            }
+
+            Event::ShowDeckList => {
+                // Top-level nav: wins over an open deck (clears it) and lands on
+                // the list.
+                clear_deck_selection(model);
+                model.route = CurrentRoute::DeckList;
+                render::render()
+            }
+
+            Event::ShowCards => {
+                // Top-level nav: leave any open deck and open the card browser.
+                clear_deck_selection(model);
+                model.route = CurrentRoute::Cards;
+                model.browser_error = None;
+                render::render()
+            }
+
+            Event::ShowNotes => {
+                // Top-level nav: leave any open deck and open the notes browser.
+                clear_deck_selection(model);
+                model.route = CurrentRoute::Notes;
+                model.notes_error = None;
                 render::render()
             }
 
@@ -2153,6 +2224,7 @@ impl crux_core::App for Anjuman {
                 decks,
                 selected_deck: model.selected_deck.clone(),
                 selected_deck_view: model.selected_deck_view,
+                route: model.route,
                 decks_error: model.decks_error.clone(),
                 current_card,
                 counts,
@@ -2186,6 +2258,7 @@ impl crux_core::App for Anjuman {
                 decks,
                 selected_deck: None,
                 selected_deck_view: DeckView::Study,
+                route: model.route,
                 decks_error: model.decks_error.clone(),
                 current_card: None,
                 counts: StudyCountsView::default(),
@@ -2715,6 +2788,61 @@ mod tests {
         assert!(model.decks.is_empty());
         assert!(model.selected_deck.is_none(), "logout clears selection");
     }
+
+    // --------------------------------------------------------------------
+    // US-9.5 routing — core-owned top-level route
+    // --------------------------------------------------------------------
+
+    /// The route defaults to the deck list (fresh model + unauthenticated).
+    #[test]
+    fn route_defaults_to_deck_list() {
+        let model = Model::default();
+        assert_eq!(model.route, CurrentRoute::DeckList);
+        assert_eq!(Anjuman.view(&model).route, CurrentRoute::DeckList);
+    }
+
+    /// `ShowCards` clears an open deck and sets the route to `Cards`.
+    #[test]
+    fn show_cards_sets_route_and_clears_deck() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+        model.selected_deck = Some(find_deck(&model.decks.clone(), 1).unwrap());
+        model.selected_deck_view = DeckView::Study;
+
+        let _ = update(Event::ShowCards, &mut model);
+        assert_eq!(model.route, CurrentRoute::Cards);
+        assert!(model.selected_deck.is_none(), "top-level nav clears the open deck");
+    }
+
+    /// `ShowNotes` sets the routes to `Notes` and clears the open deck.
+    #[test]
+    fn show_notes_sets_route_and_clears_deck() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+        model.selected_deck = Some(find_deck(&model.decks.clone(), 1).unwrap());
+
+        let _ = update(Event::ShowNotes, &mut model);
+        assert_eq!(model.route, CurrentRoute::Notes);
+        assert!(model.selected_deck.is_none());
+    }
+
+    /// `OpenDeck` sets `route = Study`; `OpenDeckOptions` sets `DeckOptions`;
+    /// `CloseDeck`/`ShowDeckList` set `DeckList`.
+    #[test]
+    fn deck_open_and_close_set_route() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+
+        let _ = update(Event::OpenDeck { deck_id: 1 }, &mut model);
+        assert_eq!(model.route, CurrentRoute::Study);
+
+        let _ = update(Event::OpenDeckOptions { deck_id: 1 }, &mut model);
+        assert_eq!(model.route, CurrentRoute::DeckOptions);
+
+        let _ = update(Event::CloseDeck, &mut model);
+        assert_eq!(model.route, CurrentRoute::DeckList);
+    }
+
 
     // --------------------------------------------------------------------
     // US-4.4 — open a deck (study entry)

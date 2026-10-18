@@ -39,25 +39,29 @@ A shell **never holds its own routing state**. The core owns the route and it is
 represented in the `ViewModel`, so every shell renders `view()` identically and
 forwards the same `Event`s. The concrete rule:
 
-- **The current screen/route is `ViewModel` state, not shell state.** Which deck
-  is open is `ViewModel.selected_deck` (`Option<DeckSummary>`; `None` ⇒ the deck
-  list). Which panel of that deck is showing is `ViewModel.selected_deck_view`
-  (`DeckView::{Study, Options}`, a core-local `Facet` enum). A shell renders the
-  list when `selected_deck` is `None`, otherwise the panel named by
-  `selected_deck_view`. It must **not** introduce its own `active_view`/`route`
-  signal to shadow these fields.
+- **The current screen/route is `ViewModel.route`.** It is a core-local `Facet`
+  enum `CurrentRoute::{ DeckList, Cards, Notes, Study, DeckOptions }` — the single
+  flat source of truth for the top-level destination. A shell renders exactly one
+  branch from `match vm.route { … }` and must **not** introduce its own
+  `active_view`/`nav_selected`/`route` signal (a `String`-based shell-local route
+  drifted here for US-4.12/US-4.13 and was removed). The deck selection fields
+  (`ViewModel.selected_deck` + `selected_deck_view`) remain for the two deck
+  panels, but the authoritative "which top-level screen" is `route`.
 
 - **Navigation is an `Event`, and the core chains the follow-up fetch.** Opening
-  a deck's Study view is `Event::OpenDeck { deck_id }`; opening its Options view
-  is `Event::OpenDeckOptions { deck_id }`. The core records the selection *and*
-  auto-chains `StartStudy` (for `OpenDeck`) or `DeckOptionsRequested` (for
-  `OpenDeckOptions`) and returns a `Render`. A shell therefore **forwards the open
-  event only** — it does **not** fire `StartStudy`/`DeckOptionsRequested` itself,
-  or the fetch would happen twice.
+  a deck's Study view is `Event::OpenDeck { deck_id }` (sets `route = Study`);
+  opening its Options view is `Event::OpenDeckOptions { deck_id }` (sets
+  `route = DeckOptions`). Top-level navigation is `Event::ShowDeckList` /
+  `ShowCards` / `ShowNotes` — each **wins over an open deck** by clearing the
+  deck selection + study state (like `CloseDeck`). The core auto-chains
+  `StartStudy` (for `OpenDeck`) or `DeckOptionsRequested` (for
+  `OpenDeckOptions`) and returns a `Render`. A shell therefore **forwards the
+  event only** — it does not fire `StartStudy`/`DeckOptionsRequested` itself, or
+  the fetch would happen twice.
 
 - **Back-navigation resets the route in the core.** Leaving a deck is
-  `Event::CloseDeck` (or the logout flow): the core clears `selected_deck` and
-  resets `selected_deck_view` to `Study`. The shell does not need to reset
+  `Event::CloseDeck` (sets `route = DeckList`); the core clears `selected_deck`
+  and resets `selected_deck_view` to `Study`. The shell does not need to reset
   anything — the next `OpenDeck`/`OpenDeckOptions` lands on the requested panel.
 
 - **Transient UI state stays shell-local.** While the *route* belongs to the
@@ -65,7 +69,7 @@ forwards the same `Event`s. The concrete rule:
   Leptos shell's card `revealed` flag, an expanded/collapsed tree) may live in
   the shell. The test: if another shell can't see it and no `Event`/`ViewModel`
   field needs it, it may be shell-local; anything that affects *what the user
-  can do* (which panel, which deck) is core-owned.
+  can do* (which screen, which deck) is core-owned (i.e. `route`).
 
 This is the Crux-idiomatic answer to routing: URLs/`leptos_router` are web-only
 and would duplicate core state. The five shells share one routing model carried
