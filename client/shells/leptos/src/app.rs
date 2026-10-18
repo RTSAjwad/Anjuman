@@ -75,14 +75,8 @@ struct BrowserState {
     /// Editor: selected note's field values (field name → text).
     edit_fields: RwSignal<Vec<(String, RwSignal<String>)>>,
     edit_note_type: RwSignal<String>,
-    /// Create form: chosen note type, deck, fields.
-    create_note_type: RwSignal<String>,
-    create_deck: RwSignal<String>,
-    create_fields: RwSignal<Vec<(String, RwSignal<String>)>>,
     /// Guards first-fetch of the note list (fires once when Notes view opens).
     notes_initialized: RwSignal<bool>,
-    /// Last note type chosen for the create form (seeds fields via field_names).
-    create_type_last: StoredValue<i64>,
 }
 
 impl BrowserState {
@@ -109,11 +103,7 @@ impl BrowserState {
         self.note_page.set(1);
         self.edit_fields.set(Vec::new());
         self.edit_note_type.set("0".to_string());
-        self.create_note_type.set("0".to_string());
-        self.create_deck.set("0".to_string());
-        self.create_fields.set(Vec::new());
         self.notes_initialized.set(false);
-        self.create_type_last.set_value(0);
     }
 }
 
@@ -230,11 +220,7 @@ pub fn RootComponent() -> impl IntoView {
         note_page: RwSignal::new(1),
         edit_fields: RwSignal::new(Vec::new()),
         edit_note_type: RwSignal::new("0".to_string()),
-        create_note_type: RwSignal::new("0".to_string()),
-        create_deck: RwSignal::new("0".to_string()),
-        create_fields: RwSignal::new(Vec::new()),
         notes_initialized: RwSignal::new(false),
-        create_type_last: StoredValue::new(0),
     };
 
     // Reset the card-browser state on logout so a subsequent login starts fresh.
@@ -838,11 +824,7 @@ fn browser(
     let note_page = state.note_page;
     let edit_fields = state.edit_fields;
     let edit_note_type = state.edit_note_type;
-    let create_note_type = state.create_note_type;
-    let create_deck = state.create_deck;
-    let create_fields = state.create_fields;
     let notes_initialized = state.notes_initialized;
-    let create_type_last = state.create_type_last;
 
     // Lazy first fetch of the note list when the Notes view is toggled on.
     Effect::new(move |_| {
@@ -859,7 +841,6 @@ fn browser(
     });
 
     let editor_note_types = vm.note_types.clone();
-    let create_note_types = vm.note_types.clone();
 
     let with_note_filter = move |page: i64| -> NoteBrowserFilter {
         let mut deck_ids = Vec::new();
@@ -969,47 +950,6 @@ fn browser(
         set_event.set(Event::NoteSave { note_id, note_type_id, fields: Some(fields) });
     };
 
-    let create_note = move |_| {
-        let note_type_id = match create_note_type.get().parse::<i64>() {
-            Ok(id) if id != 0 => id,
-            _ => return,
-        };
-        let deck_id = match create_deck.get().parse::<i64>() {
-            Ok(id) if id != 0 => id,
-            _ => return,
-        };
-        let fields: HashMap<String, String> = create_fields
-            .get()
-            .into_iter()
-            .map(|(k, s)| (k, s.get()))
-            .collect();
-        set_event.set(Event::NoteCreate { note_type_id, deck_id, fields });
-    };
-
-    // Seed the create form's fields from the chosen note type's `field_names`
-    // (now available on `NoteTypeView`).
-    Effect::new(move |_| {
-        let parsed = create_note_type.get().parse::<i64>().unwrap_or(0);
-        if parsed != 0 && create_type_last.get_value() != parsed {
-            create_type_last.set_value(parsed);
-            if let Some(nt) = vm_sig
-                .get_untracked()
-                .note_types
-                .iter()
-                .find(|nt| nt.id == parsed)
-            {
-                let mut names = nt.field_names.clone();
-                names.sort();
-                create_fields.set(
-                    names.into_iter().map(|k| (k, RwSignal::new(String::new()))).collect(),
-                );
-            }
-        }
-    });
-
-    // Flattened deck list for the note create-form deck picker.
-    let mut create_decks: Vec<(String, i64)> = Vec::new();
-    flatten_decks(&vm.decks, &mut create_decks);
     // Owned snapshot of the note list (reused by both the table and the inspector).
     let notes_table = vm.notes.clone();
     let notes_inspector = vm.notes.clone();
@@ -1349,13 +1289,7 @@ fn browser(
                             fields=edit_fields
                             note_type_id=edit_note_type
                             note_types=editor_note_types
-                            create_note_type=create_note_type
-                            create_deck=create_deck
-                            create_fields=create_fields
-                            create_decks=create_decks
-                            create_note_types=create_note_types
                             save=Callback::new(save_note)
-                            create=Callback::new(move |_: ()| create_note(()))
                             set_event=set_event
                         />
                     }
@@ -1498,13 +1432,7 @@ fn NoteInspector(
     fields: RwSignal<Vec<(String, RwSignal<String>)>>,
     note_type_id: RwSignal<String>,
     note_types: Vec<NoteTypeView>,
-    create_note_type: RwSignal<String>,
-    create_deck: RwSignal<String>,
-    create_fields: RwSignal<Vec<(String, RwSignal<String>)>>,
-    create_decks: Vec<(String, i64)>,
-    create_note_types: Vec<NoteTypeView>,
     save: Callback<i64, ()>,
-    create: Callback<(), ()>,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     view! {
@@ -1563,46 +1491,10 @@ fn NoteInspector(
                 .into_any()
             } else {
                 view! {
-                    <span class="card-browser__hint">"Select a note, or create a new one below."</span>
+                    <span class="card-browser__hint">"Select a note to view and edit it."</span>
                 }
                 .into_any()
             }}
-
-            <div class="notes-browser__create">
-                <h3 class="deck-options-group__title">"New note"</h3>
-                <div class="notes-browser__create-controls">
-                    <Select value=create_note_type default_value="0" size=SelectSize::Medium>
-                        <option value="0">"Note type…"</option>
-                        {create_note_types.iter().map(|nt| {
-                            let id = nt.id.to_string();
-                            let name = nt.name.clone();
-                            view! { <option value=id>{name}</option> }
-                        }).collect_view()}
-                    </Select>
-                    <Select value=create_deck default_value="0" size=SelectSize::Medium>
-                        <option value="0">"Deck…"</option>
-                        {create_decks.iter().map(|(title, id)| {
-                            let id_str = id.to_string();
-                            let title = title.clone();
-                            view! { <option value=id_str>{title}</option> }
-                        }).collect_view()}
-                    </Select>
-                    <Button appearance=ButtonAppearance::Primary on_click=move |_| create.run(())>
-                        "Create"
-                    </Button>
-                </div>
-                <div class="notes-browser__fieldlist">
-                    {create_fields.get().into_iter().map(|(name, v)| {
-                        let name_label = name.clone();
-                        view! {
-                            <label class="notes-browser__field">
-                                <span>{name_label}</span>
-                                <Input value=v />
-                            </label>
-                        }
-                    }).collect_view()}
-                </div>
-            </div>
         </aside>
     }
 }
@@ -1846,15 +1738,6 @@ fn deck_filter_node(
                 ().into_any()
             }}
         </div>
-    }
-}
-
-/// Flatten a `DeckSummary` tree into a `(title, id)` list (for filter/picker
-/// dropdowns). Used by the Browser's note-view deck filter and create form.
-fn flatten_decks(ds: &[DeckSummary], out: &mut Vec<(String, i64)>) {
-    for d in ds {
-        out.push((d.title.clone(), d.id));
-        flatten_decks(&d.children, out);
     }
 }
 
