@@ -1003,17 +1003,24 @@ fn browser(
                                     let f_val = f.to_string();
                                     let active = flag_active.get() == f_val;
                                     let sel = flag_sel.clone();
-                                    let label: &'static str = match f {
-                                        "1" => "Red",
-                                        "2" => "Orange",
-                                        "3" => "Green",
-                                        "4" => "Blue",
-                                        "5" => "Pink",
-                                        "6" => "Turquoise",
-                                        "7" => "Purple",
-                                        _ => unreachable!(),
-                                    };
-                                    filter_leaf(active, f_val, label.to_string(), move |id| sel(id))
+                                    let color = flag_color(f.parse::<i64>().unwrap());
+                                    let label = flag_label(f.parse::<i64>().unwrap());
+                                    view! {
+                                        <div class="thaw-tree-item thaw-tree-item--leaf" role="treeitem">
+                                            <div
+                                                class="thaw-tree-item-layout"
+                                                class:card-browser__leaf--active=active
+                                                on:click=move |_| sel(f_val.clone())
+                                            >
+                                                <span class="thaw-tree-item-layout__main">
+                                                    <span class="card-browser__flag-sw">
+                                                        <span class="card-browser__flag-swatch" style=format!("background-color: {color}")></span>
+                                                        <span>{label}</span>
+                                                    </span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
                                 }).collect_view(),
                             )}
 
@@ -1145,7 +1152,7 @@ fn browser(
                                                     </td>
                                                     <td class="thaw-table-cell">{deck_title}</td>
                                                     <td class="thaw-table-cell">{state}</td>
-                                                    <td class="thaw-table-cell">{flag_label(flag)}</td>
+                                                    <td class="thaw-table-cell">{flag_swatch(flag)}</td>
                                                 </tr>
                                             }
                                         }).collect_view()}
@@ -1278,7 +1285,7 @@ fn CardInspector(
                         </div>
                         <div class="card-browser__inspector-row">
                             <dt>"Flag"</dt>
-                            <dd>{flag_label(card.flag)}</dd>
+                            <dd>{flag_swatch(card.flag)}</dd>
                         </div>
                         <div class="card-browser__inspector-row">
                             <dt>"Suspended"</dt>
@@ -1349,7 +1356,8 @@ fn CardInspector(
                                 <option value="0">"No flag"</option>
                                 {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
                                     let v = *f;
-                                    view! { <option value=v>{flag_label(v.parse::<i64>().unwrap())}</option> }
+                                    let color = flag_color(v.parse::<i64>().unwrap());
+                                    view! { <option value=v style=format!("color: {color}")>{flag_label(v.parse::<i64>().unwrap())}</option> }
                                 }).collect_view()}
                             </select>
                         </div>
@@ -1681,6 +1689,36 @@ fn flag_label(flag: i64) -> &'static str {
     }
 }
 
+/// CSS colour for a 0-7 Anki flag (0 = no colour). Uses CSS named colours.
+fn flag_color(flag: i64) -> &'static str {
+    match flag {
+        1 => "red",
+        2 => "orange",
+        3 => "green",
+        4 => "blue",
+        5 => "pink",
+        6 => "turquoise",
+        7 => "purple",
+        _ => "transparent",
+    }
+}
+
+/// A small coloured dot + label for a flag value (used where free HTML is
+/// rendered, e.g. the filter sidebar, the table, and the inspector `<dd>`).
+fn flag_swatch(flag: i64) -> impl IntoView {
+    let label = flag_label(flag);
+    let color = flag_color(flag);
+    view! {
+        <span class="card-browser__flag-sw">
+            <span
+                class="card-browser__flag-swatch"
+                style=format!("background-color: {color}")
+            ></span>
+            <span>{label}</span>
+        </span>
+    }
+}
+
 /// The study screen: one card at a time, centred in the available space, with
 /// the reveal/answer controls pinned to the bottom. Due counts live in the
 /// header (see `study_count_badges`); the deck title is in the breadcrumb. Pure
@@ -1835,13 +1873,13 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
             <span class="study-actions__group">
                 <Select value=flag default_value=card.flag.to_string() size=SelectSize::Medium>
                     <option value="0">"No flag"</option>
-                    <option value="1">"Red"</option>
-                    <option value="2">"Orange"</option>
-                    <option value="3">"Green"</option>
-                    <option value="4">"Blue"</option>
-                    <option value="5">"Pink"</option>
-                    <option value="6">"Turquoise"</option>
-                    <option value="7">"Purple"</option>
+                    <option value="1" style="color: red">"Red"</option>
+                    <option value="2" style="color: orange">"Orange"</option>
+                    <option value="3" style="color: green">"Green"</option>
+                    <option value="4" style="color: blue">"Blue"</option>
+                    <option value="5" style="color: pink">"Pink"</option>
+                    <option value="6" style="color: turquoise">"Turquoise"</option>
+                    <option value="7" style="color: purple">"Purple"</option>
                 </Select>
             </span>
         </div>
