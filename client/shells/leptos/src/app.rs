@@ -885,6 +885,7 @@ fn browser(
     // body — creating a `Signal::derive` inside the per-render closure would leak
     // a new memo every render).
     let notes_selected_signal = Signal::derive(move || vm_sig.get().notes_selected.clone());
+    let browser_selected_signal = Signal::derive(move || vm_sig.get().browser_selected.clone());
 
     // Pagination page-count derives (created once in the component body).
     let browser_page_count = Signal::derive(move || {
@@ -1162,20 +1163,13 @@ fn browser(
                             </div>
                         </div>
 
-                        {if let Some(card) = vm_sig.get().browser_selected {
-                            view! {
-                                <CardInspector
-                                    card=card
-                                    suspend=selected_suspend
-                                    bury=selected_bury
-                                    flag=selected_flag
-                                    set_event=set_event
-                                />
-                            }
-                            .into_any()
-                        } else {
-                            ().into_any()
-                        }}
+                        <CardInspector
+                            card=browser_selected_signal
+                            suspend=selected_suspend
+                            bury=selected_bury
+                            flag=selected_flag
+                            set_event=set_event
+                        />
                     }
                     .into_any(),
                     CurrentRoute::Notes => view! {
@@ -1241,123 +1235,133 @@ fn browser(
     }
 }
 
-/// The selected card's information pane (right-hand side of the browser). Shows
-/// every field the core exposes for a `CardBrowserView` plus the per-card
-/// actions (Suspend / Bury / Reschedule / Flag).
+/// The card-view information/action pane (right-hand side of the browser).
+/// Always rendered; shows the selected card's fields plus the per-card actions
+/// (Suspend / Bury / Reschedule / Flag), or a hint when nothing is selected.
 #[component]
 fn CardInspector(
-    card: CardBrowserView,
+    card: Signal<Option<CardBrowserView>>,
     suspend: Signal<bool>,
     bury: Signal<bool>,
     flag: Signal<String>,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
-    let card_id = card.card_id;
     let reschedule_days = RwSignal::new(String::new());
 
     view! {
         <aside class="card-browser__inspector">
             <h3 class="card-browser__inspector-title">"Selected card"</h3>
 
-            <dl class="card-browser__inspector-fields">
-                <div class="card-browser__inspector-row">
-                    <dt>"Card"</dt>
-                    <dd>{card.card_id.to_string()}</dd>
-                </div>
-                <div class="card-browser__inspector-row">
-                    <dt>"Note"</dt>
-                    <dd>{card.note_id.to_string()}</dd>
-                </div>
-                <div class="card-browser__inspector-row">
-                    <dt>"Deck"</dt>
-                    <dd>{card.deck_title}</dd>
-                </div>
-                <div class="card-browser__inspector-row">
-                    <dt>"Note type"</dt>
-                    <dd>{card.note_type_name}</dd>
-                </div>
-                <div class="card-browser__inspector-row">
-                    <dt>"State"</dt>
-                    <dd>{card.state}</dd>
-                </div>
-                <div class="card-browser__inspector-row">
-                    <dt>"Flag"</dt>
-                    <dd>{flag_label(card.flag)}</dd>
-                </div>
-                <div class="card-browser__inspector-row">
-                    <dt>"Suspended"</dt>
-                    <dd>{if card.suspended { "Yes" } else { "No" }}</dd>
-                </div>
-                <div class="card-browser__inspector-row">
-                    <dt>"Buried"</dt>
-                    <dd>{if card.buried { "Yes" } else { "No" }}</dd>
-                </div>
-                <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
-                    <dt>"Front"</dt>
-                    <dd class="card-browser__inspector-text">{card.front}</dd>
-                </div>
-                <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
-                    <dt>"Back"</dt>
-                    <dd class="card-browser__inspector-text">{card.back}</dd>
-                </div>
-            </dl>
+            {if let Some(card) = card.get() {
+                let card_id = card.card_id;
+                view! {
+                    <dl class="card-browser__inspector-fields">
+                        <div class="card-browser__inspector-row">
+                            <dt>"Card"</dt>
+                            <dd>{card.card_id.to_string()}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Note"</dt>
+                            <dd>{card.note_id.to_string()}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Deck"</dt>
+                            <dd>{card.deck_title}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Note type"</dt>
+                            <dd>{card.note_type_name}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"State"</dt>
+                            <dd>{card.state}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Flag"</dt>
+                            <dd>{flag_label(card.flag)}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Suspended"</dt>
+                            <dd>{if card.suspended { "Yes" } else { "No" }}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Buried"</dt>
+                            <dd>{if card.buried { "Yes" } else { "No" }}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
+                            <dt>"Front"</dt>
+                            <dd class="card-browser__inspector-text">{card.front}</dd>
+                        </div>
+                        <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
+                            <dt>"Back"</dt>
+                            <dd class="card-browser__inspector-text">{card.back}</dd>
+                        </div>
+                    </dl>
 
-            <div class="card-browser__inspector-actions">
-                <CardSwitch
-                    checked=suspend
-                    label="Suspend"
-                    on_toggle=move || {
-                        if suspend.get() {
-                            set_event.set(Event::BrowserUnsuspendCard { card_id });
-                        } else {
-                            set_event.set(Event::BrowserSuspendCard { card_id });
-                        }
-                    }
-                />
-                <CardSwitch
-                    checked=bury
-                    label="Bury"
-                    on_toggle=move || {
-                        if bury.get() {
-                            set_event.set(Event::BrowserUnburyCard { card_id });
-                        } else {
-                            set_event.set(Event::BrowserBuryCard { card_id });
-                        }
-                    }
-                />
-                <div class="card-browser__inspector-reschedule">
-                    <Input value=reschedule_days placeholder="days" input_type=Signal::derive(|| InputType::Number) />
-                    <Button
-                        appearance=ButtonAppearance::Subtle
-                        on_click=move |_| {
-                            if let Ok(d) = reschedule_days.get().trim().parse::<i64>() {
-                                set_event.set(Event::BrowserRescheduleCard { card_id, days: d });
-                                reschedule_days.set(String::new());
+                    <div class="card-browser__inspector-actions">
+                        <CardSwitch
+                            checked=suspend
+                            label="Suspend"
+                            on_toggle=move || {
+                                if suspend.get() {
+                                    set_event.set(Event::BrowserUnsuspendCard { card_id });
+                                } else {
+                                    set_event.set(Event::BrowserSuspendCard { card_id });
+                                }
                             }
-                        }
-                    >
-                        "Reschedule"
-                    </Button>
-                </div>
-                <div class="card-browser__inspector-flag">
-                    <select
-                        class="thaw-select__select"
-                        prop:value=move || flag.get()
-                        on:change=move |ev| {
-                            let value = event_target_value(&ev);
-                            if let Ok(f) = value.parse::<i64>() {
-                                set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
+                        />
+                        <CardSwitch
+                            checked=bury
+                            label="Bury"
+                            on_toggle=move || {
+                                if bury.get() {
+                                    set_event.set(Event::BrowserUnburyCard { card_id });
+                                } else {
+                                    set_event.set(Event::BrowserBuryCard { card_id });
+                                }
                             }
-                        }
-                    >
-                        <option value="0">"No flag"</option>
-                        {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
-                            let v = *f;
-                            view! { <option value=v>{flag_label(v.parse::<i64>().unwrap())}</option> }
-                        }).collect_view()}
-                    </select>
-                </div>
-            </div>
+                        />
+                        <div class="card-browser__inspector-reschedule">
+                            <Input value=reschedule_days placeholder="days" input_type=Signal::derive(|| InputType::Number) />
+                            <Button
+                                appearance=ButtonAppearance::Subtle
+                                on_click=move |_| {
+                                    if let Ok(d) = reschedule_days.get().trim().parse::<i64>() {
+                                        set_event.set(Event::BrowserRescheduleCard { card_id, days: d });
+                                        reschedule_days.set(String::new());
+                                    }
+                                }
+                            >
+                                "Reschedule"
+                            </Button>
+                        </div>
+                        <div class="card-browser__inspector-flag">
+                            <select
+                                class="thaw-select__select"
+                                prop:value=move || flag.get()
+                                on:change=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    if let Ok(f) = value.parse::<i64>() {
+                                        set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
+                                    }
+                                }
+                            >
+                                <option value="0">"No flag"</option>
+                                {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
+                                    let v = *f;
+                                    view! { <option value=v>{flag_label(v.parse::<i64>().unwrap())}</option> }
+                                }).collect_view()}
+                            </select>
+                        </div>
+                    </div>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <span class="card-browser__hint">"Select a card to view and manage it."</span>
+                }
+                .into_any()
+            }}
         </aside>
     }
 }
