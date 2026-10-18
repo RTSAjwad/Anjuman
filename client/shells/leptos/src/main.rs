@@ -7,6 +7,7 @@ mod app;
 mod core_link;
 mod http;
 mod kv;
+mod router;
 
 fn main() {
     // Better panic messages in the browser console.

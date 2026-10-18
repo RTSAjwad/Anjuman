@@ -25,6 +25,7 @@ use thaw::{
 };
 
 use crate::core_link;
+use crate::router;
 
 /// Stable, app-lifetime state for the card browser's filter sidebar. Leptos
 /// `#[component]`s re-run their body whenever a prop signal they read changes;
@@ -185,6 +186,93 @@ pub fn RootComponent() -> impl IntoView {
             revealed.set(false);
         }
     });
+
+    // -----------------------------------------------------------------
+    // URL routing. The core owns the route (`ViewModel.route`); the URL is a
+    // web-only *projection* of it. We (a) mirror `route` into `location.hash`,
+    // (b) deep-link/refresh by hydrating the initial hash once authenticated +
+    // decks are loaded, and (c) turn back/forward (`hashchange`) into events.
+
+    // Guards the mirror -> hashchange round-trip: when *we* write the hash, we set
+    // this so the `hashchange` handler skips re-emitting the same event (which the
+    // core would then re-process into the same route). User back/forward leaves it
+    // clear, so those are forwarded as events.
+    let suppress_hashchange = StoredValue::new(false);
+    // Deep-link hydration fires exactly once (after auth + decks).
+    let hydrated = StoredValue::new(false);
+
+    // Mirror the core route into the URL. Uses `set_hash` (pushes a history entry)
+    // only when the target differs from the current hash, so scrolling through
+    // cards/notes/back produces a sensible back/forward history.
+    //
+    // Gated on `hydrated`: before auth + decks load we must NOT write the URL,
+    // because that would clobber a deep-link hash (e.g. `#/decks/42/study`) with
+    // `#/decks` before the hydration effect has read it. `hydrated` is a
+    // non-reactive `StoredValue`, so this effect only re-runs when `view` changes
+    // (i.e. after login/restore and after the deep-link event is processed) —
+    // by which point the route has settled to the right value.
+    Effect::new(move |_| {
+        if !hydrated.get_value() {
+            return;
+        }
+        let vm = view.get();
+        let target = router::route_to_hash(vm.route, vm.selected_deck.as_ref().map(|d| d.id));
+        let current = router::current_hash();
+        if current != target {
+            suppress_hashchange.set_value(true);
+            router::set_hash(&target);
+        }
+    });
+
+    // Register the `hashchange` listener once. It maps URL changes that were *not*
+    // caused by our own mirror write back into core events (browser back/forward,
+    // or the user editing the address bar's hash). `router::on_hashchange` forgets
+    // the closure on purpose (SPA lifetime), so we only guard against registering
+    // twice with a plain bool.
+    let hashchange_registered = StoredValue::new(false);
+    {
+        let set_event = set_event;
+        Effect::new(move |_| {
+            if hashchange_registered.get_value() {
+                return;
+            }
+            hashchange_registered.set_value(true);
+            let set_event = set_event;
+            router::on_hashchange(move |hash| {
+                if suppress_hashchange.get_value() {
+                    suppress_hashchange.set_value(false);
+                    return;
+                }
+                set_event.set(router::hash_to_event(&hash));
+            });
+        });
+    }
+
+    // Deep-link / refresh hydration: once authenticated and decks are loaded,
+    // parse the initial hash once and fire the matching event. Deferred because
+    // `OpenDeck { id }` is a no-op until the deck list contains that id.
+    {
+        let set_event = set_event;
+        Effect::new(move |_| {
+            if hydrated.get_value() {
+                return;
+            }
+            let vm = view.get();
+            if !vm.authenticated || vm.decks.is_empty() {
+                return;
+            }
+            let hash = router::current_hash();
+            hydrated.set_value(true);
+            if hash.is_empty() {
+                // No deep link: normalise to the canonical deck-list hash so the
+                // mirror's next run (and back/forward) starts from a known state.
+                suppress_hashchange.set_value(true);
+                router::set_hash("#/decks");
+            } else {
+                set_event.set(router::hash_to_event(&hash));
+            }
+        });
+    }
 
     view! {
         <ConfigProvider>
