@@ -12,15 +12,15 @@
 use leptos::prelude::*;
 use leptos::task;
 use shared::app::{
-    CardBrowserFilter, CardBrowserView, DeckOptionsEdit, DeckOptionsView, DeckSummary, DeckView,
-    NoteView, PresetSummary, StudyCardView, StudyCountsView,
+    CardBrowserFilter, CardBrowserView, CurrentRoute, DeckOptionsEdit, DeckOptionsView,
+    DeckSummary, DeckView, NoteView, PresetSummary, StudyCardView, StudyCountsView,
 };
 use shared::{Event, ViewModel};
 use std::collections::{HashMap, HashSet};
 use thaw::{
     Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
     BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
-    NavDrawer, NavDrawerFooter, NavDrawerHeader, NavItem, Pagination, Select, SelectSize, Switch,
+    NavDrawer, NavDrawerFooter, NavDrawerHeader, Pagination, Select, SelectSize, Switch,
     Table, TableBody, TableHeader, TableHeaderCell,
 };
 
@@ -139,8 +139,8 @@ pub fn RootComponent() -> impl IntoView {
     });
 
     // -----------------------------------------------------------------
-    // Navigation. The core owns the route (`selected_deck` + `selected_deck_view`);
-    // these closures just forward the matching events.
+    // Navigation. The core owns the route (`ViewModel.route` + `selected_deck` +
+    // `selected_deck_view`); these closures just forward the matching events.
 
     // Back to the list. Shared by the sidebar and breadcrumb.
     let close_deck = move || set_event.set(Event::CloseDeck);
@@ -153,10 +153,12 @@ pub fn RootComponent() -> impl IntoView {
         DeckView::Options => set_event.set(Event::OpenDeckOptions { deck_id }),
     });
 
-    // Top-level sidebar selection (the core owns deck-level routing; this only
-    // picks Decks vs Cards — the card browser is a standalone management screen
-    // with no core route yet, so it is shell-local UI state, like the reveal flag).
-    let nav_selected = RwSignal::new("decks".to_string());
+    // Top-level navigation. These forward `Show*` events (the core owns the route
+    // and, unlike the old shell-local `nav_selected`, top-level nav *always* wins
+    // over an open deck by clearing it).
+    let show_deck_list = move |_| set_event.set(Event::ShowDeckList);
+    let show_cards = move |_| set_event.set(Event::ShowCards);
+    let show_notes = move |_| set_event.set(Event::ShowNotes);
 
     // Card-browser filter state, hoisted so it survives component re-renders
     // (see `CardBrowserState`). Created once for the app's lifetime.
@@ -175,11 +177,11 @@ pub fn RootComponent() -> impl IntoView {
     // Reset the card-browser state on logout so a subsequent login starts fresh.
     // `browser_state` is app-lifetime and its `initialized` gate latches `true`
     // after the first browse; without this reset, re-logging in leaves the table
-    // empty (the fetch never re-fires). `nav_selected` is reset back to Decks too.
+    // empty (the fetch never re-fires). The route is reset by the core (`Logout`
+    // sets `route = DeckList`), so the shell only needs to clear local UI state.
     Effect::new(move |_| {
         if !view.get().authenticated {
             browser_state.reset();
-            nav_selected.set("decks".to_string());
             revealed.set(false);
         }
     });
@@ -189,30 +191,42 @@ pub fn RootComponent() -> impl IntoView {
             {move || {
                 let vm: ViewModel = view.get();
                 if vm.authenticated {
-                    let selected_deck = vm.selected_deck.clone();
                     let display_name = vm.display_name.clone();
+                    let route = vm.route;
+                    let can_manage_notes = vm.permissions.can_manage_notes;
                     view! {
                         <div class="app-shell">
                             <NavDrawer
                                 class="app-sidebar-nav"
-                                selected_value=nav_selected
                                 open_categories=RwSignal::new(Vec::<String>::new())
                                 multiple=false
                             >
                                 <NavDrawerHeader slot:nav_drawer_header>
                                     <span class="app-sidebar__brand">"Anjuman"</span>
                                 </NavDrawerHeader>
-                                <NavItem value=RwSignal::new("decks".to_string())>
+                                <button
+                                    class="thaw-nav-item"
+                                    class:thaw-nav-item--selected=move || route == CurrentRoute::DeckList
+                                    on:click=show_deck_list
+                                >
                                     "Decks"
-                                </NavItem>
-                                <NavItem value=RwSignal::new("cards".to_string())>
+                                </button>
+                                <button
+                                    class="thaw-nav-item"
+                                    class:thaw-nav-item--selected=move || route == CurrentRoute::Cards
+                                    on:click=show_cards
+                                >
                                     "Cards"
-                                </NavItem>
-                                {if vm.permissions.can_manage_notes {
+                                </button>
+                                {if can_manage_notes {
                                     view! {
-                                        <NavItem value=RwSignal::new("notes".to_string())>
+                                        <button
+                                            class="thaw-nav-item"
+                                            class:thaw-nav-item--selected=move || route == CurrentRoute::Notes
+                                            on:click=show_notes
+                                        >
                                             "Notes"
-                                        </NavItem>
+                                        </button>
                                     }
                                     .into_any()
                                 } else {
@@ -229,103 +243,129 @@ pub fn RootComponent() -> impl IntoView {
                             </NavDrawer>
 
                             <main class="app-content">
-                                {if let Some(deck) = selected_deck.clone() {
-                                    let deck_title = deck.title.clone();
-                                    let counts = vm.counts.clone();
-                                    let deck_options_view = vm.deck_options.clone();
-                                    let deck_options_error = vm.deck_options_error.clone();
-                                    let sub_view = vm.selected_deck_view;
-                                    let current_card = vm.current_card.clone();
-                                    view! {
+                                {match route {
+                                    CurrentRoute::DeckList => view! {
                                         <div class="app-header">
                                             <Breadcrumb>
                                                 <BreadcrumbItem>
-                                                    <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
-                                                </BreadcrumbItem>
-                                                <BreadcrumbDivider />
-                                                <BreadcrumbItem>
-                                                    {deck_title}
-                                                </BreadcrumbItem>
-                                                <BreadcrumbDivider />
-                                                <BreadcrumbItem>
                                                     <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
-                                                        {match sub_view {
-                                                            DeckView::Study => "Study",
-                                                            DeckView::Options => "Options",
-                                                        }}
+                                                        "Decks"
                                                     </span>
                                                 </BreadcrumbItem>
                                             </Breadcrumb>
-                                            <div class="app-header__right">
-                                                {match sub_view {
-                                                    DeckView::Study => study_count_badges(counts).into_any(),
-                                                    DeckView::Options => ().into_any(),
-                                                }}
-                                                {if let (DeckView::Study, Some(card)) = (sub_view, current_card) {
-                                                    view! {
-                                                        <StudyActions card=card set_event=set_event />
-                                                    }
-                                                    .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }}
-                                            </div>
                                         </div>
-                                        {match sub_view {
-                                            DeckView::Study => view! {
-                                                <StudyScreen
-                                                    vm=vm.clone() revealed=revealed set_event=set_event />
-                                            }.into_any(),
-                                            DeckView::Options => view! {
-                                                <DeckOptionsPanel
-                                                    deck_id=deck.id
-                                                    options=deck_options_view
-                                                    error=deck_options_error
-                                                    presets=vm.presets.clone()
-                                                    presets_error=vm.presets_error.clone()
-                                                    can_manage_presets=vm.permissions.can_manage_presets
-                                                    set_event=set_event />
-                                            }.into_any(),
-                                        }}
+                                        <div class="app-content__pad">
+                                            <DeckList vm=view.into() on_navigate=navigate />
+                                        </div>
                                     }
-                                    .into_any()
-                                } else {
-                                    view! {
-                                        {match nav_selected.get().as_str() {
-                                            "cards" => view! {
-                                                <CardBrowser vm=view.into() state=browser_state set_event=set_event />
-                                            }
-                                            .into_any(),
-                                            _ => view! {
-                                                <div class="app-header">
-                                                    <Breadcrumb>
-                                                        <BreadcrumbItem>
-                                                            <button class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
-                                                                {match nav_selected.get().as_str() {
-                                                                    "notes" => "Notes",
-                                                                    _ => "Decks",
-                                                                }}
-                                                            </button>
-                                                        </BreadcrumbItem>
-                                                    </Breadcrumb>
-                                                </div>
-                                                <div class="app-content__pad">
-                                                    {match nav_selected.get().as_str() {
-                                                        "notes" => view! {
-                                                            <NotesBrowser vm=view.into() set_event=set_event />
-                                                        }
-                                                        .into_any(),
-                                                        _ => view! {
-                                                            <DeckList vm=view.into() on_navigate=navigate />
-                                                        }
-                                                        .into_any(),
-                                                    }}
-                                                </div>
-                                            }
-                                            .into_any(),
-                                        }}
+                                    .into_any(),
+                                    CurrentRoute::Cards => view! {
+                                        <CardBrowser vm=view.into() state=browser_state set_event=set_event />
                                     }
-                                    .into_any()
+                                    .into_any(),
+                                    CurrentRoute::Notes => view! {
+                                        <div class="app-header">
+                                            <Breadcrumb>
+                                                <BreadcrumbItem>
+                                                    <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
+                                                        "Notes"
+                                                    </span>
+                                                </BreadcrumbItem>
+                                            </Breadcrumb>
+                                        </div>
+                                        <div class="app-content__pad">
+                                            <NotesBrowser vm=view.into() set_event=set_event />
+                                        </div>
+                                    }
+                                    .into_any(),
+                                    CurrentRoute::Study => {
+                                        let deck = vm.selected_deck.clone();
+                                        match deck {
+                                            Some(deck) => {
+                                                let deck_title = deck.title.clone();
+                                                let counts = vm.counts.clone();
+                                                let current_card = vm.current_card.clone();
+                                                view! {
+                                                    <div class="app-header">
+                                                        <Breadcrumb>
+                                                            <BreadcrumbItem>
+                                                                <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
+                                                            </BreadcrumbItem>
+                                                            <BreadcrumbDivider />
+                                                            <BreadcrumbItem>{deck_title}</BreadcrumbItem>
+                                                            <BreadcrumbDivider />
+                                                            <BreadcrumbItem>
+                                                                <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
+                                                                    "Study"
+                                                                </span>
+                                                            </BreadcrumbItem>
+                                                        </Breadcrumb>
+                                                        <div class="app-header__right">
+                                                            {study_count_badges(counts)}
+                                                            {if let Some(card) = current_card {
+                                                                view! { <StudyActions card=card set_event=set_event /> }.into_any()
+                                                            } else {
+                                                                ().into_any()
+                                                            }}
+                                                        </div>
+                                                    </div>
+                                                    <StudyScreen
+                                                        vm=vm.clone() revealed=revealed set_event=set_event />
+                                                }
+                                                .into_any()
+                                            }
+                                            None => {
+                                                // Selected deck missing (e.g. cleared); fall
+                                                // back to the list to avoid a blank screen.
+                                                view! {
+                                                    <DeckList vm=view.into() on_navigate=navigate />
+                                                }
+                                                .into_any()
+                                            }
+                                        }
+                                    }
+                                    CurrentRoute::DeckOptions => {
+                                        let deck = vm.selected_deck.clone();
+                                        match deck {
+                                            Some(deck) => {
+                                                let deck_title = deck.title.clone();
+                                                let deck_options_view = vm.deck_options.clone();
+                                                let deck_options_error = vm.deck_options_error.clone();
+                                                view! {
+                                                    <div class="app-header">
+                                                        <Breadcrumb>
+                                                            <BreadcrumbItem>
+                                                                <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
+                                                            </BreadcrumbItem>
+                                                            <BreadcrumbDivider />
+                                                            <BreadcrumbItem>{deck_title}</BreadcrumbItem>
+                                                            <BreadcrumbDivider />
+                                                            <BreadcrumbItem>
+                                                                <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
+                                                                    "Options"
+                                                                </span>
+                                                            </BreadcrumbItem>
+                                                        </Breadcrumb>
+                                                    </div>
+                                                    <DeckOptionsPanel
+                                                        deck_id=deck.id
+                                                        options=deck_options_view
+                                                        error=deck_options_error
+                                                        presets=vm.presets.clone()
+                                                        presets_error=vm.presets_error.clone()
+                                                        can_manage_presets=vm.permissions.can_manage_presets
+                                                        set_event=set_event />
+                                                }
+                                                .into_any()
+                                            }
+                                            None => {
+                                                view! {
+                                                    <DeckList vm=view.into() on_navigate=navigate />
+                                                }
+                                                .into_any()
+                                            }
+                                        }
+                                    }
                                 }}
                             </main>
                         </div>
