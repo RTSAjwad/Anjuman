@@ -143,6 +143,8 @@ pub struct Model {
     pub notes_page: i64,
     pub notes_per_page: i64,
     pub notes_total: i64,
+    /// The note currently selected in the browser (for editor/actions).
+    pub notes_selected: Option<NoteResponse>,
     /// The last notes filter used, so create/save/delete can refresh.
     pub notes_filter: Option<NoteBrowserFilter>,
     /// A human-readable error from the last notes fetch, if any.
@@ -263,6 +265,10 @@ pub enum Event {
     /// Select a card in the browser (enables per-card actions).
     BrowserSelectCard {
         card_id: i64,
+    },
+    /// Select a note in the browser (enables the editor/actions).
+    NoteBrowserSelectNote {
+        note_id: i64,
     },
     /// Suspend a browser card by id.
     BrowserSuspendCard {
@@ -505,6 +511,8 @@ pub struct ViewModel {
     pub notes_page: i64,
     pub notes_per_page: i64,
     pub notes_total: i64,
+    /// The note currently selected in the browser, for the editor/actions.
+    pub notes_selected: Option<NoteView>,
     /// A human-readable error from the last notes fetch/action, if any.
     pub notes_error: Option<String>,
 }
@@ -924,6 +932,16 @@ fn resync_browser_selected(model: &mut Model) {
         return;
     };
     model.browser_selected = model.browser_cards.iter().find(|c| c.card_id == sel_id).cloned();
+}
+
+/// Re-sync `notes_selected` to the matching note in `model.notes` (the single
+/// source of truth) after a list refresh or edit. Clears to `None` when the
+/// selected note is no longer present.
+fn resync_notes_selected(model: &mut Model) {
+    let Some(sel_id) = model.notes_selected.as_ref().map(|n| n.id) else {
+        return;
+    };
+    model.notes_selected = model.notes.iter().find(|n| n.id == sel_id).cloned();
 }
 
 /// Re-fetch the notes list using the last stored filter.
@@ -1353,6 +1371,7 @@ impl crux_core::App for Anjuman {
                 model.notes.clear();
                 model.notes_filter = None;
                 model.notes_error = None;
+                model.notes_selected = None;
                 model.route = CurrentRoute::DeckList;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
@@ -1660,6 +1679,7 @@ impl crux_core::App for Anjuman {
                 model.notes_per_page = page.per_page;
                 model.notes_total = page.total;
                 model.notes_error = None;
+                resync_notes_selected(model);
                 render::render()
             }
 
@@ -2082,6 +2102,11 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::NoteBrowserSelectNote { note_id } => {
+                model.notes_selected = model.notes.iter().find(|n| n.id == note_id).cloned();
+                render::render()
+            }
+
             Event::BrowserSuspendCard { card_id } => {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
@@ -2300,6 +2325,7 @@ impl crux_core::App for Anjuman {
                 notes_page: model.notes_page,
                 notes_per_page: model.notes_per_page,
                 notes_total: model.notes_total,
+                notes_selected: model.notes_selected.as_ref().map(NoteView::from),
                 notes_error: model.notes_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
@@ -2337,6 +2363,7 @@ impl crux_core::App for Anjuman {
                 notes_page: 1,
                 notes_per_page: 50,
                 notes_total: 0,
+                notes_selected: None,
                 notes_error: None,
             },
         }
@@ -4496,6 +4523,68 @@ mod tests {
         assert_eq!(vm.notes[0].note_type_name, "Basic");
         assert_eq!(vm.notes[0].fields.get("Front").map(|s| s.as_str()), Some("hola"));
         assert_eq!(vm.notes[0].tags, vec!["spanish".to_string()]);
+    }
+
+    /// `NoteBrowserSelectNote` records the selection; an unknown id clears it.
+    #[test]
+    fn note_browser_select_note_records_selection() {
+        let mut model = authenticated_model();
+        model.notes = vec![note(1), note(2)];
+
+        let _ = update(Event::NoteBrowserSelectNote { note_id: 2 }, &mut model);
+        assert_eq!(model.notes_selected.as_ref().map(|n| n.id), Some(2));
+
+        let _ = update(Event::NoteBrowserSelectNote { note_id: 999 }, &mut model);
+        assert!(model.notes_selected.is_none());
+    }
+
+    /// A list refresh that no longer contains the selected note clears
+    /// `notes_selected`.
+    #[test]
+    fn notes_selected_resyncs_after_list_refresh() {
+        let mut model = authenticated_model();
+        model.notes = vec![note(1), note(2)];
+        model.notes_selected = Some(note(2));
+
+        // The refreshed page contains only note 1 (not 2).
+        let page = NoteBrowserPage {
+            notes: vec![note(1)],
+            page: 1,
+            per_page: 50,
+            total: 1,
+        };
+        let response = ResponseBuilder::ok().body(page).build();
+        let _ = update(Event::NotesResult(Ok(response)), &mut model);
+
+        assert!(model.notes_selected.is_none());
+    }
+
+    /// A list refresh that still contains the selected note re-selects it from the
+    /// fresh data (not a stale clone).
+    #[test]
+    fn notes_selected_resyncs_to_fresh_data() {
+        let mut model = authenticated_model();
+        model.notes = vec![note(1)];
+        model.notes_selected = Some(note(1));
+
+        // Same note id, but with changed fields (e.g. an edit).
+        let mut edited = note(1);
+        edited.fields.insert("Front".to_string(), serde_json::Value::String("edited".to_string()));
+        let page = NoteBrowserPage {
+            notes: vec![edited],
+            page: 1,
+            per_page: 50,
+            total: 1,
+        };
+        let response = ResponseBuilder::ok().body(page).build();
+        let _ = update(Event::NotesResult(Ok(response)), &mut model);
+
+        let sel = model.notes_selected.as_ref().expect("still selected");
+        assert_eq!(sel.id, 1);
+        assert_eq!(
+            sel.fields.get("Front"),
+            Some(&serde_json::Value::String("edited".to_string()))
+        );
     }
 
     /// `NoteCreate` emits `POST /notes` with a `CreateNote` body over string fields.
