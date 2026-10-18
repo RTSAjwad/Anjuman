@@ -63,8 +63,6 @@ struct BrowserState {
     /// re-render (which would reset the user's active filter).
     initialized: RwSignal<bool>,
     // --- Note-view state ---
-    /// The selected note id in the note editor (None = nothing selected).
-    selected_note_id: RwSignal<Option<i64>>,
     /// Note-view filters (deck, note type, sort, search).
     note_deck_filter: RwSignal<String>,
     note_note_type: RwSignal<String>,
@@ -72,7 +70,8 @@ struct BrowserState {
     note_query: RwSignal<String>,
     /// Note-view page (1-based).
     note_page: RwSignal<usize>,
-    /// Editor: selected note's field values (field name → text).
+    /// Editor draft buffer: the selected note's field values (field name → text),
+    /// synced from `ViewModel.notes_selected` (not a source of truth).
     edit_fields: RwSignal<Vec<(String, RwSignal<String>)>>,
     edit_note_type: RwSignal<String>,
     /// Guards first-fetch of the note list (fires once when Notes view opens).
@@ -95,7 +94,6 @@ impl BrowserState {
         self.query.set(String::new());
         self.page.set(1);
         self.initialized.set(false);
-        self.selected_note_id.set(None);
         self.note_deck_filter.set("0".to_string());
         self.note_note_type.set(String::new());
         self.note_sort.set("created_at".to_string());
@@ -212,7 +210,6 @@ pub fn RootComponent() -> impl IntoView {
         query: RwSignal::new(String::new()),
         page: RwSignal::new(1),
         initialized: RwSignal::new(false),
-        selected_note_id: RwSignal::new(None),
         note_deck_filter: RwSignal::new("0".to_string()),
         note_note_type: RwSignal::new(String::new()),
         note_sort: RwSignal::new("created_at".to_string()),
@@ -807,7 +804,6 @@ fn browser(
     // notes core surface (`NotesRequested { filter }`, `notes_page/total/per_page`,
     // `NoteCreate`/`NoteSave`/`NoteDelete`).
 
-    let selected_note_id = state.selected_note_id;
     let note_deck_filter = state.note_deck_filter;
     let note_note_type = state.note_note_type;
     let note_sort = state.note_sort;
@@ -816,6 +812,10 @@ fn browser(
     let edit_fields = state.edit_fields;
     let edit_note_type = state.edit_note_type;
     let notes_initialized = state.notes_initialized;
+    // Tracks which note id is currently mirrored into `edit_fields`/`edit_note_type`,
+    // so the draft buffer is (re)seeded only when the core's `notes_selected`
+    // changes — not on every unrelated core render.
+    let editor_seeded_id = StoredValue::new(-1i64);
 
     // Lazy first fetch of the note list when the Notes view is toggled on.
     Effect::new(move |_| {
@@ -911,8 +911,24 @@ fn browser(
         }
     });
 
-    let select_note = move |note: NoteView| {
-        selected_note_id.set(Some(note.id));
+    // The note editor's draft buffer is seeded from the core-owned selection
+    // (`vm.notes_selected`) whenever the selected note changes. Row clicks fire
+    // `NoteBrowserSelectNote` (core); this effect only mirrors the resolved note
+    // into the editable inputs — it never holds the selection identity.
+    Effect::new(move |_| {
+        let selected = vm_sig.get().notes_selected.clone();
+        let Some(note) = selected else {
+            if editor_seeded_id.get_value() != -1 {
+                editor_seeded_id.set_value(-1);
+                edit_fields.set(Vec::new());
+                edit_note_type.set("0".to_string());
+            }
+            return;
+        };
+        if editor_seeded_id.get_value() == note.id {
+            return;
+        }
+        editor_seeded_id.set_value(note.id);
         edit_note_type.set(note.note_type_id.to_string());
         let mut keys: Vec<String> = note.fields.keys().cloned().collect();
         keys.sort();
@@ -924,9 +940,12 @@ fn browser(
                 })
                 .collect(),
         );
-    };
+    });
 
-    let save_note = move |note_id: i64| {
+    let save_note = move |_| {
+        let Some(note) = vm_sig.get().notes_selected.clone() else {
+            return;
+        };
         let fields: HashMap<String, String> = edit_fields
             .get()
             .into_iter()
@@ -936,7 +955,7 @@ fn browser(
             Ok(t) if t != 0 => Some(t),
             _ => None,
         };
-        set_event.set(Event::NoteSave { note_id, note_type_id, fields: Some(fields) });
+        set_event.set(Event::NoteSave { note_id: note.id, note_type_id, fields: Some(fields) });
     };
 
     // Owned snapshot of the note list is re-read reactively inside the render
@@ -949,7 +968,8 @@ fn browser(
             let note_types = vm.note_types.clone();
             let editor_note_types = vm.note_types.clone();
             let notes_table = vm.notes.clone();
-            let notes_inspector = vm.notes.clone();
+            let notes_selected = vm.notes_selected.clone();
+            let notes_selected_id = notes_selected.as_ref().map(|n| n.id);
             let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
             let selected_card = vm.browser_selected.clone();
 
@@ -1248,12 +1268,11 @@ fn browser(
                                             let note_type_name = n.note_type_name.clone();
                                             let preview = n.fields.values().next().cloned().unwrap_or_default();
                                             let tags = n.tags.join(", ");
-                                            let note = n.clone();
                                             view! {
                                                 <tr
                                                     class="thaw-table-row"
-                                                    class:card-browser__row--selected=move || selected_note_id.get() == Some(note_id)
-                                                    on:click=move |_| select_note(note.clone())
+                                                    class:card-browser__row--selected=move || notes_selected_id == Some(note_id)
+                                                    on:click=move |_| set_event.set(Event::NoteBrowserSelectNote { note_id })
                                                 >
                                                     <td class="thaw-table-cell">
                                                         <span class="card-browser__front">{preview}</span>
@@ -1282,8 +1301,7 @@ fn browser(
                         </div>
 
                         <NoteInspector
-                            note_id=selected_note_id
-                            notes=notes_inspector
+                            note=notes_selected.clone()
                             fields=edit_fields
                             note_type_id=edit_note_type
                             note_types=editor_note_types
@@ -1423,23 +1441,22 @@ fn CardInspector(
 }
 
 /// The note-view information/action pane (mirrors `CardInspector`). Shows the
-/// selected note's fields (editable), a note-type change selector, Save/Delete
-/// actions, and — when nothing is selected — a "New note" create form.
+/// selected note's fields (editable), a note-type change selector, and
+/// Save/Delete actions.
 #[component]
 fn NoteInspector(
-    note_id: RwSignal<Option<i64>>,
-    notes: Vec<NoteView>,
+    note: Option<NoteView>,
     fields: RwSignal<Vec<(String, RwSignal<String>)>>,
     note_type_id: RwSignal<String>,
     note_types: Vec<NoteTypeView>,
-    save: Callback<i64, ()>,
+    save: Callback<(), ()>,
     set_event: WriteSignal<Event>,
 ) -> impl IntoView {
     view! {
         <aside class="card-browser__inspector">
             <h3 class="card-browser__inspector-title">"Note"</h3>
 
-            {if let Some(note) = note_id.get().and_then(|id| notes.iter().find(|n| n.id == id).cloned()) {
+            {if let Some(note) = note {
                 let note_id = note.id;
                 let note_type_name = note.note_type_name.clone();
                 let tags = note.tags.clone();
@@ -1480,7 +1497,7 @@ fn NoteInspector(
                                 view! { <option value=id>{name}</option> }
                             }).collect_view()}
                         </Select>
-                        <Button appearance=ButtonAppearance::Primary on_click=move |_| save.run(note_id)>
+                        <Button appearance=ButtonAppearance::Primary on_click=move |_| save.run(())>
                             "Save"
                         </Button>
                         <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::NoteDelete { note_id })>
