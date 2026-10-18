@@ -1184,7 +1184,7 @@ fn browser(
                             <div class="card-browser__table">
                                 <Table>
                                     <TableHeader>
-                                        <TableHeaderCell resizable=true>"Note"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true>"Sort field"</TableHeaderCell>
                                         <TableHeaderCell resizable=true>"Note type"</TableHeaderCell>
                                         <TableHeaderCell resizable=true>"Tags"</TableHeaderCell>
                                     </TableHeader>
@@ -1192,14 +1192,7 @@ fn browser(
                                         {move || vm_sig.get().notes.iter().map(|n| {
                                             let note_id = n.id;
                                             let note_type_name = n.note_type_name.clone();
-                                            // Deterministic preview: first field by sorted name
-                                            // (HashMap iteration order is not stable across renders).
-                                            let mut names: Vec<&String> = n.fields.keys().collect();
-                                            names.sort();
-                                            let preview = names.first()
-                                                .and_then(|k| n.fields.get(*k))
-                                                .cloned()
-                                                .unwrap_or_default();
+                                            let sort_field = n.sort_field.clone().unwrap_or_default();
                                             let tags = n.tags.join(", ");
                                             view! {
                                                 <tr
@@ -1208,7 +1201,7 @@ fn browser(
                                                     on:click=move |_| set_event.set(Event::NoteBrowserSelectNote { note_id })
                                                 >
                                                     <td class="thaw-table-cell">
-                                                        <span class="card-browser__front">{preview}</span>
+                                                        <span class="card-browser__front">{sort_field}</span>
                                                     </td>
                                                     <td class="thaw-table-cell">{note_type_name}</td>
                                                     <td class="thaw-table-cell">{tags}</td>
