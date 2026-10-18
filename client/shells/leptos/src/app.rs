@@ -1602,7 +1602,11 @@ fn deck_filter_node(
 
     view! {
         <div class="thaw-tree-item thaw-tree-item--branch" role="treeitem">
-            <div class="thaw-tree-item-layout" style=indent>
+            <div
+                class="thaw-tree-item-layout"
+                class:card-browser__leaf--active=move || active.get() == active_id
+                style=indent
+            >
                 {if has_children {
                     view! {
                         <div
@@ -1633,7 +1637,6 @@ fn deck_filter_node(
                 }}
                 <div
                     class="thaw-tree-item-layout__main"
-                    class:card-browser__leaf--active=move || active.get() == active_id
                     on:click=select
                 >
                     {deck.title}
