@@ -952,13 +952,10 @@ fn browser(
     view! {
         {move || {
             let vm = vm_sig.get();
-            let route = vm.route;
             let decks_tree = vm.decks.clone();
             let note_types = vm.note_types.clone();
             let editor_note_types = vm.note_types.clone();
             let notes_table = vm.notes.clone();
-            let notes_selected = vm.notes_selected.clone();
-            let notes_selected_id = notes_selected.as_ref().map(|n| n.id);
             let selected_card_id = vm.browser_selected.as_ref().map(|c| c.card_id);
             let selected_card = vm.browser_selected.clone();
 
@@ -967,7 +964,7 @@ fn browser(
             <div class="browser__toolbar">
                 <button
                     class="browser__toggle"
-                    class:browser__toggle--active=move || route == CurrentRoute::Cards
+                    class:browser__toggle--active=move || vm_sig.get().route == CurrentRoute::Cards
                     on:click=move |_| set_event.set(Event::ShowCards)
                 >
                     "Cards"
@@ -976,7 +973,7 @@ fn browser(
                     view! {
                         <button
                             class="browser__toggle"
-                            class:browser__toggle--active=move || route == CurrentRoute::Notes
+                            class:browser__toggle--active=move || vm_sig.get().route == CurrentRoute::Notes
                             on:click=move |_| set_event.set(Event::ShowNotes)
                         >
                             "Notes"
@@ -990,7 +987,7 @@ fn browser(
 
             <div class="card-browser__body">
             <aside class="card-browser__sidebar">
-                {match route {
+                {match vm_sig.get().route {
                     CurrentRoute::Cards => view! {
                         <form
                             class="card-browser__sidebar-search"
@@ -1169,7 +1166,7 @@ fn browser(
             </aside>
 
             <div class="card-browser__main">
-                {match route {
+                {match vm_sig.get().route {
                     CurrentRoute::Cards => view! {
                         <div class="card-browser__content">
                             <div class="card-browser__table">
@@ -1261,7 +1258,7 @@ fn browser(
                                             view! {
                                                 <tr
                                                     class="thaw-table-row"
-                                                    class:card-browser__row--selected=move || notes_selected_id == Some(note_id)
+                                                    class:card-browser__row--selected=move || vm_sig.get().notes_selected.as_ref().map(|n| n.id) == Some(note_id)
                                                     on:click=move |_| set_event.set(Event::NoteBrowserSelectNote { note_id })
                                                 >
                                                     <td class="thaw-table-cell">
@@ -1291,7 +1288,7 @@ fn browser(
                         </div>
 
                         <NoteInspector
-                            note=notes_selected.clone()
+                            note=Signal::derive(move || vm_sig.get().notes_selected.clone())
                             fields=edit_fields
                             note_type_id=edit_note_type
                             note_types=editor_note_types
@@ -1436,7 +1433,7 @@ fn CardInspector(
 /// Save/Delete actions.
 #[component]
 fn NoteInspector(
-    note: Option<NoteView>,
+    note: Signal<Option<NoteView>>,
     fields: RwSignal<Vec<(String, RwSignal<String>)>>,
     note_type_id: RwSignal<String>,
     note_types: Vec<NoteTypeView>,
@@ -1447,7 +1444,7 @@ fn NoteInspector(
         <aside class="card-browser__inspector">
             <h3 class="card-browser__inspector-title">"Note"</h3>
 
-            {if let Some(note) = note {
+            {if let Some(note) = note.get() {
                 let note_id = note.id;
                 let note_type_name = note.note_type_name.clone();
                 let tags = note.tags.clone();
