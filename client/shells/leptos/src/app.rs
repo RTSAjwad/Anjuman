@@ -207,15 +207,19 @@ pub fn RootComponent() -> impl IntoView {
     //
     // Gated on `hydrated`: before auth + decks load we must NOT write the URL,
     // because that would clobber a deep-link hash (e.g. `#/decks/42/study`) with
-    // `#/decks` before the hydration effect has read it. `hydrated` is a
-    // non-reactive `StoredValue`, so this effect only re-runs when `view` changes
-    // (i.e. after login/restore and after the deep-link event is processed) —
-    // by which point the route has settled to the right value.
+    // `#/decks` before the hydration effect has read it.
+    //
+    // IMPORTANT: `view.get()` is read *before* the `hydrated` early-return. If an
+    // effect `return`s before reading any reactive signal, it registers no
+    // dependencies and silently never re-runs — which would leave the URL stuck at
+    // its initial value forever. Reading `view` up front keeps the subscription
+    // alive across logout -> login -> route changes (the effect re-runs on every
+    // `view` change and, once `hydrated` is latched, starts mirroring).
     Effect::new(move |_| {
+        let vm = view.get();
         if !hydrated.get_value() {
             return;
         }
-        let vm = view.get();
         let target = router::route_to_hash(vm.route, vm.selected_deck.as_ref().map(|d| d.id));
         let current = router::current_hash();
         if current != target {
