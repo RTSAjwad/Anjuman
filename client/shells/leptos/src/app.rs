@@ -1343,6 +1343,13 @@ fn CardInspector(
                             </Button>
                         </div>
                         <div class="card-browser__inspector-flag">
+                            <span
+                                class="card-browser__flag-swatch"
+                                style=move || {
+                                    let f = flag.get().parse::<i64>().unwrap_or(0);
+                                    format!("background-color: {}", flag_color(f))
+                                }
+                            ></span>
                             <select
                                 class="thaw-select__select"
                                 prop:value=move || flag.get()
@@ -1871,6 +1878,13 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
             </span>
 
             <span class="study-actions__group">
+                <span
+                    class="card-browser__flag-swatch"
+                    style=move || {
+                        let f = flag.get().parse::<i64>().unwrap_or(0);
+                        format!("background-color: {}", flag_color(f))
+                    }
+                ></span>
                 <Select value=flag default_value=card.flag.to_string() size=SelectSize::Medium>
                     <option value="0">"No flag"</option>
                     <option value="1" style="color: red">"Red"</option>
