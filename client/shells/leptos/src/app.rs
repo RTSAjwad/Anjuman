@@ -371,11 +371,7 @@ pub fn RootComponent() -> impl IntoView {
                                         </div>
                                     }
                                     .into_any(),
-                                    CurrentRoute::Cards => view! {
-                                        <Browser vm=view.into() state=browser_state set_event=set_event can_manage_notes=can_manage_notes />
-                                    }
-                                    .into_any(),
-                                    CurrentRoute::Notes => view! {
+                                    CurrentRoute::Cards | CurrentRoute::Notes => view! {
                                         <Browser vm=view.into() state=browser_state set_event=set_event can_manage_notes=can_manage_notes />
                                     }
                                     .into_any(),
