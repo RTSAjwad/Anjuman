@@ -2415,7 +2415,7 @@ fn study_card_view(
                         .into_any()
                     } else {
                         view! {
-                            <UiButton appearance=UiButtonAppearance::Primary on_click=move |_| revealed.set(true)>
+                            <UiButton appearance=UiButtonAppearance::Neutral on_click=move |_| revealed.set(true)>
                                 "Show answer"
                             </UiButton>
                         }
@@ -2437,9 +2437,8 @@ fn card_html(body: &str, styling: &str) -> String {
 }
 
 /// A single answer button (label + predicted interval underneath). The "Again"
-/// answer (rating 1) renders as a danger/`btn-error` button; the others are
-/// primary. Using `UiButtonAppearance::Danger` removes the old `!important` CSS
-/// override hack (`thaw-study-answers__again`).
+/// answer (rating 1) renders as a soft danger/error button; Hard/Good/Easy are
+/// soft default buttons.
 fn answer_button<R, I>(
     rating: R,
     interval_for: I,
@@ -2451,11 +2450,17 @@ where
     I: Fn(i32) -> Option<i64> + Clone,
 {
     let interval = interval_for(n).map(format_interval).unwrap_or_default();
-    let appearance = if n == 1 { UiButtonAppearance::Danger } else { UiButtonAppearance::Primary };
+    // "Again" (rating 1) is a soft danger/error button; Hard/Good/Easy are soft
+    // neutral buttons.
+    let (appearance, extra_class) = if n == 1 {
+        (UiButtonAppearance::Danger, "btn-soft")
+    } else {
+        (UiButtonAppearance::NeutralSoft, "")
+    };
 
     view! {
         <div class="thaw-study-answer">
-            <UiButton appearance=appearance on_click=move |_| rating(n)>
+            <UiButton appearance=appearance class=extra_class on_click=move |_| rating(n)>
                 {label}
             </UiButton>
             <span class="thaw-study-answer__interval">{interval}</span>

@@ -25,6 +25,10 @@ pub enum UiButtonAppearance {
     Subtle,
     /// Solid, destructive/danger action (red).
     Danger,
+    /// Solid neutral button (daisyUI's explicit `btn-neutral`).
+    Neutral,
+    /// Soft-tinted default button (`btn btn-soft`).
+    NeutralSoft,
 }
 
 #[component]
@@ -42,6 +46,8 @@ where
         UiButtonAppearance::Primary => "btn btn-primary",
         UiButtonAppearance::Subtle => "btn btn-ghost",
         UiButtonAppearance::Danger => "btn btn-error",
+        UiButtonAppearance::Neutral => "btn btn-neutral",
+        UiButtonAppearance::NeutralSoft => "btn btn-soft",
     };
     let combined = format!("{appearance_class} {class}");
     view! {
