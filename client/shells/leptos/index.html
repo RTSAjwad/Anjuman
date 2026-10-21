@@ -248,12 +248,12 @@
         color: var(--colorNeutralForeground3);
         font-weight: var(--fontWeightRegular);
       }
-      /* The filter tree's active (selected) item should use the same subtle
-       * brand background as the table's selected row (`card-browser__row--selected`),
-       * rather than daisyUI's default strong `.menu-active` neutral fill. */
+      /* The filter tree's active (selected) item uses daisyUI's default `base-200`
+       * selection colour, matching the table's selected row. Drop daisyUI's
+       * default strong `.menu-active` neutral fill (and its drop shadow). */
       .card-browser__menu li > .menu-active {
-        background-color: var(--colorBrandBackground2, var(--colorSubtleBackground));
-        color: var(--colorNeutralForeground1);
+        background-color: var(--color-base-200);
+        color: var(--color-base-content);
         --tw-outline-style: none;
         outline-style: none;
         box-shadow: none;
@@ -289,7 +289,7 @@
         cursor: pointer;
       }
       .card-browser__table tbody tr.card-browser__row--selected {
-        background-color: var(--colorBrandBackground2, var(--colorSubtleBackground));
+        background-color: var(--color-base-200);
       }
       .card-browser__front {
         display: block;
