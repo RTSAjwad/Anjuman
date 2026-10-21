@@ -39,7 +39,7 @@ console_error_panic_hook = "0.1"
 # These are the *`#[cfg(feature)]`* gates (NOT the `categories` strum
 # metadata) for each glyph:
 #   arrows      -> ChevronRight (deck expander), LogOut (logout)
-#   layout      -> Menu (drawer hamburger)
+#   layout      -> PanelRightClose / PanelRightOpen (sidebar toggle)
 #   account     -> Settings (deck options gear)
 #   development -> Library (decks)
 #   text        -> Table (browser), Search (browser search)

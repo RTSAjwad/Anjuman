@@ -157,6 +157,11 @@ pub fn RootComponent() -> impl IntoView {
     let show_deck_list = move |_| set_event.set(Event::ShowDeckList);
     let show_cards = move |_| set_event.set(Event::ShowCards);
 
+    // Whether the drawer sidebar is expanded (vs. icon-only). Mirrors the
+    // `sidebar-toggle` checkbox so the toggle button's icon can swap between
+    // open/close chevrons. Purely presentational — shell-local.
+    let sidebar_expanded = RwSignal::new(false);
+
     // Browser state (card + note view), hoisted so it survives component
     // re-renders (see `BrowserState`). Created once for the app's lifetime.
     let browser_state = BrowserState {
@@ -288,7 +293,15 @@ pub fn RootComponent() -> impl IntoView {
                     let can_manage_notes = vm.permissions.can_manage_notes;
                     view! {
                         <div class="drawer lg:drawer-open">
-                            <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" />
+                            <input
+                                id="sidebar-toggle"
+                                type="checkbox"
+                                class="drawer-toggle"
+                                on:change=move |ev| {
+                                    let checked = event_target_checked(&ev);
+                                    sidebar_expanded.set(checked);
+                                }
+                            />
 
                             <div class="drawer-content flex min-h-svh flex-col">
                                 <nav class="navbar min-h-12 w-full gap-2 bg-base-300 px-3">
@@ -297,7 +310,13 @@ pub fn RootComponent() -> impl IntoView {
                                         aria-label="toggle sidebar"
                                         class="btn btn-square btn-ghost drawer-button"
                                     >
-                                        <Icon glyph=LucideGlyph::Menu size="20" />
+                                        {move || {
+                                            if sidebar_expanded.get() {
+                                                view! { <Icon glyph=LucideGlyph::PanelRightClose size="20" /> }.into_any()
+                                            } else {
+                                                view! { <Icon glyph=LucideGlyph::PanelRightOpen size="20" /> }.into_any()
+                                            }
+                                        }}
                                     </label>
 
                                     {match route {
