@@ -20,10 +20,13 @@ independently verifiable.
 ## Phase 0 — Decide the Postgres runtime, before any code  ✅ DONE
 
 **Settled:** `services-flake` (via `flake-parts` + `process-compose-flake`).
-`nix run .#anjuman` brings up PostgreSQL 17.11 on `127.0.0.1:5432`, creating the
-`anjuman` database on first start. The flake was converted from `flake-utils`
-to `flake-parts` (a hard requirement of services-flake). The dev shell does
-**not** auto-start Postgres — run it in a separate terminal.
+`nix run .#anjuman` brings up the **full dev stack** — PostgreSQL 17.11 on
+`127.0.0.1:5432` (creating the `anjuman` DB on first start), the Axum server on
+`127.0.0.1:3000`, and the Leptos shell on `127.0.0.1:8080` — and provisions the
+`anjuman_test` DB used by `server/tests/`. The flake was converted from
+`flake-utils` to `flake-parts` (a hard requirement of services-flake). The dev
+shell does **not** auto-start Postgres — run `nix run .#anjuman` in a separate
+terminal (or `nix run .#server` / `.#client` for a single process).
 
 - Default `DATABASE_URL=postgres://127.0.0.1:5432/anjuman`.
 - Local `trust` auth (services-flake default), so no password in the URL.

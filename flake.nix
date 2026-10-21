@@ -28,21 +28,17 @@
         inputs.process-compose-flake.flakeModule
       ];
 
-      perSystem = {
-        system,
-        ...
-      }: let
+      perSystem = {system, ...}: let
         # Apply the rust-overlay to our pkgs so `pkgs.rust-bin` is available.
         pkgs = import inputs.nixpkgs {
           inherit system;
           overlays = [(import inputs.rust-overlay)];
         };
 
-        rust-toolchain =
-          pkgs.rust-bin.stable.latest.default.override {
-            targets = ["wasm32-unknown-unknown"];
-            extensions = ["rust-src" "rust-analyzer" "clippy" "rustfmt"];
-          };
+        rust-toolchain = pkgs.rust-bin.stable.latest.default.override {
+          targets = ["wasm32-unknown-unknown"];
+          extensions = ["rust-src" "rust-analyzer" "clippy" "rustfmt"];
+        };
 
         # Native build inputs for the Linux (libadwaita) shell.
         linux-native-inputs = with pkgs; [
@@ -84,6 +80,10 @@
           wasm-pack
           binaryen
 
+          # Tailwind CSS (standalone Rust binary — no Node) drives the
+          # DaisyUI/utility styling for the Leptos shell.
+          tailwindcss_4
+
           # TypeScript type generation (facet) shells out to pnpm.
           pnpm
           nodejs
@@ -104,6 +104,12 @@
           sqlx-cli
           postgresql
 
+          # `cc` is a build-time dependency of `ring` (via `jsonwebtoken`). The
+          # dev shell inherits a C compiler from `stdenv`, but the bare `nix run
+          # .#server` app and the process-compose `server` process run `cargo`
+          # outside `mkShell`, so it must be listed explicitly.
+          stdenv.cc
+
           pkg-config
           openssl
 
@@ -115,6 +121,43 @@
         packages = {
           inherit boltffi-cli;
           default = boltffi-cli;
+        };
+
+        # One-command runners for the individual dev processes (complementary to
+        # the process-compose group below, which runs the whole stack at once).
+        apps = {
+          # `nix run .#server` — run the Axum backend (Postgres must already be
+          # up; see `nix run .#anjuman`).
+          server = {
+            type = "app";
+            program = let
+              run = pkgs.writeShellApplication {
+                name = "anjuman-server";
+                runtimeInputs = server-packages;
+                text = ''
+                  export DATABASE_URL="''${DATABASE_URL:-postgres://127.0.0.1:5432/anjuman}"
+                  exec cargo run --manifest-path server/Cargo.toml "$@"
+                '';
+              };
+            in "${run}/bin/anjuman-server";
+            meta.description = "Run the Anjuman Axum backend on 127.0.0.1:3000";
+          };
+
+          # `nix run .#client` — `trunk serve` the Leptos shell (hot-reload on
+          # http://127.0.0.1:8080).
+          client = {
+            type = "app";
+            program = let
+              serve = pkgs.writeShellApplication {
+                name = "anjuman-client";
+                runtimeInputs = client-packages;
+                text = ''
+                  exec trunk serve --open=false "$@"
+                '';
+              };
+            in "${serve}/bin/anjuman-client";
+            meta.description = "Serve the Anjuman Leptos shell with trunk (127.0.0.1:8080)";
+          };
         };
 
         devShells = {
@@ -166,8 +209,9 @@
           };
         };
 
-        # The "anjuman" process-compose service group — brings up local
-        # development services (Postgres). Run it with `nix run .#anjuman`.
+        # The "anjuman" process-compose service group — brings up the full
+        # dev stack (Postgres + server + frontend). Run it with
+        # `nix run .#anjuman`; process-compose shows a TUI with all three logs.
         process-compose."anjuman" = {
           imports = [
             inputs.services-flake.processComposeModules.default
@@ -177,7 +221,39 @@
             enable = true;
             initialDatabases = [
               {name = "anjuman";}
+              # Separate DB for `server/tests/` integration tests.
+              {name = "anjuman_test";}
             ];
+          };
+
+          settings.processes = {
+            # Run the Axum backend. Postgres (above) is started by this group, so
+            # `DATABASE_URL` points at the group's own Postgres. `depends_on` the
+            # Postgres readiness probe so the server's startup migrations don't
+            # race an unready database.
+            server = {
+              command = pkgs.writeShellApplication {
+                name = "anjuman-server";
+                runtimeInputs = server-packages;
+                text = ''
+                  export DATABASE_URL="''${DATABASE_URL:-postgres://127.0.0.1:5432/anjuman}"
+                  exec cargo run --manifest-path server/Cargo.toml
+                '';
+              };
+              depends_on.pg.condition = "process_healthy";
+            };
+
+            # Serve the Leptos shell with trunk (hot reload on 127.0.0.1:8080).
+            frontend = {
+              command = pkgs.writeShellApplication {
+                name = "anjuman-trunk";
+                runtimeInputs = client-packages;
+                text = ''
+                  exec trunk serve --open=false
+                '';
+              };
+              working_dir = "client/shells/leptos";
+            };
           };
         };
       };

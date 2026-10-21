@@ -90,13 +90,33 @@ matrices when splitting stages into stories.
 
 ## 4. Build / run / test
 
-Everything goes through the root Nix dev shell (no global Rust on PATH):
+Everything goes through the root Nix dev shell (no global Rust on PATH).
+
+### Running the stack
+
+`nix run .#anjuman` starts the **full dev stack** in one command (process-compose):
+Postgres, the Axum server (`127.0.0.1:3000`), and the Leptos shell
+(`127.0.0.1:8080`, trunk hot-reload). It also provisions both the `anjuman` and
+`anjuman_test` databases, so no manual `createdb` is needed. See `flake.nix`.
+
+Single-process runners (for when you want just one of them):
+
+```sh
+nix run .#server   # Axum backend only (Postgres must already be up)
+nix run .#client   # trunk serve the Leptos shell only
+```
+
+### Dev shells
 
 ```sh
 nix develop                # full shell (client + server toolchains)
 nix develop .#client       # client-only
 nix develop .#server       # server-only
+```
 
+### Build / test
+
+```sh
 # contracts
 cargo build --manifest-path contracts/Cargo.toml
 cargo build --manifest-path contracts/Cargo.toml --features openapi
@@ -113,8 +133,9 @@ cd client/shells/leptos && trunk serve
 Server `cargo test` runs integration tests (`server/tests/`) against a real
 Postgres. They use a dedicated test database (`ANJUMAN_TEST_DATABASE_URL`,
 default `postgres://127.0.0.1:5432/anjuman_test`) that the harness migrates and
-resets per test — so Postgres must be running (`nix run .#anjuman`) and the
-test DB must exist (`createdb anjuman_test`). See `server/tests/common/mod.rs`.
+resets per test — so Postgres must be running (`nix run .#anjuman` provisions
+both the `anjuman` and `anjuman_test` databases). See
+`server/tests/common/mod.rs`.
 
 ---
 

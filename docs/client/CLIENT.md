@@ -35,10 +35,13 @@ repos.
 
 ## 2. Build / run / test
 
-Everything goes through the Nix dev shell (there is no global Rust on PATH):
+Everything goes through the Nix dev shell (there is no global Rust on PATH).
 
 ```sh
-nix develop                    # enter the dev shell
+nix run .#anjuman   # full stack: Postgres + server (127.0.0.1:3000) + shell (127.0.0.1:8080)
+nix run .#client    # trunk serve the Leptos shell only (hot-reload on 127.0.0.1:8080)
+nix develop         # enter the dev shell (for shell-local cargo/trunk commands below)
+
 cargo build                    # full workspace
 cargo test                     # core tests
 cargo build --features codegen -p shared          # typegen binary
