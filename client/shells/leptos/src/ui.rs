@@ -71,7 +71,7 @@ pub fn UiBadge(color: UiBadgeColor, children: Children) -> impl IntoView {
         UiBadgeColor::Success => "badge-success",
         UiBadgeColor::Informative => "badge-ghost",
     };
-    let combined = format!("badge badge-sm {color_class}");
+    let combined = format!("badge badge-sm badge-soft {color_class}");
     view! { <span class=combined>{children()}</span> }
 }
 
