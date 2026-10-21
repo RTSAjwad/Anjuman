@@ -1731,85 +1731,91 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
     };
 
     // Flag: 0-7, seeded with the card's current flag. A native `<select>` with an
-    // `on:change` handler forwards the chosen flag straight to the core (no thaw
-    // `Select` workaround needed — thaw's `Select` had no user-facing `on:change`).
+    // `on:change` handler forwards the chosen flag straight to the core.
     let flag = RwSignal::new(card.flag.to_string());
 
     view! {
-        <div class="study-actions">
-            {if card.buried {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnburyCard)>
-                        "Unbury"
-                    </UiButton>
-                }
-                .into_any()
-            } else {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryCard)>
-                        "Bury"
-                    </UiButton>
-                }
-                .into_any()
-            }}
-            <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryNote)>
-                "Bury note"
-            </UiButton>
-            {if card.suspended {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnsuspendCard)>
-                        "Unsuspend"
-                    </UiButton>
-                }
-                .into_any()
-            } else {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendCard)>
-                        "Suspend"
-                    </UiButton>
-                }
-                .into_any()
-            }}
-            <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendNote)>
-                "Suspend note"
-            </UiButton>
-
-            <span class="study-actions__group">
-                <input class="input input-bordered" type="number" bind:value=days placeholder="days" />
-                <UiButton appearance=UiButtonAppearance::Subtle on_click=reschedule>
-                    "Reschedule"
-                </UiButton>
-            </span>
-
-            <span class="study-actions__group">
-                <span
-                    class="card-browser__flag-swatch"
-                    style=move || {
-                        let f = flag.get().parse::<i64>().unwrap_or(0);
-                        format!("background-color: {}", flag_color(f))
+        <div class="dropdown dropdown-end">
+            <div tabindex="0" role="button" class="btn btn-ghost btn-square">
+                <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
+            </div>
+            <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-50 w-56 p-2 shadow">
+                {if card.buried {
+                    view! {
+                        <li>
+                            <button on:click=move |_| set_event.set(Event::UnburyCard)>"Unbury"</button>
+                        </li>
                     }
-                ></span>
-                <select
-                    class="select select-bordered"
-                    prop:value=move || flag.get()
-                    on:change=move |ev| {
-                        let value = event_target_value(&ev);
-                        flag.set(value.clone());
-                        if let Ok(f) = value.parse::<i64>() {
-                            set_event.set(Event::FlagCard { flag: f as i32 });
-                        }
+                    .into_any()
+                } else {
+                    view! {
+                        <li>
+                            <button on:click=move |_| set_event.set(Event::BuryCard)>"Bury"</button>
+                        </li>
                     }
-                >
-                    <option value="0">"No flag"</option>
-                    <option value="1" style="color: red">"Red"</option>
-                    <option value="2" style="color: orange">"Orange"</option>
-                    <option value="3" style="color: green">"Green"</option>
-                    <option value="4" style="color: blue">"Blue"</option>
-                    <option value="5" style="color: pink">"Pink"</option>
-                    <option value="6" style="color: turquoise">"Turquoise"</option>
-                    <option value="7" style="color: purple">"Purple"</option>
-                </select>
-            </span>
+                    .into_any()
+                }}
+                <li>
+                    <button on:click=move |_| set_event.set(Event::BuryNote)>"Bury note"</button>
+                </li>
+                {if card.suspended {
+                    view! {
+                        <li>
+                            <button on:click=move |_| set_event.set(Event::UnsuspendCard)>"Unsuspend"</button>
+                        </li>
+                    }
+                    .into_any()
+                } else {
+                    view! {
+                        <li>
+                            <button on:click=move |_| set_event.set(Event::SuspendCard)>"Suspend"</button>
+                        </li>
+                    }
+                    .into_any()
+                }}
+                <li>
+                    <button on:click=move |_| set_event.set(Event::SuspendNote)>"Suspend note"</button>
+                </li>
+
+                <li>
+                    <div class="study-actions__dropdown-row">
+                        <input class="input input-bordered input-sm" type="number" bind:value=days placeholder="days" />
+                        <button class="btn btn-sm" on:click=reschedule>"Reschedule"</button>
+                    </div>
+                </li>
+
+                <li>
+                    <div class="study-actions__dropdown-row">
+                        <span
+                            class="card-browser__flag-swatch"
+                            style=move || {
+                                let f = flag.get().parse::<i64>().unwrap_or(0);
+                                format!("background-color: {}", flag_color(f))
+                            }
+                        ></span>
+                        <select
+                            class="select select-bordered select-sm"
+                            prop:value=move || flag.get()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                flag.set(value.clone());
+                                if let Ok(f) = value.parse::<i64>() {
+                                    set_event.set(Event::FlagCard { flag: f as i32 });
+                                }
+                            }
+                        >
+                            <option value="0">"No flag"</option>
+                            <option value="1" style="color: red">"Red"</option>
+                            <option value="2" style="color: orange">"Orange"</option>
+                            <option value="3" style="color: green">"Green"</option>
+                            <option value="4" style="color: blue">"Blue"</option>
+                            <option value="5" style="color: pink">"Pink"</option>
+                            <option value="6" style="color: turquoise">"Turquoise"</option>
+                            <option value="7" style="color: purple">"Purple"</option>
+                        </select>
+                    </div>
+                </li>
+            </ul>
         </div>
     }
 }
