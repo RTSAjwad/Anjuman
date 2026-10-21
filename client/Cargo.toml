@@ -34,7 +34,24 @@ anjuman_contracts = { path = "../contracts" }
 # --- Web (Leptos) shell ---
 leptos = "0.8"
 console_error_panic_hook = "0.1"
-thaw = "0.5.0-beta"
+# Lucide icons as Leptos components (category-gated for size). We enable only
+# the categories actually used in the shell to keep the WASM payload small.
+# These are the *`#[cfg(feature)]`* gates (NOT the `categories` strum
+# metadata) for each glyph:
+#   arrows      -> ChevronRight (deck expander), LogOut (logout)
+#   layout      -> Menu (drawer hamburger)
+#   account     -> Settings (deck options gear)
+#   development -> Library (decks)
+#   text        -> Table (browser), Search (browser search)
+#   notifications -> Check (reschedule confirm)
+lepticons = { version = "0.13", default-features = false, features = [
+    "arrows",
+    "layout",
+    "account",
+    "development",
+    "text",
+    "notifications",
+] }
 
 [profile.release]
 opt-level = "s"
