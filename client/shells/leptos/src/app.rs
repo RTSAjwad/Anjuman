@@ -303,7 +303,7 @@ pub fn RootComponent() -> impl IntoView {
                                 }
                             />
 
-                            <div class="drawer-content flex min-h-svh flex-col">
+                            <div class="drawer-content flex h-svh flex-col">
                                 <nav class="navbar min-h-12 w-full gap-2 bg-base-300 px-3">
                                     <label
                                         for="sidebar-toggle"
