@@ -355,15 +355,21 @@ pub fn RootComponent() -> impl IntoView {
                                         }
                                         .into_any(),
                                         CurrentRoute::Study => {
-                                            let deck_title = vm.selected_deck.as_ref().map(|d| d.title.clone()).unwrap_or_default();
                                             let counts = vm.counts.clone();
                                             let current_card = vm.current_card.clone();
                                             let close_deck = close_deck.clone();
+                                            let deck_breadcrumb = vm
+                                                .selected_deck
+                                                .as_ref()
+                                                .map(|d| deck_ancestor_titles(&vm.decks, d.id))
+                                                .unwrap_or_default();
                                             view! {
                                                 <div class="breadcrumbs flex-1">
                                                     <ul>
                                                         <li><button on:click=move |_| close_deck()>"Decks"</button></li>
-                                                        <li>{deck_title}</li>
+                                                        {deck_breadcrumb.into_iter().map(|title| view! {
+                                                            <li>{title}</li>
+                                                        }).collect_view()}
                                                         <li><span aria-current="page">"Study"</span></li>
                                                     </ul>
                                                 </div>
@@ -377,13 +383,19 @@ pub fn RootComponent() -> impl IntoView {
                                             .into_any()
                                         }
                                         CurrentRoute::DeckOptions => {
-                                            let deck_title = vm.selected_deck.as_ref().map(|d| d.title.clone()).unwrap_or_default();
                                             let close_deck = close_deck.clone();
+                                            let deck_breadcrumb = vm
+                                                .selected_deck
+                                                .as_ref()
+                                                .map(|d| deck_ancestor_titles(&vm.decks, d.id))
+                                                .unwrap_or_default();
                                             view! {
                                                 <div class="breadcrumbs flex-1">
                                                     <ul>
                                                         <li><button on:click=move |_| close_deck()>"Decks"</button></li>
-                                                        <li>{deck_title}</li>
+                                                        {deck_breadcrumb.into_iter().map(|title| view! {
+                                                            <li>{title}</li>
+                                                        }).collect_view()}
                                                         <li><span aria-current="page">"Options"</span></li>
                                                     </ul>
                                                 </div>
@@ -590,6 +602,31 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
         </div>
     }
     .into_any()
+}
+
+/// Compute the ancestor chain (root → target, inclusive) of a deck within the
+/// nested deck tree, as a list of titles. Used to render full breadcrumb paths
+/// for a selected sub-deck (e.g. `Parent > Child > Study`). Returns the empty
+/// path when `deck_id` isn't found (the caller falls back to the selected
+/// deck's own title, so a missing path is harmless).
+fn deck_ancestor_titles(decks: &[DeckSummary], deck_id: i64) -> Vec<String> {
+    fn walk(decks: &[DeckSummary], deck_id: i64, path: &mut Vec<String>) -> bool {
+        for deck in decks {
+            path.push(deck.title.clone());
+            if deck.id == deck_id {
+                return true;
+            }
+            if walk(&deck.children, deck_id, path) {
+                return true;
+            }
+            path.pop();
+        }
+        false
+    }
+
+    let mut path = Vec::new();
+    walk(decks, deck_id, &mut path);
+    path
 }
 
 /// The card browser (US-4.12): a management-oriented card table with
