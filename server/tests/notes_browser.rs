@@ -106,3 +106,24 @@ async fn list_notes_filters_by_note_type() {
     assert_eq!(status, StatusCode::OK, "body: {json}");
     assert_eq!(json["total"], 0, "body: {json}");
 }
+
+/// A note's `sort_field` is resolved server-side from `fields[effective_sort_field]`,
+/// falling back to the first field when the note type has no explicit sort field.
+#[tokio::test]
+async fn note_response_sort_field_resolves_to_first_field_fallback() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let _note = seed_note(&app, teacher_id).await;
+
+    let (status, json) = get(&app, "/notes?sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+
+    let note = &json["notes"][0];
+    // The seed note type has no sort_field, so Anki's first-field fallback applies.
+    assert_eq!(
+        note["sort_field"],
+        "hola",
+        "first-field fallback should resolve to the 'Front' value, body: {json}"
+    );
+}

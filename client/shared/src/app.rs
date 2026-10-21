@@ -706,6 +706,8 @@ pub struct NoteView {
     pub note_type_name: String,
     pub fields: HashMap<String, String>,
     pub tags: Vec<String>,
+    /// The resolved sort-field value (see `NoteResponse.sort_field`).
+    pub sort_field: Option<String>,
 }
 
 impl From<&NoteResponse> for NoteView {
@@ -728,6 +730,7 @@ impl From<&NoteResponse> for NoteView {
             note_type_name: n.note_type_name.clone(),
             fields,
             tags,
+            sort_field: n.sort_field.clone(),
         }
     }
 }
@@ -2739,6 +2742,7 @@ mod tests {
             .collect(),
             cards: vec![],
             tags: vec![Tag { id: 1, name: "spanish".to_string() }],
+            sort_field: Some("hola".to_string()),
             created_at: chrono::Utc::now(),
         }
     }
@@ -4523,6 +4527,22 @@ mod tests {
         assert_eq!(vm.notes[0].note_type_name, "Basic");
         assert_eq!(vm.notes[0].fields.get("Front").map(|s| s.as_str()), Some("hola"));
         assert_eq!(vm.notes[0].tags, vec!["spanish".to_string()]);
+    }
+
+    /// `NoteView::from(&NoteResponse)` carries the resolved sort field through so
+    /// the shell can render it without resolving the note type's field itself.
+    #[test]
+    fn note_view_carries_sort_field() {
+        let r = note(1);
+        assert_eq!(r.sort_field.as_deref(), Some("hola"));
+
+        let v = NoteView::from(&r);
+        assert_eq!(v.sort_field.as_deref(), Some("hola"));
+
+        // A missing sort field (no value to resolve) maps to `None`.
+        let mut none = note(2);
+        none.sort_field = None;
+        assert_eq!(NoteView::from(&none).sort_field, None);
     }
 
     /// `NoteBrowserSelectNote` records the selection; an unknown id clears it.

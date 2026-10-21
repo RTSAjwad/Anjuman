@@ -83,6 +83,11 @@ pub struct NoteResponse {
     pub cards: Vec<CardSummary>,
     /// This note's tags (shared note taxonomy).
     pub tags: Vec<Tag>,
+    /// The resolved value of the note type's sort field (Anki's "Sort Field"),
+    /// i.e. `fields[effective_sort_field]`. Falls back to the note type's first
+    /// field when its `sort_field` is empty (Anki default), and `None` only when
+    /// that field's value is genuinely absent.
+    pub sort_field: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 

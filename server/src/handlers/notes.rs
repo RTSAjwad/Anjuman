@@ -50,6 +50,15 @@ fn check_teacher_or_admin(claims: &crate::auth::Claims) -> Result<(), (StatusCod
     crate::permissions::require_teacher_or_admin(claims, "Only teachers and admins can manage notes")
 }
 
+/// Coerce a field `Value` to a string for display (mirrors the client's `NoteView`
+/// mapping: strings pass through, other scalars use their JSON representation).
+fn value_to_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// Ensure a card row exists for each template of a note's note type, in the
 /// given deck. Cards reference templates by stable `template_id`.
 /// Must be called inside a caller's transaction for atomicity.
@@ -198,6 +207,13 @@ async fn fetch_note_with_cards(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Resolve the note type's sort field to a display value. Anki falls back to
+    // the first field when `sort_field` is empty (`effective_sort_field`), and
+    // `None` only when that field's value is genuinely absent.
+    let sort_field = fields
+        .get(nt.effective_sort_field())
+        .map(value_to_string);
+
     Ok(NoteResponse {
         id: note.id,
         note_type_id: note.note_type_id,
@@ -205,6 +221,7 @@ async fn fetch_note_with_cards(
         fields,
         cards: card_summaries,
         tags: note_tags,
+        sort_field,
         created_at: note.created_at,
     })
 }
