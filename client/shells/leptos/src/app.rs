@@ -4,10 +4,10 @@
 //! events into `shared::Core<Anjuman>` via a reactive `Effect`. The shell is
 //! pure glue: it consumes `ViewModel` and emits `Event`, never holding logic.
 //!
-//! UI is built from the `thaw` component library. `ConfigProvider` wraps the
-//! tree to apply the theme; plain `<div>` is preferred for layout (nesting thaw
-//! components that return `impl IntoView` inside `Space`/`Card` trips an
-//! `IntoFragment` error).
+//! UI is styled with Tailwind + daisyUI (see `src/ui.rs` for the thin wrappers
+//! and `input.css`/`tailwind.css` for the generated stylesheet). Plain HTML
+//! elements with DaisyUI classes are preferred for layout; `#[component]` wraps
+//! the small set of reused primitives (button/badge/pagination).
 
 use leptos::prelude::*;
 use leptos::task;
@@ -18,15 +18,11 @@ use shared::app::{
 };
 use shared::{Event, ViewModel};
 use std::collections::HashSet;
-use thaw::{
-    Badge, BadgeAppearance, BadgeColor, BadgeSize, Breadcrumb, BreadcrumbDivider,
-    BreadcrumbItem, Button, ButtonAppearance, Card, ConfigProvider, Icon, Input, InputType,
-    NavDrawer, NavDrawerFooter, NavDrawerHeader, Pagination, Select, SelectSize, Switch,
-    Table, TableBody, TableHeader, TableHeaderCell,
-};
 
 use crate::core_link;
 use crate::router;
+use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiPagination};
+use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
 /// note view. Leptos `#[component]`s re-run their body whenever a prop signal
@@ -40,14 +36,13 @@ use crate::router;
 #[derive(Clone, Copy)]
 struct BrowserState {
     // --- Card-view filter sidebar ---
-    open_items: RwSignal<HashSet<String>>,
     deck: RwSignal<String>,
     note_type: RwSignal<String>,
     state: RwSignal<String>,
     flag: RwSignal<String>,
     sort: RwSignal<String>,
     query: RwSignal<String>,
-    /// Current page (1-based, `usize` for thaw's `Pagination`).
+    /// Current page (1-based).
     page: RwSignal<usize>,
     /// Guards the one-time "load first page + note types" fetch, so it only
     /// fires when the browser is first shown, not on every ViewModel-driven
@@ -71,7 +66,6 @@ impl BrowserState {
     /// latched `true` from the previous session and never re-fires the fetch,
     /// leaving the browser table empty).
     fn reset(&self) {
-        self.open_items.set(HashSet::new());
         self.deck.set(String::new());
         self.note_type.set(String::new());
         self.state.set(String::new());
@@ -89,32 +83,14 @@ impl BrowserState {
     }
 }
 
-/// Microsoft Fluent System Icons `Settings` 16-regular, vendored as an
-/// `icondata_core::Icon` (there is no published Fluent crate; the official path
-/// data comes from microsoft/fluentui-system-icons). Rendered via `thaw::Icon`.
-static SETTINGS_16_REGULAR: icondata_core::Icon = &icondata_core::IconData {
-    style: None,
-    x: None,
-    y: None,
-    width: None,
-    height: None,
-    view_box: Some("0 0 16 16"),
-    stroke_linecap: None,
-    stroke_linejoin: None,
-    stroke_width: None,
-    stroke: None,
-    fill: None, // inherits `currentColor` (thaw's `Icon` default)
-    data: r##"<path d="M7.99994 6C6.89537 6 5.99994 6.89543 5.99994 8C5.99994 9.10457 6.89537 10 7.99994 10C9.10451 10 9.99994 9.10457 9.99994 8C9.99994 6.89543 9.10451 6 7.99994 6ZM6.99994 8C6.99994 7.44772 7.44765 7 7.99994 7C8.55222 7 8.99994 7.44772 8.99994 8C8.99994 8.55228 8.55222 9 7.99994 9C7.44765 9 6.99994 8.55228 6.99994 8ZM10.618 4.39833C10.233 4.46825 9.86392 4.21413 9.7937 3.83074L9.53397 2.41496C9.50816 2.27427 9.39961 2.16301 9.25912 2.13325C8.84818 2.04621 8.42685 2.00195 8 2.00195C7.57289 2.00195 7.1513 2.04627 6.74013 2.13341C6.5996 2.16321 6.49104 2.27452 6.46529 2.41527L6.20629 3.8308C6.1994 3.86844 6.18942 3.90551 6.17647 3.9416C6.04476 4.30859 5.6392 4.49978 5.27062 4.36863L3.91115 3.88463C3.77603 3.83652 3.62511 3.87431 3.52891 3.98033C2.96005 4.60729 2.52892 5.34708 2.2672 6.15302C2.22305 6.28899 2.26562 6.43805 2.37502 6.53053L3.47694 7.46206C3.50626 7.48685 3.53352 7.51399 3.55843 7.5432C3.81177 7.84027 3.77528 8.28558 3.47693 8.53783L2.37502 9.46935C2.26562 9.56183 2.22305 9.71089 2.2672 9.84685C2.52892 10.6528 2.96005 11.3926 3.52891 12.0196C3.62511 12.1256 3.77603 12.1634 3.91115 12.1153L5.27068 11.6312C5.30687 11.6184 5.3441 11.6084 5.38196 11.6015C5.76701 11.5316 6.13608 11.7857 6.2063 12.1691L6.46529 13.5846C6.49104 13.7254 6.5996 13.8367 6.74013 13.8665C7.1513 13.9536 7.57289 13.9979 8 13.9979C8.42685 13.9979 8.84818 13.9537 9.25912 13.8666C9.39961 13.8369 9.50816 13.7256 9.53397 13.5849L9.79368 12.1692C9.8006 12.1314 9.81058 12.0944 9.82353 12.0583C9.95524 11.6913 10.3608 11.5001 10.7294 11.6312L12.0888 12.1153C12.224 12.1634 12.3749 12.1256 12.4711 12.0196C13.04 11.3926 13.4711 10.6528 13.7328 9.84685C13.777 9.71089 13.7344 9.56183 13.625 9.46935L12.5231 8.53782C12.4937 8.51303 12.4665 8.48589 12.4416 8.45667C12.1882 8.1596 12.2247 7.71429 12.5231 7.46205L13.625 6.53053C13.7344 6.43805 13.777 6.28899 13.7328 6.15302C13.4711 5.34708 13.04 4.60729 12.4711 3.98033C12.3749 3.87431 12.224 3.83652 12.0888 3.88463L10.7293 4.36865C10.6931 4.38152 10.6559 4.39146 10.618 4.39833ZM3.99863 4.97726L4.93522 5.3107C5.82017 5.62559 6.79872 5.16815 7.11769 4.2794C7.14903 4.19207 7.17324 4.1021 7.18996 4.01078L7.36738 3.04113C7.5757 3.01512 7.78684 3.00195 8 3.00195C8.213 3.00195 8.42397 3.0151 8.63214 3.04107L8.81011 4.01117C8.98053 4.9408 9.87266 5.55003 10.7967 5.38225C10.8877 5.36572 10.9775 5.34176 11.0647 5.31073L12.0014 4.97726C12.2564 5.31084 12.4684 5.67476 12.6319 6.06064L11.8774 6.6984C11.1566 7.30787 11.0675 8.38649 11.6807 9.10555C11.7408 9.17609 11.8067 9.24166 11.8775 9.3015L12.6319 9.93924C12.4684 10.3251 12.2564 10.689 12.0014 11.0226L11.0646 10.6891C10.1797 10.3742 9.20128 10.8317 8.88231 11.7205C8.85096 11.8078 8.82677 11.8978 8.81004 11.9891L8.63214 12.9588C8.42397 12.9848 8.213 12.9979 8 12.9979C7.78684 12.9979 7.5757 12.9847 7.36738 12.9587L7.18994 11.989C7.01965 11.0592 6.12743 10.4498 5.2033 10.6176C5.11227 10.6342 5.0225 10.6581 4.93528 10.6892L3.99863 11.0226C3.74357 10.689 3.53161 10.3251 3.36814 9.93924L4.12257 9.30148C4.84343 8.69201 4.93254 7.61339 4.31933 6.89433C4.25917 6.82378 4.19332 6.75822 4.12254 6.69838L3.36814 6.06064C3.53161 5.67476 3.74357 5.31084 3.99863 4.97726Z"></path>"##,
-};
-
 #[component]
 pub fn RootComponent() -> impl IntoView {
     let core = core_link::new();
     let (view, render) = signal(core.view());
     let (event, set_event) = signal(Event::RestoreSession);
 
-    // A place to hold the in-progress email/password while the user types
-    // (`thaw`'s `Input` drives these signals directly via its `value` prop).
+    // A place to hold the in-progress email/password while the user types (the
+    // native `<input>` drives these signals via two-way `bind:value`).
     let email = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
 
@@ -184,7 +160,6 @@ pub fn RootComponent() -> impl IntoView {
     // Browser state (card + note view), hoisted so it survives component
     // re-renders (see `BrowserState`). Created once for the app's lifetime.
     let browser_state = BrowserState {
-        open_items: RwSignal::new(HashSet::new()),
         deck: RwSignal::new(String::new()),
         note_type: RwSignal::new(String::new()),
         state: RwSignal::new(String::new()),
@@ -305,158 +280,192 @@ pub fn RootComponent() -> impl IntoView {
     }
 
     view! {
-        <ConfigProvider>
-            {move || {
+        {move || {
                 let vm: ViewModel = view.get();
                 if vm.authenticated {
                     let display_name = vm.display_name.clone();
                     let route = vm.route;
                     let can_manage_notes = vm.permissions.can_manage_notes;
                     view! {
-                        <div class="app-shell">
-                            <NavDrawer
-                                class="app-sidebar-nav"
-                                open_categories=RwSignal::new(Vec::<String>::new())
-                                multiple=false
-                            >
-                                <NavDrawerHeader slot:nav_drawer_header>
-                                    <span class="app-sidebar__brand">"Anjuman"</span>
-                                </NavDrawerHeader>
-                                <button
-                                    class="thaw-nav-item"
-                                    class:thaw-nav-item--selected=move || route == CurrentRoute::DeckList
-                                    on:click=show_deck_list
-                                >
-                                    "Decks"
-                                </button>
-                                <button
-                                    class="thaw-nav-item"
-                                    class:thaw-nav-item--selected=move || route == CurrentRoute::Cards || route == CurrentRoute::Notes
-                                    on:click=show_cards
-                                >
-                                    "Browser"
-                                </button>
-                                <NavDrawerFooter slot:nav_drawer_footer>
-                                    <div class="app-sidebar__footer">
-                                        <p class="app-sidebar__user">{display_name.clone()}</p>
-                                        <Button appearance=ButtonAppearance::Subtle on_click=logout>
-                                            "Log out"
-                                        </Button>
-                                    </div>
-                                </NavDrawerFooter>
-                            </NavDrawer>
+                        <div class="drawer lg:drawer-open">
+                            <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" />
 
-                            <main class="app-content">
-                                {match route {
-                                    CurrentRoute::DeckList => view! {
-                                        <div class="app-header">
-                                            <Breadcrumb>
-                                                <BreadcrumbItem>
-                                                    <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
-                                                        "Decks"
-                                                    </span>
-                                                </BreadcrumbItem>
-                                            </Breadcrumb>
-                                        </div>
-                                        <div class="app-content__pad">
-                                            <DeckList vm=view.into() on_navigate=navigate />
-                                        </div>
-                                    }
-                                    .into_any(),
-                                    CurrentRoute::Cards | CurrentRoute::Notes => view! {
-                                        <Browser vm=view.into() state=browser_state set_event=set_event can_manage_notes=can_manage_notes />
-                                    }
-                                    .into_any(),
-                                    CurrentRoute::Study => {
-                                        let deck = vm.selected_deck.clone();
-                                        match deck {
-                                            Some(deck) => {
-                                                let deck_title = deck.title.clone();
-                                                let counts = vm.counts.clone();
-                                                let current_card = vm.current_card.clone();
-                                                view! {
-                                                    <div class="app-header">
-                                                        <Breadcrumb>
-                                                            <BreadcrumbItem>
-                                                                <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
-                                                            </BreadcrumbItem>
-                                                            <BreadcrumbDivider />
-                                                            <BreadcrumbItem>{deck_title}</BreadcrumbItem>
-                                                            <BreadcrumbDivider />
-                                                            <BreadcrumbItem>
-                                                                <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
-                                                                    "Study"
-                                                                </span>
-                                                            </BreadcrumbItem>
-                                                        </Breadcrumb>
-                                                        <div class="app-header__right">
-                                                            {study_count_badges(counts)}
-                                                            {if let Some(card) = current_card {
-                                                                view! { <StudyActions card=card set_event=set_event /> }.into_any()
-                                                            } else {
-                                                                ().into_any()
-                                                            }}
+                            <div class="drawer-content flex min-h-svh flex-col">
+                                <nav class="navbar min-h-12 w-full gap-2 bg-base-300 px-3">
+                                    <label
+                                        for="sidebar-toggle"
+                                        aria-label="toggle sidebar"
+                                        class="btn btn-square btn-ghost drawer-button"
+                                    >
+                                        <Icon glyph=LucideGlyph::Menu size="20" />
+                                    </label>
+
+                                    {match route {
+                                        CurrentRoute::DeckList => view! {
+                                            <div class="breadcrumbs">
+                                                <ul>
+                                                    <li><span aria-current="page">"Decks"</span></li>
+                                                </ul>
+                                            </div>
+                                        }
+                                        .into_any(),
+                                        CurrentRoute::Cards | CurrentRoute::Notes => view! {
+                                            <div class="tabs tabs-box tabs-sm">
+                                                <button
+                                                    class="tab"
+                                                    class:tab-active=move || route == CurrentRoute::Cards
+                                                    on:click=show_cards.clone()
+                                                >
+                                                    "Cards"
+                                                </button>
+                                                {if can_manage_notes {
+                                                    view! {
+                                                        <button
+                                                            class="tab"
+                                                            class:tab-active=move || route == CurrentRoute::Notes
+                                                            on:click=move |_| set_event.set(Event::ShowNotes)
+                                                        >
+                                                            "Notes"
+                                                        </button>
+                                                    }
+                                                    .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
+                                            </div>
+                                        }
+                                        .into_any(),
+                                        CurrentRoute::Study => {
+                                            let deck_title = vm.selected_deck.as_ref().map(|d| d.title.clone()).unwrap_or_default();
+                                            let counts = vm.counts.clone();
+                                            let current_card = vm.current_card.clone();
+                                            let close_deck = close_deck.clone();
+                                            view! {
+                                                <div class="breadcrumbs flex-1">
+                                                    <ul>
+                                                        <li><button on:click=move |_| close_deck()>"Decks"</button></li>
+                                                        <li>{deck_title}</li>
+                                                        <li><span aria-current="page">"Study"</span></li>
+                                                    </ul>
+                                                </div>
+                                                {study_count_badges(counts)}
+                                                {if let Some(card) = current_card {
+                                                    view! { <StudyActions card=card set_event=set_event /> }.into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
+                                            }
+                                            .into_any()
+                                        }
+                                        CurrentRoute::DeckOptions => {
+                                            let deck_title = vm.selected_deck.as_ref().map(|d| d.title.clone()).unwrap_or_default();
+                                            let close_deck = close_deck.clone();
+                                            view! {
+                                                <div class="breadcrumbs flex-1">
+                                                    <ul>
+                                                        <li><button on:click=move |_| close_deck()>"Decks"</button></li>
+                                                        <li>{deck_title}</li>
+                                                        <li><span aria-current="page">"Options"</span></li>
+                                                    </ul>
+                                                </div>
+                                            }
+                                            .into_any()
+                                        }
+                                    }}
+                                </nav>
+
+                                <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
+                                    {match route {
+                                        CurrentRoute::DeckList => view! {
+                                            <div class="h-full overflow-y-auto p-4">
+                                                <DeckList vm=view.into() on_navigate=navigate />
+                                            </div>
+                                        }
+                                        .into_any(),
+                                        CurrentRoute::Cards | CurrentRoute::Notes => view! {
+                                            <Browser vm=view.into() state=browser_state set_event=set_event />
+                                        }
+                                        .into_any(),
+                                        CurrentRoute::Study | CurrentRoute::DeckOptions => {
+                                            if vm.selected_deck.is_some() {
+                                                match route {
+                                                    CurrentRoute::Study => view! {
+                                                        <StudyScreen vm=vm.clone() revealed=revealed set_event=set_event />
+                                                    }
+                                                    .into_any(),
+                                                    CurrentRoute::DeckOptions => view! {
+                                                        <div class="h-full overflow-y-auto">
+                                                            <DeckOptionsPanel
+                                                                deck_id=vm.selected_deck.as_ref().map(|d| d.id).unwrap_or(0)
+                                                                options=vm.deck_options.clone()
+                                                                error=vm.deck_options_error.clone()
+                                                                presets=vm.presets.clone()
+                                                                presets_error=vm.presets_error.clone()
+                                                                can_manage_presets=vm.permissions.can_manage_presets
+                                                                set_event=set_event />
                                                         </div>
-                                                    </div>
-                                                    <StudyScreen
-                                                        vm=vm.clone() revealed=revealed set_event=set_event />
+                                                    }
+                                                    .into_any(),
+                                                    _ => ().into_any(),
                                                 }
-                                                .into_any()
-                                            }
-                                            None => {
-                                                // Selected deck missing (e.g. cleared); fall
-                                                // back to the list to avoid a blank screen.
+                                            } else {
                                                 view! {
-                                                    <DeckList vm=view.into() on_navigate=navigate />
+                                                    <div class="h-full overflow-y-auto p-4">
+                                                        <DeckList vm=view.into() on_navigate=navigate />
+                                                    </div>
                                                 }
                                                 .into_any()
                                             }
                                         }
-                                    }
-                                    CurrentRoute::DeckOptions => {
-                                        let deck = vm.selected_deck.clone();
-                                        match deck {
-                                            Some(deck) => {
-                                                let deck_title = deck.title.clone();
-                                                let deck_options_view = vm.deck_options.clone();
-                                                let deck_options_error = vm.deck_options_error.clone();
-                                                view! {
-                                                    <div class="app-header">
-                                                        <Breadcrumb>
-                                                            <BreadcrumbItem>
-                                                                <button class="thaw-breadcrumb-button" on:click=move |_| close_deck()>"Decks"</button>
-                                                            </BreadcrumbItem>
-                                                            <BreadcrumbDivider />
-                                                            <BreadcrumbItem>{deck_title}</BreadcrumbItem>
-                                                            <BreadcrumbDivider />
-                                                            <BreadcrumbItem>
-                                                                <span class="thaw-breadcrumb-button thaw-breadcrumb-button--current" aria-current="page">
-                                                                    "Options"
-                                                                </span>
-                                                            </BreadcrumbItem>
-                                                        </Breadcrumb>
-                                                    </div>
-                                                    <DeckOptionsPanel
-                                                        deck_id=deck.id
-                                                        options=deck_options_view
-                                                        error=deck_options_error
-                                                        presets=vm.presets.clone()
-                                                        presets_error=vm.presets_error.clone()
-                                                        can_manage_presets=vm.permissions.can_manage_presets
-                                                        set_event=set_event />
-                                                }
-                                                .into_any()
-                                            }
-                                            None => {
-                                                view! {
-                                                    <DeckList vm=view.into() on_navigate=navigate />
-                                                }
-                                                .into_any()
-                                            }
-                                        }
-                                    }
-                                }}
-                            </main>
+                                    }}
+                                </main>
+                            </div>
+
+                            <div class="drawer-side lg:is-drawer-close:overflow-visible">
+                                <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
+                                <div class="app-sidebar flex min-h-full w-64 flex-col items-start bg-base-200 is-drawer-close:w-14 is-drawer-open:w-64">
+                                    <div class="app-sidebar__brand w-full is-drawer-close:hidden">"Anjuman"</div>
+                                    <ul class="menu w-full grow">
+                                        <li>
+                                            <button
+                                                class:menu-active=move || route == CurrentRoute::DeckList
+                                                class="is-drawer-close:tooltip is-drawer-close:tooltip-right"
+                                                data-tip="Decks"
+                                                on:click=show_deck_list
+                                            >
+                                                <Icon glyph=LucideGlyph::Library size="16" class="my-1.5 inline-block" />
+                                                <span class="is-drawer-close:hidden">"Decks"</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button
+                                                class:menu-active=move || route == CurrentRoute::Cards || route == CurrentRoute::Notes
+                                                class="is-drawer-close:tooltip is-drawer-close:tooltip-right"
+                                                data-tip="Browser"
+                                                on:click=show_cards.clone()
+                                            >
+                                                <Icon glyph=LucideGlyph::Table size="16" class="my-1.5 inline-block" />
+                                                <span class="is-drawer-close:hidden">"Browser"</span>
+                                            </button>
+                                        </li>
+                                    </ul>
+                                    <div class="mt-auto w-full">
+                                        <p class="app-sidebar__user px-3 pt-3 is-drawer-close:hidden">{display_name.clone()}</p>
+                                        <ul class="menu w-full">
+                                            <li>
+                                                <button
+                                                    class="is-drawer-close:tooltip is-drawer-close:tooltip-right"
+                                                    data-tip="Log out"
+                                                    on:click=logout
+                                                >
+                                                    <Icon glyph=LucideGlyph::LogOut size="16" class="my-1.5 inline-block" />
+                                                    <span class="is-drawer-close:hidden">"Log out"</span>
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     }
                     .into_any()
@@ -465,15 +474,15 @@ pub fn RootComponent() -> impl IntoView {
                         <main class="app-login">
                             <h1>"Anjuman"</h1>
                             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
-                                <Input value=email placeholder="Email" />
-                                <Input value=password placeholder="Password" />
-                                <Button
-                                    appearance=ButtonAppearance::Primary
+                                <input class="input input-bordered" bind:value=email placeholder="Email" />
+                                <input class="input input-bordered" bind:value=password placeholder="Password" type="password" />
+                                <UiButton
+                                    appearance=UiButtonAppearance::Primary
                                     on_click=submit
                                     disabled=vm.busy
                                 >
                                     "Log in"
-                                </Button>
+                                </UiButton>
                                 {vm.error.clone().map(|err| view! {
                                     <p style="color: #c00;">{err}</p>
                                 })}
@@ -487,13 +496,13 @@ pub fn RootComponent() -> impl IntoView {
                                         };
                                         let q = quick_login.clone();
                                         view! {
-                                            <Button
-                                                appearance=ButtonAppearance::Subtle
+                                            <UiButton
+                                                appearance=UiButtonAppearance::Subtle
                                                 on_click=move |_| q(creds)
                                                 disabled=vm.busy
                                             >
                                                 {role}
-                                            </Button>
+                                            </UiButton>
                                         }
                                     }).collect_view()}
                                 </div>
@@ -503,7 +512,6 @@ pub fn RootComponent() -> impl IntoView {
                     .into_any()
                 }
             }}
-        </ConfigProvider>
     }
 }
 
@@ -520,9 +528,9 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
     // Error state — a deck fetch failed.
     if let Some(err) = vm.decks_error {
         return view! {
-            <Card>
+            <div class="card bg-base-100 shadow-sm">
                 <p style="color: #c00;">"Could not load decks: " {err}</p>
-            </Card>
+            </div>
         }
         .into_any();
     }
@@ -530,9 +538,9 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
     // Empty state — signed in but no decks yet.
     if vm.decks.is_empty() {
         return view! {
-            <Card>
+            <div class="card bg-base-100 shadow-sm">
                 <p style="color: #888;">"No decks yet. Create one to get started."</p>
-            </Card>
+            </div>
         }
         .into_any();
     }
@@ -550,7 +558,7 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
     let decks = vm.decks;
     let open_items = RwSignal::new(HashSet::new());
     view! {
-        <Card>
+        <div class="card bg-base-100 shadow-sm">
             <div class="thaw-deck-header" role="row">
                 <span class="thaw-deck-col">"Deck"</span>
                 <span class="thaw-deck-col">"New"</span>
@@ -560,7 +568,7 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
             <div class="thaw-deck-tree" role="tree">
                 {deck_subtree(decks, 0, open_items, on_navigate)}
             </div>
-        </Card>
+        </div>
     }
     .into_any()
 }
@@ -575,7 +583,6 @@ fn browser(
     vm: Signal<ViewModel>,
     state: BrowserState,
     set_event: WriteSignal<Event>,
-    can_manage_notes: bool,
 ) -> impl IntoView {
     let vm_sig = vm;
 
@@ -619,7 +626,6 @@ fn browser(
     let flag_value = state.flag;
     let sort_value = state.sort;
     let q_value = state.query;
-    let open_items = state.open_items;
     let page = state.page;
 
     // The deck tree (hierarchy preserved for the sidebar) and the note-type list
@@ -904,30 +910,6 @@ fn browser(
 
     view! {
         <div class="card-browser">
-            <div class="browser__toolbar">
-                <button
-                    class="browser__toggle"
-                    class:browser__toggle--active=move || vm_sig.get().route == CurrentRoute::Cards
-                    on:click=move |_| set_event.set(Event::ShowCards)
-                >
-                    "Cards"
-                </button>
-                {if can_manage_notes {
-                    view! {
-                        <button
-                            class="browser__toggle"
-                            class:browser__toggle--active=move || vm_sig.get().route == CurrentRoute::Notes
-                            on:click=move |_| set_event.set(Event::ShowNotes)
-                        >
-                            "Notes"
-                        </button>
-                    }
-                    .into_any()
-                } else {
-                    ().into_any()
-                }}
-            </div>
-
             <div class="card-browser__body">
             <aside class="card-browser__sidebar">
                 {match vm_sig.get().route {
@@ -939,7 +921,16 @@ fn browser(
                                 search_apply();
                             }
                         >
-                            <Input value=q_value placeholder="Search…" />
+                            <div class="join w-full">
+                                <input
+                                    class="input input-bordered w-full join-item"
+                                    bind:value=q_value
+                                    placeholder="Search…"
+                                />
+                                <button type="submit" aria-label="Search" class="btn btn-square join-item">
+                                    <Icon glyph=LucideGlyph::Search size="16" />
+                                </button>
+                            </div>
                         </form>
 
                         {move || vm_sig.get().browser_error.clone().map(|err| view! {
@@ -949,24 +940,18 @@ fn browser(
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
-                        <div class="thaw-tree card-browser__tree" role="tree">
+                        <ul class="menu card-browser__menu">
                             {filter_branch(
-                                "decks",
                                 "Decks",
-                                open_items,
                                 deck_filter_tree(
                                     vm_sig.get().decks.clone(),
-                                    0,
-                                    open_items,
                                     deck_active,
                                     deck_sel,
                                 ),
                             )}
 
                             {filter_branch(
-                                "note-types",
                                 "Note types",
-                                open_items,
                                 {move || vm_sig.get().note_types.iter().map(|nt| {
                                     let id_str = nt.id.to_string();
                                     let active = note_active.get() == id_str;
@@ -977,9 +962,7 @@ fn browser(
                             )}
 
                             {filter_branch(
-                                "state",
                                 "State",
-                                open_items,
                                 ["new", "learning", "review", "relearning"].into_iter().map(|s| {
                                     let s_val = s.to_string();
                                     let active = state_active.get() == s_val;
@@ -996,9 +979,7 @@ fn browser(
                             )}
 
                             {filter_branch(
-                                "flag",
                                 "Flag",
-                                open_items,
                                 ["1", "2", "3", "4", "5", "6", "7"].into_iter().map(|f| {
                                     let f_val = f.to_string();
                                     let active = flag_active.get() == f_val;
@@ -1006,28 +987,20 @@ fn browser(
                                     let color = flag_color(f.parse::<i64>().unwrap());
                                     let label = flag_label(f.parse::<i64>().unwrap());
                                     view! {
-                                        <div class="thaw-tree-item thaw-tree-item--leaf" role="treeitem">
-                                            <div
-                                                class="thaw-tree-item-layout"
-                                                class:card-browser__leaf--active=active
-                                                on:click=move |_| sel(f_val.clone())
-                                            >
-                                                <span class="thaw-tree-item-layout__main">
-                                                    <span class="card-browser__flag-sw">
-                                                        <span class="card-browser__flag-swatch" style=format!("background-color: {color}")></span>
-                                                        <span>{label}</span>
-                                                    </span>
+                                        <li>
+                                            <button class:menu-active=active on:click=move |_| sel(f_val.clone())>
+                                                <span class="card-browser__flag-sw">
+                                                    <span class="card-browser__flag-swatch" style=format!("background-color: {color}")></span>
+                                                    <span>{label}</span>
                                                 </span>
-                                            </div>
-                                        </div>
+                                            </button>
+                                        </li>
                                     }
                                 }).collect_view(),
                             )}
 
                             {filter_branch(
-                                "sort",
                                 "Sort",
-                                open_items,
                                 ["created_at", "due_at", "deck", "question"].into_iter().map(|s| {
                                     let s_val = s.to_string();
                                     let active = sort_active.get() == s_val;
@@ -1042,7 +1015,7 @@ fn browser(
                                     filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
                                 }).collect_view(),
                             )}
-                        </div>
+                        </ul>
                     }
                     .into_any(),
                     CurrentRoute::Notes => view! {
@@ -1053,7 +1026,16 @@ fn browser(
                                 fire_note_filter(1);
                             }
                         >
-                            <Input value=note_query placeholder="Search…" />
+                            <div class="join w-full">
+                                <input
+                                    class="input input-bordered w-full join-item"
+                                    bind:value=note_query
+                                    placeholder="Search…"
+                                />
+                                <button type="submit" aria-label="Search" class="btn btn-square join-item">
+                                    <Icon glyph=LucideGlyph::Search size="16" />
+                                </button>
+                            </div>
                         </form>
 
                         {move || vm_sig.get().notes_error.clone().map(|err| view! {
@@ -1063,24 +1045,18 @@ fn browser(
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
-                        <div class="thaw-tree card-browser__tree" role="tree">
+                        <ul class="menu card-browser__menu">
                             {filter_branch(
-                                "decks",
                                 "Decks",
-                                open_items,
                                 deck_filter_tree(
                                     vm_sig.get().decks.clone(),
-                                    0,
-                                    open_items,
                                     note_deck_filter,
                                     select_note_deck,
                                 ),
                             )}
 
                             {filter_branch(
-                                "note-types",
                                 "Note types",
-                                open_items,
                                 {move || vm_sig.get().note_types.iter().map(|nt| {
                                     let id_str = nt.id.to_string();
                                     let active = note_note_type.get() == id_str;
@@ -1091,9 +1067,7 @@ fn browser(
                             )}
 
                             {filter_branch(
-                                "sort",
                                 "Sort",
-                                open_items,
                                 ["created_at", "note_type", "deck", "question"].into_iter().map(|s| {
                                     let s_val = s.to_string();
                                     let active = note_sort.get() == s_val;
@@ -1108,7 +1082,7 @@ fn browser(
                                     filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
                                 }).collect_view(),
                             )}
-                        </div>
+                        </ul>
                     }
                     .into_any(),
                     _ => ().into_any(),
@@ -1120,14 +1094,16 @@ fn browser(
                     CurrentRoute::Cards => view! {
                         <div class="card-browser__content">
                             <div class="card-browser__table">
-                                <Table>
-                                    <TableHeader>
-                                        <TableHeaderCell resizable=true>"Card"</TableHeaderCell>
-                                        <TableHeaderCell resizable=true>"Deck"</TableHeaderCell>
-                                        <TableHeaderCell resizable=true>"State"</TableHeaderCell>
-                                        <TableHeaderCell resizable=true>"Flag"</TableHeaderCell>
-                                    </TableHeader>
-                                    <TableBody>
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>"Card"</th>
+                                            <th>"Deck"</th>
+                                            <th>"State"</th>
+                                            <th>"Flag"</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                                         {move || vm_sig.get().browser_cards.iter().map(|c| {
                                             let card_id = c.card_id;
                                             let is_selected = vm_sig.get().browser_selected.as_ref().map(|c| c.card_id) == Some(card_id);
@@ -1139,34 +1115,29 @@ fn browser(
                                             let buried = c.buried;
                                             view! {
                                                 <tr
-                                                    class="thaw-table-row"
                                                     class:card-browser__row--selected=is_selected
                                                     on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
                                                 >
-                                                    <td class="thaw-table-cell">
+                                                    <td>
                                                         <span class="card-browser__front">
                                                             {front}
                                                             {if suspended { " (suspended)" } else { "" }}
                                                             {if buried { " (buried)" } else { "" }}
                                                         </span>
                                                     </td>
-                                                    <td class="thaw-table-cell">{deck_title}</td>
-                                                    <td class="thaw-table-cell">{state}</td>
-                                                    <td class="thaw-table-cell">{flag_swatch(flag)}</td>
+                                                    <td>{deck_title}</td>
+                                                    <td>{state}</td>
+                                                    <td>{flag_swatch(flag)}</td>
                                                 </tr>
                                             }
                                         }).collect_view()}
-                                    </TableBody>
-                                </Table>
+                                    </tbody>
+                                </table>
                             </div>
 
                             <div class="card-browser__pagination">
                                 <span>{move || vm_sig.get().browser_total.to_string()}{" cards"}</span>
-                                <Pagination
-                                    page=page
-                                    page_count=browser_page_count
-                                    sibling_count=Signal::derive(|| 1)
-                                />
+                                <UiPagination page=page page_count=browser_page_count />
                             </div>
                         </div>
 
@@ -1182,13 +1153,15 @@ fn browser(
                     CurrentRoute::Notes => view! {
                         <div class="card-browser__content">
                             <div class="card-browser__table">
-                                <Table>
-                                    <TableHeader>
-                                        <TableHeaderCell resizable=true>"Sort field"</TableHeaderCell>
-                                        <TableHeaderCell resizable=true>"Note type"</TableHeaderCell>
-                                        <TableHeaderCell resizable=true>"Tags"</TableHeaderCell>
-                                    </TableHeader>
-                                    <TableBody>
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>"Sort field"</th>
+                                            <th>"Note type"</th>
+                                            <th>"Tags"</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                                         {move || vm_sig.get().notes.iter().map(|n| {
                                             let note_id = n.id;
                                             let note_type_name = n.note_type_name.clone();
@@ -1196,29 +1169,24 @@ fn browser(
                                             let tags = n.tags.join(", ");
                                             view! {
                                                 <tr
-                                                    class="thaw-table-row"
                                                     class:card-browser__row--selected=move || vm_sig.get().notes_selected.as_ref().map(|n| n.id) == Some(note_id)
                                                     on:click=move |_| set_event.set(Event::NoteBrowserSelectNote { note_id })
                                                 >
-                                                    <td class="thaw-table-cell">
+                                                    <td>
                                                         <span class="card-browser__front">{sort_field}</span>
                                                     </td>
-                                                    <td class="thaw-table-cell">{note_type_name}</td>
-                                                    <td class="thaw-table-cell">{tags}</td>
+                                                    <td>{note_type_name}</td>
+                                                    <td>{tags}</td>
                                                 </tr>
                                             }
                                         }).collect_view()}
-                                    </TableBody>
-                                </Table>
+                                    </tbody>
+                                </table>
                             </div>
 
                             <div class="card-browser__pagination">
                                 <span>{move || vm_sig.get().notes_total.to_string()}{" notes"}</span>
-                                <Pagination
-                                    page=note_page
-                                    page_count=notes_page_count
-                                    sibling_count=Signal::derive(|| 1)
-                                />
+                                <UiPagination page=note_page page_count=notes_page_count />
                             </div>
                         </div>
 
@@ -1277,16 +1245,88 @@ fn CardInspector(
                             <dd>{card.state}</dd>
                         </div>
                         <div class="card-browser__inspector-row">
-                            <dt>"Flag"</dt>
-                            <dd>{flag_swatch(card.flag)}</dd>
-                        </div>
-                        <div class="card-browser__inspector-row">
                             <dt>"Suspended"</dt>
-                            <dd>{if card.suspended { "Yes" } else { "No" }}</dd>
+                            <dd>
+                                <CardSwitch
+                                    checked=suspend
+                                    label=""
+                                    on_toggle=move || {
+                                        if suspend.get() {
+                                            set_event.set(Event::BrowserUnsuspendCard { card_id });
+                                        } else {
+                                            set_event.set(Event::BrowserSuspendCard { card_id });
+                                        }
+                                    }
+                                />
+                            </dd>
                         </div>
                         <div class="card-browser__inspector-row">
                             <dt>"Buried"</dt>
-                            <dd>{if card.buried { "Yes" } else { "No" }}</dd>
+                            <dd>
+                                <CardSwitch
+                                    checked=bury
+                                    label=""
+                                    disabled=suspend
+                                    on_toggle=move || {
+                                        if bury.get() {
+                                            set_event.set(Event::BrowserUnburyCard { card_id });
+                                        } else {
+                                            set_event.set(Event::BrowserBuryCard { card_id });
+                                        }
+                                    }
+                                />
+                            </dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Flag"</dt>
+                            <dd>
+                                <div class="card-browser__inspector-flag">
+                                    <select
+                                        class="select select-bordered"
+                                        prop:value=move || flag.get()
+                                        on:change=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if let Ok(f) = value.parse::<i64>() {
+                                                set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
+                                            }
+                                        }
+                                    >
+                                        <option value="0">"No flag"</option>
+                                        {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
+                                            let v = *f;
+                                            let color = flag_color(v.parse::<i64>().unwrap());
+                                            view! { <option value=v style=format!("color: {color}")>{flag_label(v.parse::<i64>().unwrap())}</option> }
+                                        }).collect_view()}
+                                    </select>
+                                </div>
+                            </dd>
+                        </div>
+                        <div class="card-browser__inspector-row">
+                            <dt>"Reschedule"</dt>
+                            <dd>
+                                <div class="card-browser__inspector-reschedule">
+                                    <div class="join">
+                                        <input
+                                            class="join-item input input-bordered"
+                                            type="number"
+                                            bind:value=reschedule_days
+                                            placeholder="days"
+                                        />
+                                        <button
+                                            class="join-item btn btn-square"
+                                            aria-label="Reschedule"
+                                            on:click=move |_| {
+                                                if let Ok(d) = reschedule_days.get().trim().parse::<i64>() {
+                                                    set_event.set(Event::BrowserRescheduleCard { card_id, days: d });
+                                                    reschedule_days.set(String::new());
+                                                }
+                                            }
+                                        >
+                                            <Icon glyph=LucideGlyph::Check size="16" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </dd>
                         </div>
                         <div class="card-browser__inspector-row card-browser__inspector-row--stacked">
                             <dt>"Front"</dt>
@@ -1297,71 +1337,6 @@ fn CardInspector(
                             <dd class="card-browser__inspector-text">{card.back}</dd>
                         </div>
                     </dl>
-
-                    <div class="card-browser__inspector-actions">
-                        <CardSwitch
-                            checked=suspend
-                            label="Suspend"
-                            on_toggle=move || {
-                                if suspend.get() {
-                                    set_event.set(Event::BrowserUnsuspendCard { card_id });
-                                } else {
-                                    set_event.set(Event::BrowserSuspendCard { card_id });
-                                }
-                            }
-                        />
-                        <CardSwitch
-                            checked=bury
-                            label="Bury"
-                            on_toggle=move || {
-                                if bury.get() {
-                                    set_event.set(Event::BrowserUnburyCard { card_id });
-                                } else {
-                                    set_event.set(Event::BrowserBuryCard { card_id });
-                                }
-                            }
-                        />
-                        <div class="card-browser__inspector-reschedule">
-                            <Input value=reschedule_days placeholder="days" input_type=Signal::derive(|| InputType::Number) />
-                            <Button
-                                appearance=ButtonAppearance::Subtle
-                                on_click=move |_| {
-                                    if let Ok(d) = reschedule_days.get().trim().parse::<i64>() {
-                                        set_event.set(Event::BrowserRescheduleCard { card_id, days: d });
-                                        reschedule_days.set(String::new());
-                                    }
-                                }
-                            >
-                                "Reschedule"
-                            </Button>
-                        </div>
-                        <div class="card-browser__inspector-flag">
-                            <span
-                                class="card-browser__flag-swatch"
-                                style=move || {
-                                    let f = flag.get().parse::<i64>().unwrap_or(0);
-                                    format!("background-color: {}", flag_color(f))
-                                }
-                            ></span>
-                            <select
-                                class="thaw-select__select"
-                                prop:value=move || flag.get()
-                                on:change=move |ev| {
-                                    let value = event_target_value(&ev);
-                                    if let Ok(f) = value.parse::<i64>() {
-                                        set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
-                                    }
-                                }
-                            >
-                                <option value="0">"No flag"</option>
-                                {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
-                                    let v = *f;
-                                    let color = flag_color(v.parse::<i64>().unwrap());
-                                    view! { <option value=v style=format!("color: {color}")>{flag_label(v.parse::<i64>().unwrap())}</option> }
-                                }).collect_view()}
-                            </select>
-                        </div>
-                    </div>
                 }
                 .into_any()
             } else {
@@ -1429,24 +1404,23 @@ fn NoteInspector(
     }
 }
 
-/// An unidirectional suspend/bury toggle. This is **purely reflective**: it has
-/// no writable state of its own — the checked state comes only from the `checked`
-/// signal (derived from the core's `ViewModel`), and a click emits a *directional*
-/// event via `on_toggle` (suspend vs unsuspend, bury vs unbury). The core's
-/// response re-syncs `checked`, which drives the visible checkbox back to truth.
+/// An unidirectional suspend/bury toggle, rendered as a daisyUI `toggle`. This is
+/// **purely reflective**: it has no writable state of its own — the checked state
+/// comes only from the `checked` signal (derived from the core's `ViewModel`),
+/// and a click emits a *directional* event via `on_toggle` (suspend vs unsuspend,
+/// bury vs unbury). The core's response re-syncs `checked`, which drives the
+/// visible toggle back to truth.
 ///
-/// We deliberately render a **visible native checkbox** and mirror state onto its
-/// `.checked` property via a `NodeRef` + `Effect` (rather than `prop:checked`,
-/// which only sets the *attribute* once and diverges after the first user click).
-/// A visible control avoids the invisible-overlay click-delivery failures that
-/// broke the earlier `opacity: 0` wrapper. No `thaw::Switch` because that is a
-/// controlled component that writes back into a writable `Model<bool>` — the
-/// shadow state we're explicitly avoiding.
+/// State is mirrored onto the input's `.checked` *property* via a `NodeRef` +
+/// `Effect` (the property — not the attribute — is what the browser uses after
+/// any interaction), so the toggle re-syncs on every `checked` change and across
+/// card selections.
 #[component]
 fn CardSwitch(
     checked: Signal<bool>,
     label: &'static str,
     on_toggle: impl Fn() + 'static,
+    #[prop(optional)] disabled: Signal<bool>,
 ) -> impl IntoView {
     let input_ref = NodeRef::<leptos::html::Input>::new();
 
@@ -1461,66 +1435,37 @@ fn CardSwitch(
 
     view! {
         <label class="card-browser__switch">
-            <input type="checkbox" node_ref=input_ref on:click=move |_| on_toggle() />
+            <input
+                type="checkbox"
+                class="toggle"
+                node_ref=input_ref
+                disabled=disabled
+                on:click=move |_| on_toggle()
+            />
             <span class="card-browser__switch-label">{label}</span>
         </label>
     }
 }
 
-/// A collapsible filter branch in the card browser's sidebar, styled like thaw's
-/// `Tree`/`TreeItem` (`.thaw-tree-item--branch` with a layout row and expand
-/// chevron). A plain `fn` (not `#[component]`) so it sits inline in the
-/// reactive `view!` and re-renders when its data (e.g. the async-loaded note
-/// types) arrives — a `#[component]` here would memoize on its reactive signal
-/// props only and keep stale children.
-fn filter_branch(
-    id: &'static str,
-    label: &'static str,
-    open_items: RwSignal<HashSet<String>>,
-    leaves: impl IntoView,
-) -> impl IntoView {
-    let is_open = move || open_items.get().contains(id);
-
+/// A collapsible filter category in the browser sidebar, rendered as a daisyUI
+/// `menu` submenu (`<details>`/`<summary>`). Expansion is native (no signal
+/// needed — the browser tracks the `<details>` `open` state), which is exactly
+/// what the "collapsible submenu" pattern wants. A plain `fn` (not
+/// `#[component]`) so it sits inline in the reactive `view!` and re-renders when
+/// its data (e.g. the async-loaded note types) arrives.
+fn filter_branch(label: &'static str, leaves: impl IntoView) -> impl IntoView {
     view! {
-        <div class="thaw-tree-item thaw-tree-item--branch" role="treeitem">
-            <div
-                class="thaw-tree-item-layout"
-                on:click=move |_| {
-                    open_items.update(|set| {
-                        if set.contains(id) {
-                            set.remove(id);
-                        } else {
-                            set.insert(id.to_string());
-                        }
-                    });
-                }
-            >
-                <div class="thaw-tree-item-layout__expand-icon">
-                    <svg
-                        style=move || {
-                            if is_open() { "transform: rotate(90deg)".to_string() } else { "transform: rotate(0deg)".to_string() }
-                        }
-                        fill="currentColor"
-                        aria-hidden="true"
-                        width="12"
-                        height="12"
-                        viewBox="0 0 12 12"
-                        xmlns="http://www.w3.org/2000/svg"
-                    >
-                        <path d="M4.65 2.15a.5.5 0 0 0 0 .7L7.79 6 4.65 9.15a.5.5 0 1 0 .7.7l3.5-3.5a.5.5 0 0 0 0-.7l-3.5-3.5a.5.5 0 0 0-.7 0Z" fill="currentColor"></path>
-                    </svg>
-                </div>
-                <div class="thaw-tree-item-layout__main">{label}</div>
-            </div>
-            <div class="thaw-subtree card-browser__leaves" hidden=move || !is_open()>
-                {leaves}
-            </div>
-        </div>
+        <li>
+            <details>
+                <summary>{label}</summary>
+                <ul>{leaves}</ul>
+            </details>
+        </li>
     }
 }
 
-/// A single selectable filter leaf (a native `<button>`), styled like thaw's
-/// leaf `TreeItem` (`.thaw-tree-item--leaf`), highlighted when active.
+/// A single selectable filter leaf, rendered as a daisyUI `menu` item (native
+/// `<button>`), highlighted with `menu-active` when selected.
 fn filter_leaf(
     active: bool,
     value: String,
@@ -1528,149 +1473,83 @@ fn filter_leaf(
     on_select: impl Fn(String) + 'static,
 ) -> impl IntoView {
     view! {
-        <div class="thaw-tree-item thaw-tree-item--leaf" role="treeitem">
-            <div
-                class="thaw-tree-item-layout"
-                class:card-browser__leaf--active=active
-                on:click=move |_| on_select(value.clone())
-            >
-                <div class="thaw-tree-item-layout__main">{label}</div>
-            </div>
-        </div>
+        <li>
+            <button class:menu-active=active on:click=move |_| on_select(value.clone())>
+                {label}
+            </button>
+        </li>
     }
 }
 
-/// Renders the deck hierarchy as a nested, selectable tree inside the filter
-/// sidebar. Unlike the other filter categories (flat leaf lists), decks have a
-/// real parent/child structure (from `DeckSummary.children`), so each branch node
-/// is **both** selectable (clicking the label filters to that deck) **and**
-/// expandable (clicking the chevron reveals its subdecks). Leaves are plain
-/// selectable rows. Keys the per-node open state as `"deck-node-{id}"` to avoid
-/// colliding with the top-level category ids (e.g. `"decks"`, `"note-types"`).
+/// Renders the deck hierarchy as nested daisyUI `menu` submenus. A deck with
+/// children is an expandable `<details>`/`<summary>` (the `<summary>` is plain
+/// text, so daisyUI's chevron renders exactly like its docs). Because the
+/// summary toggles the submenu (it can't also be a filter), the parent deck's
+/// own selectable entry is rendered as the **first item inside** its submenu
+/// (labelled "this deck only"), followed by its children. A leaf deck is a
+/// plain selectable `<li><button>`.
 fn deck_filter_tree(
     decks: Vec<DeckSummary>,
-    depth: usize,
-    open_items: RwSignal<HashSet<String>>,
     active: RwSignal<String>,
     on_select: impl Fn(String) + Clone + 'static,
 ) -> impl IntoView {
     decks
         .into_iter()
-        .map(|deck| deck_filter_node(deck, depth, open_items, active.clone(), on_select.clone()))
+        .map(|deck| deck_filter_node(deck, active.clone(), on_select.clone()))
         .collect_view()
 }
 
-/// A single deck node in the filter tree. Renders as a branch (with expander)
-/// when it has children, or a leaf otherwise; the node's label is always a
-/// selectable filter entry. Indentation is applied per-level to the row *content*
-/// (the `.thaw-tree-item-layout`) only, so hover/active backgrounds still span
-/// the full sidebar width.
+/// A single deck node in the filter menu.
 fn deck_filter_node(
     deck: DeckSummary,
-    depth: usize,
-    open_items: RwSignal<HashSet<String>>,
     active: RwSignal<String>,
     on_select: impl Fn(String) + Clone + 'static,
 ) -> impl IntoView {
-    let id = deck.id;
-    let id_str = id.to_string();
+    let id_str = deck.id.to_string();
+    let title = deck.title;
     let has_children = !deck.children.is_empty();
     let children = deck.children;
-    let node_key = format!("deck-node-{id}");
-    // `is_open` borrows `node_key`; clone it for the closures that also reference
-    // the key (the `toggle_open` updater and the `hidden`/style readers).
-    let is_open = {
-        let node_key = node_key.clone();
-        move || open_items.get().contains(&node_key)
-    };
-    let is_open_style = is_open.clone();
-    let is_open_hidden = is_open.clone();
-    // Indent the row content one step per level below the "Decks" header.
-    let indent = format!("padding-left: calc(var(--spacingHorizontalXXL, 24px) * {})", depth + 1);
 
-    let toggle_open = {
-        let open_items = open_items;
-        let node_key = node_key.clone();
-        move |_| {
-            open_items.update(|set| {
-                if set.contains(&node_key) {
-                    set.remove(&node_key);
-                } else {
-                    set.insert(node_key.clone());
-                }
-            });
-        }
-    };
-
-    let select = {
-        let on_select = on_select.clone();
+    // Active-state reader for this deck (used by the selectable entries).
+    let is_active = {
         let id_str = id_str.clone();
-        move |_| on_select(id_str.clone())
+        move || active.get() == id_str
     };
 
-    // The active-state reader borrows `id_str`; give the `select` closure its own
-    // clone so the two don't fight over ownership.
-    let active_id = id_str.clone();
-
-    view! {
-        <div class="thaw-tree-item thaw-tree-item--branch" role="treeitem">
-            <div
-                class="thaw-tree-item-layout"
-                class:card-browser__leaf--active=move || active.get() == active_id
-                style=indent
-            >
-                {if has_children {
-                    view! {
-                        <div
-                            class="thaw-tree-item-layout__expand-icon"
-                            on:click=toggle_open
-                        >
-                            <svg
-                                style=move || {
-                                    if is_open_style() { "transform: rotate(90deg)".to_string() } else { "transform: rotate(0deg)".to_string() }
-                                }
-                                fill="currentColor"
-                                aria-hidden="true"
-                                width="12"
-                                height="12"
-                                viewBox="0 0 12 12"
-                                xmlns="http://www.w3.org/2000/svg"
-                            >
-                                <path d="M4.65 2.15a.5.5 0 0 0 0 .7L7.79 6 4.65 9.15a.5.5 0 1 0 .7.7l3.5-3.5a.5.5 0 0 0 0-.7l-3.5-3.5a.5.5 0 0 0-.7 0Z" fill="currentColor"></path>
-                            </svg>
-                        </div>
-                    }
-                    .into_any()
-                } else {
-                    view! {
-                        <div class="thaw-tree-item-layout__expand-icon-holder" aria-hidden="true"></div>
-                    }
-                    .into_any()
-                }}
-                <div
-                    class="thaw-tree-item-layout__main"
-                    on:click=select
-                >
-                    {deck.title}
-                </div>
-            </div>
-            {if has_children {
-                view! {
-                    <div class="thaw-subtree" hidden=move || !is_open_hidden()>
-                        {deck_filter_tree(
-                            children,
-                            depth + 1,
-                            open_items,
-                            active.clone(),
-                            on_select,
-                        )}
-                    </div>
-                }
-                .into_any()
-            } else {
-                ().into_any()
-            }}
-        </div>
+    if has_children {
+        let select_self = on_select.clone();
+        let self_id = id_str.clone();
+        // The parent's own "filter to this deck only" entry, shown first inside
+        // the expanded submenu (the summary itself only toggles the submenu).
+        let self_item = view! {
+            <li>
+                <button class:menu-active=is_active.clone() on:click=move |_| select_self(self_id.clone())>
+                    {title.clone()}
+                    <span class="card-browser__deck-self">{"this deck only"}</span>
+                </button>
+            </li>
+        };
+        view! {
+            <li>
+                <details>
+                    <summary>{title}</summary>
+                    <ul>
+                        {self_item}
+                        {deck_filter_tree(children, active.clone(), on_select)}
+                    </ul>
+                </details>
+            </li>
+        }
+        .into_any()
+    } else {
+        view! {
+            <li>
+                <button class:menu-active=is_active on:click=move |_| on_select(id_str.clone())>
+                    {title}
+                </button>
+            </li>
+        }
+        .into_any()
     }
 }
 
@@ -1767,27 +1646,15 @@ fn study_screen(
 fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
     view! {
         <div class="thaw-study-counts">
-            <Badge
-                appearance=BadgeAppearance::Tint
-                color=BadgeColor::Brand
-                size=BadgeSize::Small
-            >
+            <UiBadge color=UiBadgeColor::Brand>
                 {counts.new_count.to_string()}
-            </Badge>
-            <Badge
-                appearance=BadgeAppearance::Tint
-                color=BadgeColor::Danger
-                size=BadgeSize::Small
-            >
+            </UiBadge>
+            <UiBadge color=UiBadgeColor::Danger>
                 {(counts.learning_count + counts.relearning_count).to_string()}
-            </Badge>
-            <Badge
-                appearance=BadgeAppearance::Tint
-                color=BadgeColor::Success
-                size=BadgeSize::Small
-            >
+            </UiBadge>
+            <UiBadge color=UiBadgeColor::Success>
                 {counts.review_count.to_string()}
-            </Badge>
+            </UiBadge>
         </div>
     }
 }
@@ -1807,67 +1674,55 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
         }
     };
 
-    // Flag: 0-7, seeded with the card's current flag. thaw's `Select` exposes no
-    // user `on:change` hook, so watch the signal and forward on change (guarding
-    // against the initial render).
+    // Flag: 0-7, seeded with the card's current flag. A native `<select>` with an
+    // `on:change` handler forwards the chosen flag straight to the core (no thaw
+    // `Select` workaround needed — thaw's `Select` had no user-facing `on:change`).
     let flag = RwSignal::new(card.flag.to_string());
-    let last_flag = StoredValue::new(card.flag);
-    Effect::new(move |_| {
-        if let Ok(f) = flag.get().parse::<i64>() {
-            if last_flag.get_value() != f {
-                last_flag.set_value(f);
-                set_event.set(Event::FlagCard { flag: f as i32 });
-            }
-        }
-    });
 
     view! {
         <div class="study-actions">
             {if card.buried {
                 view! {
-                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnburyCard)>
+                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnburyCard)>
                         "Unbury"
-                    </Button>
+                    </UiButton>
                 }
                 .into_any()
             } else {
                 view! {
-                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryCard)>
+                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryCard)>
                         "Bury"
-                    </Button>
+                    </UiButton>
                 }
                 .into_any()
             }}
-            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryNote)>
+            <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::BuryNote)>
                 "Bury note"
-            </Button>
+            </UiButton>
             {if card.suspended {
                 view! {
-                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnsuspendCard)>
+                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::UnsuspendCard)>
                         "Unsuspend"
-                    </Button>
+                    </UiButton>
                 }
                 .into_any()
             } else {
                 view! {
-                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendCard)>
+                    <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendCard)>
                         "Suspend"
-                    </Button>
+                    </UiButton>
                 }
                 .into_any()
             }}
-            <Button appearance=ButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendNote)>
+            <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| set_event.set(Event::SuspendNote)>
                 "Suspend note"
-            </Button>
+            </UiButton>
 
             <span class="study-actions__group">
-                <Input
-                    value=days
-                    placeholder="days"
-                    input_type=Signal::derive(|| InputType::Number) />
-                <Button appearance=ButtonAppearance::Subtle on_click=reschedule>
+                <input class="input input-bordered" type="number" bind:value=days placeholder="days" />
+                <UiButton appearance=UiButtonAppearance::Subtle on_click=reschedule>
                     "Reschedule"
-                </Button>
+                </UiButton>
             </span>
 
             <span class="study-actions__group">
@@ -1878,7 +1733,17 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
                         format!("background-color: {}", flag_color(f))
                     }
                 ></span>
-                <Select value=flag default_value=card.flag.to_string() size=SelectSize::Medium>
+                <select
+                    class="select select-bordered"
+                    prop:value=move || flag.get()
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        flag.set(value.clone());
+                        if let Ok(f) = value.parse::<i64>() {
+                            set_event.set(Event::FlagCard { flag: f as i32 });
+                        }
+                    }
+                >
                     <option value="0">"No flag"</option>
                     <option value="1" style="color: red">"Red"</option>
                     <option value="2" style="color: orange">"Orange"</option>
@@ -1887,7 +1752,7 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
                     <option value="5" style="color: pink">"Pink"</option>
                     <option value="6" style="color: turquoise">"Turquoise"</option>
                     <option value="7" style="color: purple">"Purple"</option>
-                </Select>
+                </select>
             </span>
         </div>
     }
@@ -1951,24 +1816,12 @@ fn deck_options_panel(
         set_event.set(Event::DeckOptionsListRequested);
     });
 
-    // The assign picker: a `Select` bound to the deck's current preset id. On a
-    // user change, forward `Event::DeckOptionsAssign`. `last_assigned` guards
-    // against firing on the initial render (the core re-fetches after assignment,
-    // so `options.id` then matches the newly-assigned id).
+    // The assign picker: a native `<select>` showing the deck's current preset
+    // id. On a user change, forward `Event::DeckOptionsAssign` directly (no thaw
+    // `Select`/`Effect` workaround needed — the `on:change` only fires on a real
+    // user change). The core re-fetches after assignment, so `options.id` then
+    // matches the newly-assigned id.
     let assign_selection = RwSignal::new(options.id.to_string());
-    let last_assigned = StoredValue::new(options.id);
-    Effect::new(move |_| {
-        let sel = assign_selection.get();
-        if let Ok(id) = sel.parse::<i64>() {
-            if last_assigned.get_value() != id {
-                last_assigned.set_value(id);
-                set_event.set(Event::DeckOptionsAssign {
-                    deck_id,
-                    options_id: id,
-                });
-            }
-        }
-    });
 
     let on_save = move |_| {
         local_error.set(None);
@@ -2010,14 +1863,27 @@ fn deck_options_panel(
                 view! {
                     <div class="deck-options-assign">
                         <span class="deck-options-assign__label">"Preset"</span>
-                        <Select value=assign_selection default_value=options.id.to_string() size=SelectSize::Medium>
+                        <select
+                            class="select select-bordered"
+                            prop:value=move || assign_selection.get()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                assign_selection.set(value.clone());
+                                if let Ok(id) = value.parse::<i64>() {
+                                    set_event.set(Event::DeckOptionsAssign {
+                                        deck_id,
+                                        options_id: id,
+                                    });
+                                }
+                            }
+                        >
                             <option value="0">"Default"</option>
                             {presets.iter().map(|p| {
                                 let id = p.id.to_string();
                                 let name = p.name.clone();
                                 view! { <option value=id>{name}</option> }
                             }).collect_view()}
-                        </Select>
+                        </select>
                         {presets_error.map(|err| view! {
                             <span class="deck-options__error">{err}</span>
                         })}
@@ -2110,9 +1976,9 @@ fn deck_options_panel(
                 }}
                 {if can_edit {
                     view! {
-                        <Button appearance=ButtonAppearance::Primary on_click=on_save>
+                        <UiButton appearance=UiButtonAppearance::Primary on_click=on_save>
                             "Save"
-                        </Button>
+                        </UiButton>
                     }
                     .into_any()
                 } else {
@@ -2281,7 +2147,7 @@ fn field_row(label: &'static str, children: Children) -> impl IntoView {
 fn number_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <Input value=value placeholder=placeholder input_type=Signal::derive(|| InputType::Number) />
+            <input class="input input-bordered" type="number" bind:value=value placeholder=placeholder />
         </FieldRow>
     }
 }
@@ -2291,7 +2157,7 @@ fn number_field(label: &'static str, value: RwSignal<String>, placeholder: &'sta
 fn text_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <Input value=value placeholder=placeholder />
+            <input class="input input-bordered" bind:value=value placeholder=placeholder />
         </FieldRow>
     }
 }
@@ -2301,7 +2167,7 @@ fn text_field(label: &'static str, value: RwSignal<String>, placeholder: &'stati
 fn toggle_field(label: &'static str, checked: RwSignal<bool>) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <Switch checked=checked />
+            <input type="checkbox" class="toggle" bind:checked=checked />
         </FieldRow>
     }
 }
@@ -2315,11 +2181,11 @@ fn select_field(
 ) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <Select value=value size=SelectSize::Medium>
+            <select class="select select-bordered" bind:value=value>
                 {options.iter().map(|(val, lbl)| {
-                    view! { <option value=*val selected=move || value.get() == *val>{*lbl}</option> }
+                    view! { <option value=*val>{*lbl}</option> }
                 }).collect_view()}
-            </Select>
+            </select>
         </FieldRow>
     }
 }
@@ -2335,11 +2201,11 @@ fn easy_days_field(days: [RwSignal<String>; 7]) -> impl IntoView {
                 view! {
                     <div class="deck-options-easy-day">
                         <span class="deck-options-easy-day__label">{*name}</span>
-                        <Select value=d default_value=d.get_untracked() size=SelectSize::Medium>
+                        <select class="select select-bordered" bind:value=d>
                             {EASY_DAY_OPTIONS.iter().map(|(val, lbl)| {
                                 view! { <option value=*val>{*lbl}</option> }
                             }).collect_view()}
-                        </Select>
+                        </select>
                     </div>
                 }
             }).collect_view()}
@@ -2478,24 +2344,18 @@ fn study_card_view(
                     if revealed.get() {
                         view! {
                             <div class="thaw-study-answers">
-                                {answer_button(
-                                    rating.clone(),
-                                    interval_for.clone(),
-                                    "thaw-study-answers__again",
-                                    1,
-                                    "Again",
-                                )}
-                                {answer_button(rating.clone(), interval_for.clone(), "", 2, "Hard")}
-                                {answer_button(rating.clone(), interval_for.clone(), "", 3, "Good")}
-                                {answer_button(rating.clone(), interval_for.clone(), "", 4, "Easy")}
+                                {answer_button(rating.clone(), interval_for.clone(), 1, "Again")}
+                                {answer_button(rating.clone(), interval_for.clone(), 2, "Hard")}
+                                {answer_button(rating.clone(), interval_for.clone(), 3, "Good")}
+                                {answer_button(rating.clone(), interval_for.clone(), 4, "Easy")}
                             </div>
                         }
                         .into_any()
                     } else {
                         view! {
-                            <Button appearance=ButtonAppearance::Primary on_click=move |_| revealed.set(true)>
+                            <UiButton appearance=UiButtonAppearance::Primary on_click=move |_| revealed.set(true)>
                                 "Show answer"
-                            </Button>
+                            </UiButton>
                         }
                         .into_any()
                     }
@@ -2514,11 +2374,13 @@ fn card_html(body: &str, styling: &str) -> String {
     )
 }
 
-/// A single answer button (label + predicted interval underneath).
+/// A single answer button (label + predicted interval underneath). The "Again"
+/// answer (rating 1) renders as a danger/`btn-error` button; the others are
+/// primary. Using `UiButtonAppearance::Danger` removes the old `!important` CSS
+/// override hack (`thaw-study-answers__again`).
 fn answer_button<R, I>(
     rating: R,
     interval_for: I,
-    class: &'static str,
     n: i32,
     label: &'static str,
 ) -> impl IntoView
@@ -2527,12 +2389,13 @@ where
     I: Fn(i32) -> Option<i64> + Clone,
 {
     let interval = interval_for(n).map(format_interval).unwrap_or_default();
+    let appearance = if n == 1 { UiButtonAppearance::Danger } else { UiButtonAppearance::Primary };
 
     view! {
         <div class="thaw-study-answer">
-            <Button class=class appearance=ButtonAppearance::Primary on_click=move |_| rating(n)>
+            <UiButton appearance=appearance on_click=move |_| rating(n)>
                 {label}
-            </Button>
+            </UiButton>
             <span class="thaw-study-answer__interval">{interval}</span>
         </div>
     }
@@ -2567,9 +2430,9 @@ fn study_done_view(set_event: WriteSignal<Event>) -> impl IntoView {
     view! {
         <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
             <p style="color: #888;">"Nothing due right now. Nice work!"</p>
-            <Button appearance=ButtonAppearance::Primary on_click=move |_| set_event.set(Event::StartStudy)>
+            <UiButton appearance=UiButtonAppearance::Primary on_click=move |_| set_event.set(Event::StartStudy)>
                 "Check again"
-            </Button>
+            </UiButton>
         </div>
     }
 }
@@ -2626,7 +2489,7 @@ fn deck_item(
                                 });
                             }
                         >
-                            <svg
+                            <span
                                 class="thaw-deck-row__chevron"
                                 style=move || {
                                     if open_items.get().contains(&id) {
@@ -2635,15 +2498,9 @@ fn deck_item(
                                         "transform: rotate(0deg)".to_string()
                                     }
                                 }
-                                fill="currentColor"
-                                aria-hidden="true"
-                                width="12"
-                                height="12"
-                                viewBox="0 0 12 12"
-                                xmlns="http://www.w3.org/2000/svg"
                             >
-                                <path d="M4.65 2.15a.5.5 0 0 0 0 .7L7.79 6 4.65 9.15a.5.5 0 1 0 .7.7l3.5-3.5a.5.5 0 0 0 0-.7l-3.5-3.5a.5.5 0 0 0-.7 0Z" fill="currentColor"></path>
-                            </svg>
+                                <Icon glyph=LucideGlyph::ChevronRight size="12" />
+                            </span>
                         </button>
                     }
                     .into_any()
@@ -2681,27 +2538,15 @@ fn deck_item(
                     .into_any()
                 }}
             </div>
-            <Badge
-                appearance=BadgeAppearance::Tint
-                color=deck_badge_color(deck.new_count, BadgeColor::Brand)
-                size=BadgeSize::Small
-            >
+            <UiBadge color=deck_badge_color(deck.new_count, UiBadgeColor::Brand)>
                 {deck.new_count.to_string()}
-            </Badge>
-            <Badge
-                appearance=BadgeAppearance::Tint
-                color=deck_badge_color(deck.learning_count, BadgeColor::Danger)
-                size=BadgeSize::Small
-            >
+            </UiBadge>
+            <UiBadge color=deck_badge_color(deck.learning_count, UiBadgeColor::Danger)>
                 {deck.learning_count.to_string()}
-            </Badge>
-            <Badge
-                appearance=BadgeAppearance::Tint
-                color=deck_badge_color(deck.review_count, BadgeColor::Success)
-                size=BadgeSize::Small
-            >
+            </UiBadge>
+            <UiBadge color=deck_badge_color(deck.review_count, UiBadgeColor::Success)>
                 {deck.review_count.to_string()}
-            </Badge>
+            </UiBadge>
             <div class="thaw-deck-row__actions">
                 {if studyable {
                     let on_navigate = on_navigate;
@@ -2712,7 +2557,7 @@ fn deck_item(
                             title="Deck options"
                             on:click=move |_| on_navigate.run((id, DeckView::Options))
                         >
-                            <Icon icon=SETTINGS_16_REGULAR width="1em" height="1em" />
+                            <Icon glyph=LucideGlyph::Settings size="16" />
                         </button>
                     }
                     .into_any()
@@ -2735,9 +2580,9 @@ fn deck_item(
 /// The badge colour for a due-count cell: a zero count is shown in a neutral
 /// grey (`Informative`), otherwise the per-state colour (new = blue, learning =
 /// red, review = green).
-fn deck_badge_color(count: i64, themed: BadgeColor) -> BadgeColor {
+fn deck_badge_color(count: i64, themed: UiBadgeColor) -> UiBadgeColor {
     if count == 0 {
-        BadgeColor::Informative
+        UiBadgeColor::Informative
     } else {
         themed
     }
