@@ -593,8 +593,8 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
             <div class="thaw-deck-header" role="row">
                 <span class="thaw-deck-col">"Deck"</span>
                 <span class="thaw-deck-col">"New"</span>
-                <span class="thaw-deck-col">"Learning"</span>
-                <span class="thaw-deck-col">"Review"</span>
+                <span class="thaw-deck-col">"Learn"</span>
+                <span class="thaw-deck-col">"Due"</span>
             </div>
             <div class="thaw-deck-tree" role="tree">
                 {deck_subtree(decks, 0, open_items, on_navigate)}
