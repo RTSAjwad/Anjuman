@@ -208,12 +208,145 @@ between the core agent and the shell agent.
 
 ## 8. Per-shell gotchas (live here, not in the shared docs)
 
-- **Leptos** — CSR-only single binary (no `lib` target). Wraps the tree in thaw's
-  `<ConfigProvider>`; prefers plain `<div>` for layout (nesting thaw components
-  that return `impl IntoView` inside `Space`/`Card` triggers an `IntoFragment`
-  error). thaw's `Input` is driven by a `Model<String>` (an `RwSignal` via its
-  `value` prop), not an `on_change` callback. Uses `gloo-net` + `gloo-storage`.
+- **Leptos** — CSR-only single binary (no `lib` target). Uses Tailwind + daisyUI
+  (see §9 for the styling contract) with `gloo-net` + `gloo-storage`.
 - **SwiftUI / WinUI / Compose** — FFI shells; see [`CLIENT.md`](./CLIENT.md) §BoltFFI for
   the binding + typegen flow (`boltffi generate <lang>`).
 
 Add a section here for each shell as it is implemented.
+
+## 9. CSS scoping & self-containment (Leptos + Tailwind/daisyUI)
+
+The Leptos shell styles with **Tailwind utilities + daisyUI component classes**,
+plus a small shell-local stylesheet (`index.html`). This section records how to
+make reusable components render *consistently* regardless of where they are
+mounted — the failure mode that produced the "identical markup, different
+rendering" bug.
+
+### 9.1 Two distinct CSS mechanisms (don't conflate them)
+
+1. **Inheritance.** Certain properties inherit *through the DOM tree*: `color`,
+   `font-*`, `text-align`, `visibility`, and **all CSS custom properties**
+   (`--foo`). This is real inheritance and it is a *feature*: it is why a
+   component picks up the active daisyUI theme tokens (`--color-base-content`,
+   etc.) with no effort. Layout/box properties (`display`, `position`, `margin`,
+   `padding`, `width`, `overflow`, `z-index`, flex settings) **do not inherit**.
+
+2. **Selector reach-in.** Leptos components compile to plain DOM elements with
+   **no DOM isolation**. A CSS selector matches ancestors/descendants across
+   component boundaries, so a global reset (`button { … }`) or a descendant rule
+   (`nav li { … }`) reaches *into* a component only when that component is
+   mounted inside the matching ancestor. This — not inheritance — is what made
+   identical markup render differently in the study navbar vs. the card
+   inspector.
+
+### 9.2 Why daisyUI semantic classes cause drift
+
+DaisyUI's "semantic" components (`btn`, `menu`, `dropdown`, `navbar`, …) are
+pre-built class bundles that fight idiomatic Leptos/Tailwind in concrete ways:
+
+- **Mega-selectors with descendant combinators** (`menu :where(li > button)`,
+  `dropdown :focus-within .dropdown-content`). They reach into components and are
+  coupled to internal DOM structure; a one-level nesting drift silently kills
+  the styling.
+- **`:where()` zero specificity + `@layer` ordering.** DaisyUI zeroes its
+  specificity so *you* can override it, but that also means Tailwind **preflight**
+  (bare `button`/`ul`/`li`/`summary` resets — normal type-selector specificity,
+  unlayered) beats DaisyUI's `:where(...)`-zeroed rules. Example: preflight's
+  `summary { display: list-item }` clobbers daisyUI's `summary { display: grid }`.
+- **Semantic classes encode layout, not just look.** `dropdown` sets
+  `display: inline-block`, `menu` sets `display: flex`, `navbar` sets
+  `display: flex` + `min-height`. Two classes on one element collide over the
+  same `display` property, and the layout *invariant* is coupled to the skin.
+- **State as CSS pseudo-classes.** Dropdown/menu open state is driven by
+  `:focus-within`, `details[open]`, or `.dropdown-open` — CSS state, not app
+  state. This fights Leptos's model where a `RwSignal<bool>` is the single source
+  of truth (and is exactly why the native `popover`/`popovertarget` open/close
+  went stale).
+- **Stringly-typed variants.** `btn btn-ghost btn-square` is a string of
+  modifier tokens; a typo silently no-ops.
+
+What daisyUI does **idiomatically**: token-driven theming
+(`--color-base-content`, `--color-neutral`, …) and composable visual utilities.
+Keep those.
+
+### 9.3 The self-containment contract (the rule going forward)
+
+For any **reusable `#[component]`**, hold these invariants so it renders
+identically in any screen:
+
+1. **Namespace the root.** Give the component a single prefix class (e.g.
+   `.flag-dropdown`) and style its *structural* properties behind that class.
+2. **Own the structural spine.** Re-assert `position`, `display`, flex, sizing,
+   and `z-index` **unlayered and non-`:where()`** (specificity `> 0`) in the shell
+   stylesheet. Unlayered and non-`:where()` beats daisyUI's layered/`:where()`
+   rules *and* global resets.
+3. **Never style bare global elements inside a component.** If the component
+   renders a `<button>`, style `.flag-dropdown__item`, not `button`. This makes
+   it immune to `sanitize.css`/preflight and to other screens' element rules.
+4. **Drives open/close (and any state) from a Leptos signal**, not from CSS
+   pseudo-classes (`:focus-within`) or the native `popover` toggle. Bind
+   visibility via `style:display` (or `class:` on a namespaced modifier).
+5. **Floating UI owns its positioned ancestor.** A dropdown/menu/tooltip must
+   (a) be anchored to its own `position: relative` wrapper that carries that
+   invariant explicitly (see the `.flag-dropdown` wrapper), or (b) live in the
+   top layer. Never rely on a daisyUI wrapper to supply `position: relative`.
+6. **Use Tailwind utilities for values, namespaced classes for structure.**
+   `p-2`, `rounded-box`, `flex` are fine as utilities; the *structural
+   invariants* a component must never lose live only in its namespaced class.
+
+**Litmus test:** *"If I drop this markup into an unrelated screen that has
+`sanitize.css` + Tailwind preflight + a flex row + `overflow: hidden`, does its
+layout still hold?"* If the answer depends on the answer, the component is not
+self-contained yet.
+
+### 9.4 Reference
+
+The canonical example is `FlagDropdown` in `client/shells/leptos/src/app.rs` and
+its `.flag-dropdown` / `.flag-dropdown__menu` rules in
+`client/shells/leptos/index.html`. It owns `position: relative` + `display` on a
+dedicated wrapper, drives open/close from an `RwSignal<bool>`, and styles its
+items via `.flag-dropdown__menu li > button` (never bare `button`). Reuse that
+pattern for any new floating or layout-sensitive component.
+
+### 9.5 Primitive vs. skin — what we own and what daisyUI supplies
+
+We do **not** use an external headless/unstyled component library. Every reusable
+visual unit is an **owned Leptos primitive** in `ui.rs` (button, badge, pagination,
+and — as they graduate — table, tabs, tree node, toggle, input group). Call sites
+**never** spell raw daisyUI class strings; they use the primitive + a small typed
+enum for the visual variation (e.g. `UiButtonAppearance`, `UiBadgeColor`).
+
+There are two distinct tracks, because daisyUI mixes structure and skin (see 9.2):
+
+- **Structure/state — we own it.** Any primitive that holds a *structural
+  invariant* (positioning, `display`, flex, `z-index`) or *state* (open/close,
+  selection, disabled logic) owns that markup and styling outright, unlayered and
+  non-`:where()`, per 9.3. Examples: `FlagDropdown`, the pagination layout, the
+  filter tree, the card/note inspectors. daisyUI supplies no structural class here.
+
+- **Appearance (skin) — we consume it through a typed primitive, never raw.**
+  Where the correct "look" is only available from a daisyUI *visual* bundle
+  (`.btn`, `.badge` — which carry colour/radius/padding/shadow that is impractical
+  to reproduce by hand without essentially re-cloning daisyUI's CSS), the
+  primitive keeps that visual behind a typed enum and **owns the behavior**
+  (`<button type=…>`, `disabled`, ARIA, events). The daisyUI visual class is not
+  spelled at call sites; it is centralized in `ui.rs`.
+
+- **Never re-clone daisyUI's CSS.** We do not hand-roll a parallel `.btn`/
+  `.badge` replacement. If a look is only reasonably available from daisyUI's
+  own class, we wrap it in a primitive + enum rather than duplicating the ruleset.
+
+- **Centralize the visual→class mapping.** The typed enum (`UiButtonAppearance`,
+  `UiBadgeColor`) is the single place that names a daisyUI visual class. Changing
+  the skin is a one-line edit in `ui.rs`, not a sweep across `app.rs`.
+
+- **Keep primitives behavioral, not anemic or over-built.** Own
+  semantics/ARIA/events/state and (where required) the structural invariant; add
+  no structural daisyUI class, and do not build a parallel API larger than what we
+  actually use.
+
+**Summary:** owned primitives + typed enums for everything reusable; daisyUI
+visual classes are consumed *only* behind those primitives (never raw at call
+sites); structural/state invariants are owned outright and never delegated to a
+daisyUI class.
