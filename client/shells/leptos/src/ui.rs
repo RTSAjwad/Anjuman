@@ -206,3 +206,31 @@ pub fn UiTable(children: Children) -> impl IntoView {
         </div>
     }
 }
+
+// ---------------------------------------------------------------------------
+// Toggle
+// ---------------------------------------------------------------------------
+
+/// Owned, unidirectional toggle switch. Owns the `<input type="checkbox">` + the
+/// daisyUI `toggle` *visual* skin, and drives its `checked` **property** from a
+/// reactive `checked` signal (`prop:checked`) — the idiomatic Leptos way to keep
+/// the visual in sync after interaction, instead of the former `NodeRef`+`Effect`
+/// mirroring hack. A click forwards `on_toggle` (a directional event, e.g.
+/// suspend vs unsuspend), and the core's re-sync of `checked` drives the visual
+/// back to truth. `disabled` is an optional signal.
+#[component]
+pub fn UiToggle(
+    checked: Signal<bool>,
+    on_toggle: impl Fn() + 'static,
+    #[prop(optional)] disabled: Signal<bool>,
+) -> impl IntoView {
+    view! {
+        <input
+            type="checkbox"
+            class="toggle"
+            prop:checked=move || checked.get()
+            disabled=disabled
+            on:click=move |_| on_toggle()
+        />
+    }
+}

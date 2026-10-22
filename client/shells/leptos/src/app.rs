@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiPagination, UiTable};
+use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiPagination, UiTable, UiToggle};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
@@ -1457,17 +1457,14 @@ fn NoteInspector(
     }
 }
 
-/// An unidirectional suspend/bury toggle, rendered as a daisyUI `toggle`. This is
-/// **purely reflective**: it has no writable state of its own — the checked state
-/// comes only from the `checked` signal (derived from the core's `ViewModel`),
-/// and a click emits a *directional* event via `on_toggle` (suspend vs unsuspend,
-/// bury vs unbury). The core's response re-syncs `checked`, which drives the
-/// visible toggle back to truth.
+/// An unidirectional suspend/bury toggle. This is **purely reflective**: it has
+/// no writable state of its own — the checked state comes only from the `checked`
+/// signal (derived from the core's `ViewModel`), and a click emits a *directional*
+/// event via `on_toggle` (suspend vs unsuspend, bury vs unbury). The core's
+/// response re-syncs `checked`, which drives the visible toggle back to truth.
 ///
-/// State is mirrored onto the input's `.checked` *property* via a `NodeRef` +
-/// `Effect` (the property — not the attribute — is what the browser uses after
-/// any interaction), so the toggle re-syncs on every `checked` change and across
-/// card selections.
+/// The toggle itself is the owned `UiToggle` primitive (signal-driven
+/// `prop:checked`, no DOM mirroring).
 #[component]
 fn CardSwitch(
     checked: Signal<bool>,
@@ -1475,26 +1472,9 @@ fn CardSwitch(
     on_toggle: impl Fn() + 'static,
     #[prop(optional)] disabled: Signal<bool>,
 ) -> impl IntoView {
-    let input_ref = NodeRef::<leptos::html::Input>::new();
-
-    // Mirror core truth onto the DOM's `checked` *property* every time `checked`
-    // changes (across cards too). The property — not the attribute — is what the
-    // browser uses after any interaction.
-    Effect::new(move |_| {
-        if let Some(input) = input_ref.get() {
-            let _ = input.set_checked(checked.get());
-        }
-    });
-
     view! {
         <label class="card-browser__switch">
-            <input
-                type="checkbox"
-                class="toggle"
-                node_ref=input_ref
-                disabled=disabled
-                on:click=move |_| on_toggle()
-            />
+            <UiToggle checked=checked on_toggle=on_toggle disabled=disabled />
             <span class="card-browser__switch-label">{label}</span>
         </label>
     }
