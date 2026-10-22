@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiPagination};
+use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiPagination, UiTable};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
@@ -375,7 +375,19 @@ pub fn RootComponent() -> impl IntoView {
                                                 </div>
                                                 {study_count_badges(counts)}
                                                 {if let Some(card) = current_card {
-                                                    view! { <StudyActions card=card set_event=set_event /> }.into_any()
+                                                    let flag_signal = Signal::derive(move || {
+                                                        view.get().current_card.as_ref().map(|c| c.flag).unwrap_or(0)
+                                                    });
+                                                    view! {
+                                                        <StudyControls card=card set_event=set_event />
+                                                        <FlagDropdown
+                                                            flag=flag_signal
+                                                            on_select=move |f| {
+                                                                set_event.set(Event::FlagCard { flag: f as i32 });
+                                                            }
+                                                        />
+                                                    }
+                                                    .into_any()
                                                 } else {
                                                     ().into_any()
                                                 }}
@@ -1149,47 +1161,45 @@ fn browser(
                 {match vm_sig.get().route {
                     CurrentRoute::Cards => view! {
                         <div class="card-browser__content">
-                            <div class="card-browser__table">
-                                <table class="table">
-                                    <thead>
-                                        <tr>
-                                            <th>"Card"</th>
-                                            <th>"Deck"</th>
-                                            <th>"State"</th>
-                                            <th>"Flag"</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {move || vm_sig.get().browser_cards.iter().map(|c| {
-                                            let card_id = c.card_id;
-                                            let is_selected = vm_sig.get().browser_selected.as_ref().map(|c| c.card_id) == Some(card_id);
-                                            let front = c.front.clone();
-                                            let deck_title = c.deck_title.clone();
-                                            let state = c.state.clone();
-                                            let flag = c.flag;
-                                            let suspended = c.suspended;
-                                            let buried = c.buried;
-                                            view! {
-                                                <tr
-                                                    class:card-browser__row--selected=is_selected
-                                                    on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
-                                                >
-                                                    <td>
-                                                        <span class="card-browser__front">
-                                                            {front}
-                                                            {if suspended { " (suspended)" } else { "" }}
-                                                            {if buried { " (buried)" } else { "" }}
-                                                        </span>
-                                                    </td>
-                                                    <td>{deck_title}</td>
-                                                    <td>{state}</td>
-                                                    <td>{flag_swatch(flag)}</td>
-                                                </tr>
-                                            }
-                                        }).collect_view()}
-                                    </tbody>
-                                </table>
-                            </div>
+                            <UiTable>
+                                <thead>
+                                    <tr>
+                                        <th>"Card"</th>
+                                        <th>"Deck"</th>
+                                        <th>"State"</th>
+                                        <th>"Flag"</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {move || vm_sig.get().browser_cards.iter().map(|c| {
+                                        let card_id = c.card_id;
+                                        let is_selected = vm_sig.get().browser_selected.as_ref().map(|c| c.card_id) == Some(card_id);
+                                        let front = c.front.clone();
+                                        let deck_title = c.deck_title.clone();
+                                        let state = c.state.clone();
+                                        let flag = c.flag;
+                                        let suspended = c.suspended;
+                                        let buried = c.buried;
+                                        view! {
+                                            <tr
+                                                class:card-browser__row--selected=is_selected
+                                                on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
+                                            >
+                                                <td>
+                                                    <span class="card-browser__front">
+                                                        {front}
+                                                        {if suspended { " (suspended)" } else { "" }}
+                                                        {if buried { " (buried)" } else { "" }}
+                                                    </span>
+                                                </td>
+                                                <td>{deck_title}</td>
+                                                <td>{state}</td>
+                                                <td>{flag_swatch(flag)}</td>
+                                            </tr>
+                                        }
+                                    }).collect_view()}
+                                </tbody>
+                            </UiTable>
 
                             <div class="card-browser__pagination">
                                 <span>{move || vm_sig.get().browser_total.to_string()}{" cards"}</span>
@@ -1208,37 +1218,35 @@ fn browser(
                     .into_any(),
                     CurrentRoute::Notes => view! {
                         <div class="card-browser__content">
-                            <div class="card-browser__table">
-                                <table class="table">
-                                    <thead>
-                                        <tr>
-                                            <th>"Sort field"</th>
-                                            <th>"Note type"</th>
-                                            <th>"Tags"</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {move || vm_sig.get().notes.iter().map(|n| {
-                                            let note_id = n.id;
-                                            let note_type_name = n.note_type_name.clone();
-                                            let sort_field = n.sort_field.clone().unwrap_or_default();
-                                            let tags = n.tags.join(", ");
-                                            view! {
-                                                <tr
-                                                    class:card-browser__row--selected=move || vm_sig.get().notes_selected.as_ref().map(|n| n.id) == Some(note_id)
-                                                    on:click=move |_| set_event.set(Event::NoteBrowserSelectNote { note_id })
-                                                >
-                                                    <td>
-                                                        <span class="card-browser__front">{sort_field}</span>
-                                                    </td>
-                                                    <td>{note_type_name}</td>
-                                                    <td>{tags}</td>
-                                                </tr>
-                                            }
-                                        }).collect_view()}
-                                    </tbody>
-                                </table>
-                            </div>
+                            <UiTable>
+                                <thead>
+                                    <tr>
+                                        <th>"Sort field"</th>
+                                        <th>"Note type"</th>
+                                        <th>"Tags"</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {move || vm_sig.get().notes.iter().map(|n| {
+                                        let note_id = n.id;
+                                        let note_type_name = n.note_type_name.clone();
+                                        let sort_field = n.sort_field.clone().unwrap_or_default();
+                                        let tags = n.tags.join(", ");
+                                        view! {
+                                            <tr
+                                                class:card-browser__row--selected=move || vm_sig.get().notes_selected.as_ref().map(|n| n.id) == Some(note_id)
+                                                on:click=move |_| set_event.set(Event::NoteBrowserSelectNote { note_id })
+                                            >
+                                                <td>
+                                                    <span class="card-browser__front">{sort_field}</span>
+                                                </td>
+                                                <td>{note_type_name}</td>
+                                                <td>{tags}</td>
+                                            </tr>
+                                        }
+                                    }).collect_view()}
+                                </tbody>
+                            </UiTable>
 
                             <div class="card-browser__pagination">
                                 <span>{move || vm_sig.get().notes_total.to_string()}{" notes"}</span>
@@ -1336,25 +1344,12 @@ fn CardInspector(
                         <div class="card-browser__inspector-row">
                             <dt>"Flag"</dt>
                             <dd>
-                                <div class="card-browser__inspector-flag">
-                                    <select
-                                        class="select select-bordered"
-                                        prop:value=move || flag.get()
-                                        on:change=move |ev| {
-                                            let value = event_target_value(&ev);
-                                            if let Ok(f) = value.parse::<i64>() {
-                                                set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
-                                            }
-                                        }
-                                    >
-                                        <option value="0">"No flag"</option>
-                                        {["1", "2", "3", "4", "5", "6", "7"].iter().map(|f| {
-                                            let v = *f;
-                                            let color = flag_color(v.parse::<i64>().unwrap());
-                                            view! { <option value=v style=format!("color: {color}")>{flag_label(v.parse::<i64>().unwrap())}</option> }
-                                        }).collect_view()}
-                                    </select>
-                                </div>
+                                <FlagDropdown
+                                    flag=Signal::derive(move || flag.get().parse::<i64>().unwrap_or(0))
+                                    on_select=move |f| {
+                                        set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
+                                    }
+                                />
                             </dd>
                         </div>
                         <div class="card-browser__inspector-row">
@@ -1368,10 +1363,12 @@ fn CardInspector(
                                             bind:value=reschedule_days
                                             placeholder="days"
                                         />
-                                        <button
-                                            class="join-item btn btn-square"
-                                            aria-label="Reschedule"
-                                            on:click=move |_| {
+                                        <UiButton
+                                            appearance=UiButtonAppearance::Subtle
+                                            square=true
+                                            join_item=true
+                                            aria_label="Reschedule"
+                                            on_click=move |_| {
                                                 if let Ok(d) = reschedule_days.get().trim().parse::<i64>() {
                                                     set_event.set(Event::BrowserRescheduleCard { card_id, days: d });
                                                     reschedule_days.set(String::new());
@@ -1379,7 +1376,7 @@ fn CardInspector(
                                             }
                                         >
                                             <Icon glyph=LucideGlyph::Check size="16" />
-                                        </button>
+                                        </UiButton>
                                     </div>
                                 </div>
                             </dd>
@@ -1654,6 +1651,73 @@ fn flag_swatch(flag: i64) -> impl IntoView {
     }
 }
 
+/// A dropdown flag picker: a square ghost button with a coloured Lucide `Flag`
+/// icon as the trigger, and a list of the eight flag values (0 = none, 1–7 the
+/// Anki colours). Clicking an item forwards `on_select(value)` and closes the
+/// menu. The trigger icon is tinted with the current flag's colour (neutral when
+/// unset).
+///
+/// Open/close is driven entirely by a local `RwSignal` (no native CSS `popover`
+/// and no DaisyUI `.dropdown`/`.menu` classes), so it is deterministic and
+/// immune to global resets. The menu is absolutely positioned below the trigger
+/// via a `dropdown dropdown-end` wrapper and DaisyUI's `.dropdown-content`, with
+/// the self-contained `.flag-dropdown__menu` class supplying the list layout.
+#[component]
+fn FlagDropdown(
+    flag: Signal<i64>,
+    on_select: impl Fn(i64) + Clone + 'static,
+) -> impl IntoView {
+    // The trigger stroke: the current flag's colour, or a neutral grey when no
+    // flag is set (flag 0 maps to "transparent", which would hide the icon).
+    let stroke = move || {
+        let f = flag.get();
+        if f == 0 {
+            "currentColor".to_string()
+        } else {
+            flag_color(f).to_string()
+        }
+    };
+
+    let open = RwSignal::new(false);
+    let toggle = move |_| open.update(|o| *o = !*o);
+
+    let choose = move |f: i64| {
+        open.set(false);
+        on_select(f);
+    };
+
+    view! {
+        <div class="flag-dropdown">
+            <div tabindex="0" role="button" class="btn btn-ghost btn-square" aria-label="Set flag" on:click=toggle>
+                <Icon glyph=LucideGlyph::Flag size="20" stroke=stroke />
+            </div>
+            <ul
+                class="flag-dropdown__menu rounded-box bg-base-100 shadow-sm"
+                style:display=move || if open.get() { "flex" } else { "none" }
+            >
+                <li>
+                    <button class:menu-active=move || flag.get() == 0 on:click={
+                        let choose = choose.clone();
+                        move |_| choose(0)
+                    }>
+                        {flag_swatch(0)}
+                    </button>
+                </li>
+                {[1i64, 2, 3, 4, 5, 6, 7].into_iter().map(|f| {
+                    let choose = choose.clone();
+                    view! {
+                        <li>
+                            <button class:menu-active=move || flag.get() == f on:click=move |_| choose(f)>
+                                {flag_swatch(f)}
+                            </button>
+                        </li>
+                    }
+                }).collect_view()}
+            </ul>
+        </div>
+    }
+}
+
 /// The study screen: one card at a time, centred in the available space, with
 /// the reveal/answer controls pinned to the bottom. Due counts live in the
 /// header (see `study_count_badges`); the deck title is in the breadcrumb. Pure
@@ -1716,12 +1780,13 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
 }
 
 /// Study-card actions shown in the top bar while a card is in hand: Bury,
-/// Suspend (card + note), Reschedule (set due date), and Flag. Each forwards a
-/// core `Event` using the current card; the core owns the HTTP + state. Flag is
-/// an Anki-style 0–7 selector; Reschedule prompts for a day offset.
+/// Suspend (card + note), and Reschedule (set due date). Each forwards a core
+/// `Event` using the current card; the core owns the HTTP + state. Flagging is a
+/// separate `FlagDropdown` rendered next to this, mirroring the card browser
+/// inspector.
 #[component]
-fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl IntoView {
-    // Reschedule: a day offset the user types, then confirms.
+fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl IntoView {
+    // Reschedule: a day offset the user types, then confirms with a check.
     let days = RwSignal::new(String::new());
     let reschedule = move |_| {
         if let Ok(d) = days.get().trim().parse::<i64>() {
@@ -1730,92 +1795,38 @@ fn study_actions(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
         }
     };
 
-    // Flag: 0-7, seeded with the card's current flag. A native `<select>` with an
-    // `on:change` handler forwards the chosen flag straight to the core.
-    let flag = RwSignal::new(card.flag.to_string());
+    let buried = card.buried;
+    let suspended = card.suspended;
 
     view! {
-        <div class="dropdown dropdown-end">
-            <div tabindex="0" role="button" class="btn btn-ghost btn-square">
-                <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
+        <div class="study-actions">
+            {if buried {
+                view! {
+                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::UnburyCard)>"Unbury"</UiButton>
+                }.into_any()
+            } else {
+                view! {
+                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::BuryCard)>"Bury"</UiButton>
+                }.into_any()
+            }}
+            <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::BuryNote)>"Bury note"</UiButton>
+            {if suspended {
+                view! {
+                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::UnsuspendCard)>"Unsuspend"</UiButton>
+                }.into_any()
+            } else {
+                view! {
+                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::SuspendCard)>"Suspend"</UiButton>
+                }.into_any()
+            }}
+            <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::SuspendNote)>"Suspend note"</UiButton>
+
+            <div class="join">
+                <input class="input input-sm input-bordered join-item w-20" type="number" bind:value=days placeholder="days" />
+                <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small join_item=true aria_label="Reschedule" on_click=reschedule>
+                    <Icon glyph=LucideGlyph::Check size="20" />
+                </UiButton>
             </div>
-            <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-50 w-56 p-2 shadow">
-                {if card.buried {
-                    view! {
-                        <li>
-                            <button on:click=move |_| set_event.set(Event::UnburyCard)>"Unbury"</button>
-                        </li>
-                    }
-                    .into_any()
-                } else {
-                    view! {
-                        <li>
-                            <button on:click=move |_| set_event.set(Event::BuryCard)>"Bury"</button>
-                        </li>
-                    }
-                    .into_any()
-                }}
-                <li>
-                    <button on:click=move |_| set_event.set(Event::BuryNote)>"Bury note"</button>
-                </li>
-                {if card.suspended {
-                    view! {
-                        <li>
-                            <button on:click=move |_| set_event.set(Event::UnsuspendCard)>"Unsuspend"</button>
-                        </li>
-                    }
-                    .into_any()
-                } else {
-                    view! {
-                        <li>
-                            <button on:click=move |_| set_event.set(Event::SuspendCard)>"Suspend"</button>
-                        </li>
-                    }
-                    .into_any()
-                }}
-                <li>
-                    <button on:click=move |_| set_event.set(Event::SuspendNote)>"Suspend note"</button>
-                </li>
-
-                <li>
-                    <div class="study-actions__dropdown-row">
-                        <input class="input input-bordered input-sm" type="number" bind:value=days placeholder="days" />
-                        <button class="btn btn-sm" on:click=reschedule>"Reschedule"</button>
-                    </div>
-                </li>
-
-                <li>
-                    <div class="study-actions__dropdown-row">
-                        <span
-                            class="card-browser__flag-swatch"
-                            style=move || {
-                                let f = flag.get().parse::<i64>().unwrap_or(0);
-                                format!("background-color: {}", flag_color(f))
-                            }
-                        ></span>
-                        <select
-                            class="select select-bordered select-sm"
-                            prop:value=move || flag.get()
-                            on:change=move |ev| {
-                                let value = event_target_value(&ev);
-                                flag.set(value.clone());
-                                if let Ok(f) = value.parse::<i64>() {
-                                    set_event.set(Event::FlagCard { flag: f as i32 });
-                                }
-                            }
-                        >
-                            <option value="0">"No flag"</option>
-                            <option value="1" style="color: red">"Red"</option>
-                            <option value="2" style="color: orange">"Orange"</option>
-                            <option value="3" style="color: green">"Green"</option>
-                            <option value="4" style="color: blue">"Blue"</option>
-                            <option value="5" style="color: pink">"Pink"</option>
-                            <option value="6" style="color: turquoise">"Turquoise"</option>
-                            <option value="7" style="color: purple">"Purple"</option>
-                        </select>
-                    </div>
-                </li>
-            </ul>
         </div>
     }
 }
