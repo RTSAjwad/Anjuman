@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiPagination, UiTable, UiToggle};
+use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiPagination, UiTab, UiTable, UiTabs, UiToggle};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
@@ -329,29 +329,27 @@ pub fn RootComponent() -> impl IntoView {
                                         }
                                         .into_any(),
                                         CurrentRoute::Cards | CurrentRoute::Notes => view! {
-                                            <div class="tabs tabs-box tabs-sm">
-                                                <button
-                                                    class="tab"
-                                                    class:tab-active=move || route == CurrentRoute::Cards
-                                                    on:click=show_cards.clone()
+                                            <UiTabs>
+                                                <UiTab
+                                                    active=Signal::derive(move || route == CurrentRoute::Cards)
+                                                    on_click=show_cards.clone()
                                                 >
                                                     "Cards"
-                                                </button>
+                                                </UiTab>
                                                 {if can_manage_notes {
                                                     view! {
-                                                        <button
-                                                            class="tab"
-                                                            class:tab-active=move || route == CurrentRoute::Notes
-                                                            on:click=move |_| set_event.set(Event::ShowNotes)
+                                                        <UiTab
+                                                            active=Signal::derive(move || route == CurrentRoute::Notes)
+                                                            on_click=move |_| set_event.set(Event::ShowNotes)
                                                         >
                                                             "Notes"
-                                                        </button>
+                                                        </UiTab>
                                                     }
                                                     .into_any()
                                                 } else {
                                                     ().into_any()
                                                 }}
-                                            </div>
+                                            </UiTabs>
                                         }
                                         .into_any(),
                                         CurrentRoute::Study => {

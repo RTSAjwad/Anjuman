@@ -234,3 +234,35 @@ pub fn UiToggle(
         />
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------------
+
+/// An owned tab bar (`tabs tabs-box tabs-sm` in daisyUI): the container owns the
+/// tab-bar structure + skin, and each `UiTab` item owns its `tab` class + the
+/// reactive `tab-active` state. Call sites supply the `UiTab` items as children
+/// and forward navigation via each tab's `on_click`.
+#[component]
+pub fn UiTabs(children: Children) -> impl IntoView {
+    view! {
+        <div class="tabs tabs-box tabs-sm">
+            {children()}
+        </div>
+    }
+}
+
+/// A single tab item: owns the daisyUI `tab` skin + `tab-active` state (from an
+/// `active` signal) and forwards a click.
+#[component]
+pub fn UiTab(
+    active: Signal<bool>,
+    on_click: impl Fn(leptos::ev::MouseEvent) + 'static,
+    children: Children,
+) -> impl IntoView {
+    view! {
+        <button class="tab" class:tab-active=active on:click=on_click>
+            {children()}
+        </button>
+    }
+}
