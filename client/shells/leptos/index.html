@@ -206,10 +206,15 @@
         padding: 0.5rem;
         margin: 0;
         list-style: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        margin-top: 0.25rem;
+        /* Top-layer positioning: `position: fixed` + CSS anchor (`position-anchor`
+         * + `position-area`) so the menu drops below the trigger and is NOT
+         * clipped by any `overflow` ancestor (e.g. the card inspector's scroll
+         * container). `position-anchor` is set inline (per-instance anchor name);
+         * `position-area` places it block-end (below) + inline-end (right-aligned)
+         * relative to the trigger. */
+        position: fixed;
+        position-area: block-end span-inline-start;
+        margin: 0;
         z-index: 999;
       }
       .flag-dropdown__menu li {

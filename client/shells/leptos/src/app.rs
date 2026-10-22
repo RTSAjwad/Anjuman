@@ -375,6 +375,7 @@ pub fn RootComponent() -> impl IntoView {
                                                     view! {
                                                         <StudyControls card=card set_event=set_event />
                                                         <FlagDropdown
+                                                            id="study-flag"
                                                             flag=flag_signal
                                                             on_select=move |f| {
                                                                 set_event.set(Event::FlagCard { flag: f as i32 });
@@ -1329,6 +1330,7 @@ fn CardInspector(
                             <dt>"Flag"</dt>
                             <dd>
                                 <FlagDropdown
+                                    id="browser-flag"
                                     flag=Signal::derive(move || flag.get().parse::<i64>().unwrap_or(0))
                                     on_select=move |f| {
                                         set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
@@ -1617,12 +1619,22 @@ fn flag_swatch(flag: i64) -> impl IntoView {
 /// unset).
 ///
 /// Open/close is driven entirely by a local `RwSignal` (no native CSS `popover`
-/// and no DaisyUI `.dropdown`/`.menu` classes), so it is deterministic and
-/// immune to global resets. The menu is absolutely positioned below the trigger
-/// via a `dropdown dropdown-end` wrapper and DaisyUI's `.dropdown-content`, with
-/// the self-contained `.flag-dropdown__menu` class supplying the list layout.
+/// A dropdown flag picker: a square ghost button with a coloured Lucide `Flag`
+/// icon as the trigger, and a list of the eight flag values (0 = none, 1–7 the
+/// Anki colours). Clicking an item forwards `on_select(value)` and closes the
+/// menu. The trigger icon is tinted with the current flag's colour (neutral when
+/// unset).
+///
+/// Open/close is driven by a local `RwSignal` (no native `popover`), so it is
+/// deterministic and immune to global resets. The menu is rendered in the top
+/// layer via `position: fixed` + CSS anchor positioning (`anchor-name` on the
+/// trigger, `position-anchor`/`position-area` on the menu), so it is not clipped
+/// by any `overflow` ancestor (the study navbar *and* the card inspector's
+/// scroll container) and drops below the trigger regardless of container. `id`
+/// must be unique per instance so the two anchors don't collide.
 #[component]
 fn FlagDropdown(
+    id: &'static str,
     flag: Signal<i64>,
     on_select: impl Fn(i64) + Clone + 'static,
 ) -> impl IntoView {
@@ -1645,14 +1657,19 @@ fn FlagDropdown(
         on_select(f);
     };
 
+    let anchor = format!("--{id}-anchor");
+    let trigger_style = format!("anchor-name:{anchor}");
+    let menu_style = format!("position-anchor:{anchor}");
+
     view! {
         <div class="flag-dropdown">
-            <div tabindex="0" role="button" class="btn btn-ghost btn-square" aria-label="Set flag" on:click=toggle>
+            <div tabindex="0" role="button" class="btn btn-ghost btn-square" aria-label="Set flag" style=trigger_style on:click=toggle>
                 <Icon glyph=LucideGlyph::Flag size="20" stroke=stroke />
             </div>
             <ul
                 class="flag-dropdown__menu rounded-box bg-base-100 shadow-sm"
                 style:display=move || if open.get() { "flex" } else { "none" }
+                style=menu_style
             >
                 <li>
                     <button class:menu-active=move || flag.get() == 0 on:click={
