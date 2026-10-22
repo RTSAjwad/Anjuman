@@ -326,3 +326,45 @@ pub fn UiSelect(
         </select>
     }
 }
+
+// ---------------------------------------------------------------------------
+// Card / Breadcrumbs / Submit button
+// ---------------------------------------------------------------------------
+
+/// Owned container card. The **single source of truth** for the daisyUI
+/// `card bg-base-100 shadow-sm` skin (the app's standard surface). Content is
+/// supplied as children; `class` allows a call-site-specific modifier.
+#[component]
+pub fn UiCard(#[prop(optional)] class: &'static str, children: Children) -> impl IntoView {
+    let combined = format!("card bg-base-100 shadow-sm {class}");
+    view! { <div class=combined>{children()}</div> }
+}
+
+/// Owned breadcrumb row. The **single source of truth** for the daisyUI
+/// `breadcrumbs` skin + its `<ul>` structure. `class` allows a call-site
+/// modifier (e.g. `flex-1`). Content is the `<li>` items.
+#[component]
+pub fn UiBreadcrumbs(#[prop(optional)] class: &'static str, children: Children) -> impl IntoView {
+    let combined = format!("breadcrumbs {class}");
+    view! {
+        <div class=combined>
+            <ul>{children()}</ul>
+        </div>
+    }
+}
+
+/// Owned form-submit button. Closes the gap `UiButton` doesn't model: a `<button
+/// type="submit">` (no separate click handler — the surrounding form handles the
+/// submit) with the daisyUI `btn btn-square join-item` skin, typically used for a
+/// search icon inside a `join`.
+#[component]
+pub fn UiSubmitButton(
+    #[prop(optional)] aria_label: &'static str,
+    children: Children,
+) -> impl IntoView {
+    view! {
+        <button type="submit" class="btn btn-square join-item" aria-label=aria_label>
+            {children()}
+        </button>
+    }
+}

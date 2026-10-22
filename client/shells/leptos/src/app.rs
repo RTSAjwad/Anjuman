@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiControlSize, UiInput, UiPagination, UiSelect, UiTab, UiTable, UiTabs, UiToggle};
+use crate::ui::{UiBadge, UiBadgeColor, UiBreadcrumbs, UiButton, UiButtonAppearance, UiButtonSize, UiCard, UiControlSize, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTab, UiTable, UiTabs, UiToggle};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
@@ -321,11 +321,9 @@ pub fn RootComponent() -> impl IntoView {
 
                                     {match route {
                                         CurrentRoute::DeckList => view! {
-                                            <div class="breadcrumbs">
-                                                <ul>
-                                                    <li><span aria-current="page">"Decks"</span></li>
-                                                </ul>
-                                            </div>
+                                            <UiBreadcrumbs>
+                                                <li><span aria-current="page">"Decks"</span></li>
+                                            </UiBreadcrumbs>
                                         }
                                         .into_any(),
                                         CurrentRoute::Cards | CurrentRoute::Notes => view! {
@@ -362,15 +360,13 @@ pub fn RootComponent() -> impl IntoView {
                                                 .map(|d| deck_ancestor_titles(&vm.decks, d.id))
                                                 .unwrap_or_default();
                                             view! {
-                                                <div class="breadcrumbs flex-1">
-                                                    <ul>
-                                                        <li><button on:click=move |_| close_deck()>"Decks"</button></li>
-                                                        {deck_breadcrumb.into_iter().map(|title| view! {
-                                                            <li>{title}</li>
-                                                        }).collect_view()}
-                                                        <li><span aria-current="page">"Study"</span></li>
-                                                    </ul>
-                                                </div>
+                                                <UiBreadcrumbs class="flex-1">
+                                                    <li><button on:click=move |_| close_deck()>"Decks"</button></li>
+                                                    {deck_breadcrumb.into_iter().map(|title| view! {
+                                                        <li>{title}</li>
+                                                    }).collect_view()}
+                                                    <li><span aria-current="page">"Study"</span></li>
+                                                </UiBreadcrumbs>
                                                 {study_count_badges(counts)}
                                                 {if let Some(card) = current_card {
                                                     let flag_signal = Signal::derive(move || {
@@ -400,15 +396,13 @@ pub fn RootComponent() -> impl IntoView {
                                                 .map(|d| deck_ancestor_titles(&vm.decks, d.id))
                                                 .unwrap_or_default();
                                             view! {
-                                                <div class="breadcrumbs flex-1">
-                                                    <ul>
-                                                        <li><button on:click=move |_| close_deck()>"Decks"</button></li>
-                                                        {deck_breadcrumb.into_iter().map(|title| view! {
-                                                            <li>{title}</li>
-                                                        }).collect_view()}
-                                                        <li><span aria-current="page">"Options"</span></li>
-                                                    </ul>
-                                                </div>
+                                                <UiBreadcrumbs class="flex-1">
+                                                    <li><button on:click=move |_| close_deck()>"Decks"</button></li>
+                                                    {deck_breadcrumb.into_iter().map(|title| view! {
+                                                        <li>{title}</li>
+                                                    }).collect_view()}
+                                                    <li><span aria-current="page">"Options"</span></li>
+                                                </UiBreadcrumbs>
                                             }
                                             .into_any()
                                         }
@@ -569,9 +563,9 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
     // Error state — a deck fetch failed.
     if let Some(err) = vm.decks_error {
         return view! {
-            <div class="card bg-base-100 shadow-sm">
+            <UiCard>
                 <p style="color: #c00;">"Could not load decks: " {err}</p>
-            </div>
+            </UiCard>
         }
         .into_any();
     }
@@ -579,9 +573,9 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
     // Empty state — signed in but no decks yet.
     if vm.decks.is_empty() {
         return view! {
-            <div class="card bg-base-100 shadow-sm">
+            <UiCard>
                 <p style="color: #888;">"No decks yet. Create one to get started."</p>
-            </div>
+            </UiCard>
         }
         .into_any();
     }
@@ -599,7 +593,7 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
     let decks = vm.decks;
     let open_items = RwSignal::new(HashSet::new());
     view! {
-        <div class="card bg-base-100 shadow-sm">
+        <UiCard>
             <div class="thaw-deck-header" role="row">
                 <span class="thaw-deck-col">"Deck"</span>
                 <span class="thaw-deck-col">"New"</span>
@@ -609,7 +603,7 @@ fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckView), ()>) 
             <div class="thaw-deck-tree" role="tree">
                 {deck_subtree(decks, 0, open_items, on_navigate)}
             </div>
-        </div>
+        </UiCard>
     }
     .into_any()
 }
@@ -989,9 +983,9 @@ fn browser(
                         >
                             <div class="join w-full">
                                 <UiInput value=q_value placeholder="Search…" class="w-full join-item" />
-                                <button type="submit" aria-label="Search" class="btn btn-square join-item">
+                                <UiSubmitButton aria_label="Search">
                                     <Icon glyph=LucideGlyph::Search size="16" />
-                                </button>
+                                </UiSubmitButton>
                             </div>
                         </form>
 
@@ -1090,9 +1084,9 @@ fn browser(
                         >
                             <div class="join w-full">
                                 <UiInput value=note_query placeholder="Search…" class="w-full join-item" />
-                                <button type="submit" aria-label="Search" class="btn btn-square join-item">
+                                <UiSubmitButton aria_label="Search">
                                     <Icon glyph=LucideGlyph::Search size="16" />
-                                </button>
+                                </UiSubmitButton>
                             </div>
                         </form>
 
