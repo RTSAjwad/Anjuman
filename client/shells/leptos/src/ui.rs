@@ -266,3 +266,63 @@ pub fn UiTab(
         </button>
     }
 }
+
+// ---------------------------------------------------------------------------
+// Input / Select
+// ---------------------------------------------------------------------------
+
+/// Shared size modifier for text inputs and selects. `Medium` is daisyUI's
+/// default (no modifier); `Small` maps to `input-sm`/`select-sm` respectively
+/// (resolved in each primitive so the correct per-element class is used).
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum UiControlSize {
+    #[default]
+    Medium,
+    Small,
+}
+
+/// Owned text input. The **single source of truth** for the daisyUI
+/// `input input-bordered` skin: call sites express only `value`, `on_input`,
+/// an optional `input_type`/`placeholder`/`size`, and a `class` for
+/// call-site-specific layout (`w-full`, `join-item`, `w-20`). Two-way binding is
+/// the call site's job (`bind:value` style) via the `value` signal here.
+#[component]
+pub fn UiInput(
+    value: RwSignal<String>,
+    #[prop(optional, default = "text")] input_type: &'static str,
+    #[prop(optional)] placeholder: &'static str,
+    #[prop(optional, default = UiControlSize::Medium)] size: UiControlSize,
+    #[prop(optional)] class: &'static str,
+) -> impl IntoView {
+    let size_class = match size {
+        UiControlSize::Medium => "",
+        UiControlSize::Small => " input-sm",
+    };
+    let combined = format!("input input-bordered{size_class} {class}");
+    view! {
+        <input type=input_type class=combined bind:value=value placeholder=placeholder />
+    }
+}
+
+/// Owned select. The **single source of truth** for the daisyUI
+/// `select select-bordered` skin. Call sites supply the `value` signal
+/// (two-way `bind:value`) and the `options` (value → label).
+#[component]
+pub fn UiSelect(
+    value: RwSignal<String>,
+    options: &'static [(&'static str, &'static str)],
+    #[prop(optional, default = UiControlSize::Medium)] size: UiControlSize,
+) -> impl IntoView {
+    let size_class = match size {
+        UiControlSize::Medium => "",
+        UiControlSize::Small => " select-sm",
+    };
+    let combined = format!("select select-bordered{size_class}");
+    view! {
+        <select class=combined bind:value=value>
+            {options.iter().map(|(val, lbl)| {
+                view! { <option value=*val>{*lbl}</option> }
+            }).collect_view()}
+        </select>
+    }
+}

@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiPagination, UiTab, UiTable, UiTabs, UiToggle};
+use crate::ui::{UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiButtonSize, UiControlSize, UiInput, UiPagination, UiSelect, UiTab, UiTable, UiTabs, UiToggle};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
@@ -515,8 +515,8 @@ pub fn RootComponent() -> impl IntoView {
                         <main class="app-login">
                             <h1>"Anjuman"</h1>
                             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
-                                <input class="input input-bordered" bind:value=email placeholder="Email" />
-                                <input class="input input-bordered" bind:value=password placeholder="Password" type="password" />
+                                <UiInput value=email placeholder="Email" />
+                                <UiInput value=password placeholder="Password" input_type="password" />
                                 <UiButton
                                     appearance=UiButtonAppearance::Primary
                                     on_click=submit
@@ -988,11 +988,7 @@ fn browser(
                             }
                         >
                             <div class="join w-full">
-                                <input
-                                    class="input input-bordered w-full join-item"
-                                    bind:value=q_value
-                                    placeholder="Search…"
-                                />
+                                <UiInput value=q_value placeholder="Search…" class="w-full join-item" />
                                 <button type="submit" aria-label="Search" class="btn btn-square join-item">
                                     <Icon glyph=LucideGlyph::Search size="16" />
                                 </button>
@@ -1093,11 +1089,7 @@ fn browser(
                             }
                         >
                             <div class="join w-full">
-                                <input
-                                    class="input input-bordered w-full join-item"
-                                    bind:value=note_query
-                                    placeholder="Search…"
-                                />
+                                <UiInput value=note_query placeholder="Search…" class="w-full join-item" />
                                 <button type="submit" aria-label="Search" class="btn btn-square join-item">
                                     <Icon glyph=LucideGlyph::Search size="16" />
                                 </button>
@@ -1355,12 +1347,7 @@ fn CardInspector(
                             <dd>
                                 <div class="card-browser__inspector-reschedule">
                                     <div class="join">
-                                        <input
-                                            class="join-item input input-bordered"
-                                            type="number"
-                                            bind:value=reschedule_days
-                                            placeholder="days"
-                                        />
+                                        <UiInput value=reschedule_days input_type="number" placeholder="days" class="join-item" />
                                         <UiButton
                                             appearance=UiButtonAppearance::Subtle
                                             square=true
@@ -1800,7 +1787,7 @@ fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
             <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::SuspendNote)>"Suspend note"</UiButton>
 
             <div class="join">
-                <input class="input input-sm input-bordered join-item w-20" type="number" bind:value=days placeholder="days" />
+                <UiInput value=days input_type="number" size=UiControlSize::Small placeholder="days" class="join-item w-20" />
                 <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small join_item=true aria_label="Reschedule" on_click=reschedule>
                     <Icon glyph=LucideGlyph::Check size="20" />
                 </UiButton>
@@ -2198,7 +2185,7 @@ fn field_row(label: &'static str, children: Children) -> impl IntoView {
 fn number_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <input class="input input-bordered" type="number" bind:value=value placeholder=placeholder />
+            <UiInput value=value input_type="number" placeholder=placeholder />
         </FieldRow>
     }
 }
@@ -2208,7 +2195,7 @@ fn number_field(label: &'static str, value: RwSignal<String>, placeholder: &'sta
 fn text_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <input class="input input-bordered" bind:value=value placeholder=placeholder />
+            <UiInput value=value placeholder=placeholder />
         </FieldRow>
     }
 }
@@ -2232,11 +2219,7 @@ fn select_field(
 ) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <select class="select select-bordered" bind:value=value>
-                {options.iter().map(|(val, lbl)| {
-                    view! { <option value=*val>{*lbl}</option> }
-                }).collect_view()}
-            </select>
+            <UiSelect value=value options=options />
         </FieldRow>
     }
 }
@@ -2252,11 +2235,7 @@ fn easy_days_field(days: [RwSignal<String>; 7]) -> impl IntoView {
                 view! {
                     <div class="deck-options-easy-day">
                         <span class="deck-options-easy-day__label">{*name}</span>
-                        <select class="select select-bordered" bind:value=d>
-                            {EASY_DAY_OPTIONS.iter().map(|(val, lbl)| {
-                                view! { <option value=*val>{*lbl}</option> }
-                            }).collect_view()}
-                        </select>
+                        <UiSelect value=d options=EASY_DAY_OPTIONS />
                     </div>
                 }
             }).collect_view()}
