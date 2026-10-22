@@ -350,3 +350,52 @@ There are two distinct tracks, because daisyUI mixes structure and skin (see 9.2
 visual classes are consumed *only* behind those primitives (never raw at call
 sites); structural/state invariants are owned outright and never delegated to a
 daisyUI class.
+
+### 9.6 Current extraction boundary (what is and isn't a primitive today)
+
+This subsection is the live record of **which daisyUI class bundles are inside an
+owned primitive vs. still raw at a call site, and why** — so the split is a
+deliberate, reviewable choice rather than accident of history.
+
+**Extracted (daisyUI semantic class lives only inside the primitive):**
+
+| Primitive | Owns (daisyUI class or structure) | Reason for owning |
+|---|---|---|
+| `UiButton` (+ `UiButtonSize`, `square`/`join_item`) | `btn`, `btn-primary/ghost/error/neutral/soft`, `btn-sm` | reused everywhere; typed appearance enum so call sites never spell `btn-*` |
+| `UiBadge` (+ `UiBadgeColor`) | `badge badge-sm badge-soft` + colour | reused; typed colour enum |
+| `UiPagination` | `join` layout + page-state transitions | owns behaviour (prev/next/goto) |
+| `UiTable` | `.card-browser__table` structure + `table` skin | owns the structural flex/overflow/selection wrapper |
+| `UiToggle` | `toggle` + `checked` from signal | owns **state** (removed a `NodeRef`+`Effect` hack) |
+| `UiTabs` / `UiTab` | `tabs tabs-box tabs-sm` + `tab`/`tab-active` | owns bar structure + reactive active state |
+| `UiInput` (+ `UiControlSize`) | `input input-bordered` (+ `input-sm`) | canonical spelling of the form-input skin |
+| `UiSelect` | `select select-bordered` (+ `select-sm`) | canonical spelling of the select skin |
+| `UiCard` | `card bg-base-100 shadow-sm` | canonical spelling of the standard surface |
+| `UiBreadcrumbs` | `breadcrumbs` + `<ul>` | canonical spelling of the breadcrumb structure |
+| `UiSubmitButton` | `<button type="submit">` + `btn btn-square join-item` | the submit-button shape `UiButton`'s click model doesn't cover |
+| `FlagDropdown` | `.flag-dropdown` wrapper (own `position`/`display`) + open/close signal | self-contained floating UI (the §9.4 reference) |
+
+**Not extracted (raw daisyUI class still at a call site):**
+
+| Surface / class | Why left raw |
+|---|---|
+| `drawer` / `drawer-content` / `drawer-side` / `drawer-overlay` / `drawer-toggle` / `navbar` | app-shell layout container; single structural instance wired to a `<label for>` + checkbox + overlay. Wrapping it would hide the drawer's critical structure for no value. |
+| `menu` / `menu-active` (sidebar + filter tree) | `:where()`-sensitive structure already owned via the namespaced `.app-sidebar` / `.card-browser__menu` overrides (§9.2). Re-wrapping would re-clone daisyUI's chevron/indent CSS — what §9.5 forbids. |
+| `select select-bordered` (deck-options **assign** picker) | one-way controlled select with parse+emit-`Event` logic; doesn't map to `UiSelect`'s two-way `bind:value`. |
+
+### 9.7 Future direction (aspirational)
+
+The long-term goal is to make **every** visible unit an owned custom component,
+with **all** daisyUI semantic classes living *inside* those components and *only*
+Tailwind utility classes used in `app.rs`/call sites. Under that end-state:
+
+- `app.rs` composes primitives + utilities (`flex`, `gap-*`, `p-*`, `rounded-*`, …)
+  and never references a daisyUI component class (`btn`, `menu`, `drawer`, …).
+- daisyUI semantic classes are confined to `ui.rs` (and `index.html`'s shell-local
+  structural rules), which remains the single place they can change.
+- The remaining "not extracted" rows in §9.6 (`drawer`/`navbar`, `menu`) would
+  eventually be promoted to primitives once their structure/state is fully owned,
+  so call sites stop reaching into daisyUI's layout directly.
+
+This is a **direction, not a current mandate**: only promote a surface to a
+primitive when it can own the behavior/state/structure cleanly (§9.5) rather than
+becoming an anemic rename. Until then, the boundary in §9.6 is authoritative.
