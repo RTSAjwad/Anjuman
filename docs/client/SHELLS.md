@@ -302,100 +302,35 @@ self-contained yet.
 
 ### 9.4 Reference
 
-The canonical example is `FlagDropdown` in `client/shells/leptos/src/app.rs` and
-its `.flag-dropdown` / `.flag-dropdown__menu` rules in
-`client/shells/leptos/index.html`. It owns `position: relative` + `display` on a
-dedicated wrapper, drives open/close from an `RwSignal<bool>`, and styles its
-items via `.flag-dropdown__menu li > button` (never bare `button`). Reuse that
-pattern for any new floating or layout-sensitive component.
+The canonical example is the owned primitives in `client/shells/leptos/src/ui.rs`
+(`UiButton` with `tw_merge!`, `UiDialog` with signal-driven `showModal()`/`close()`,
+`UiToggle` with `prop:checked`), plus `FlagDropdown` in
+`client/shells/leptos/src/app.rs` (`position: relative` wrapper + `RwSignal<bool>`
+open state + `position: absolute` menu). They own their structural invariants and
+style via Tailwind utilities + theme tokens — the pattern to follow for any new
+floating or layout-sensitive component.
 
-### 9.5 Primitive vs. skin — what we own and what daisyUI supplies
+### 9.5 Primitive ownership (post-daisyUI)
 
-We do **not** use an external headless/unstyled component library. Every reusable
-visual unit is an **owned Leptos primitive** in `ui.rs` (button, badge, pagination,
-and — as they graduate — table, tabs, tree node, toggle, input group). Call sites
-**never** spell raw daisyUI class strings; they use the primitive + a small typed
-enum for the visual variation (e.g. `UiButtonAppearance`, `UiBadgeColor`).
+daisyUI has been removed — see `STYLING_MIGRATION.md`. The styling contract is
+now:
 
-There are two distinct tracks, because daisyUI mixes structure and skin (see 9.2):
+- **No component library.** Every reusable visual unit is an owned Leptos
+  primitive in `ui.rs` (`UiButton`, `UiBadge`, `UiTable`, `UiToggle`,
+  `UiTabs`/`UiTab`, `UiInput`, `UiSelect`, `UiCard`, `UiBreadcrumbs`,
+  `UiSubmitButton`, `UiPagination`, `UiDialog`, plus `FlagDropdown` in `app.rs`).
+- **Tailwind utilities + theme tokens** (shadcn convention) do the styling
+  (`bg-primary`, `text-primary-foreground`, `border-input`, `bg-muted`, …). The
+  tokens live in `input.css` (`:root`/`.dark` → `@theme inline`).
+- **`tw_merge!`** composes the primitive's base classes with a caller's `class`,
+  resolving conflicts (later wins) instead of string concat.
+- **Own behavior/state/structure.** Primitives own `<button type>`, `disabled`,
+  ARIA, events, and any structural invariant (`position`, flex, `z-index`) — per
+  §9.3. No styling depends on a third-party cascade layer or `:where()` zeroing.
+- **App shell is utility-styled in place** (a signal-driven collapsible `<aside>`
+  sidebar + a utility navbar), not a self-contained primitive — it sits once in
+  `RootComponent`.
 
-- **Structure/state — we own it.** Any primitive that holds a *structural
-  invariant* (positioning, `display`, flex, `z-index`) or *state* (open/close,
-  selection, disabled logic) owns that markup and styling outright, unlayered and
-  non-`:where()`, per 9.3. Examples: `FlagDropdown`, the pagination layout, the
-  filter tree, the card/note inspectors. daisyUI supplies no structural class here.
-
-- **Appearance (skin) — we consume it through a typed primitive, never raw.**
-  Where the correct "look" is only available from a daisyUI *visual* bundle
-  (`.btn`, `.badge` — which carry colour/radius/padding/shadow that is impractical
-  to reproduce by hand without essentially re-cloning daisyUI's CSS), the
-  primitive keeps that visual behind a typed enum and **owns the behavior**
-  (`<button type=…>`, `disabled`, ARIA, events). The daisyUI visual class is not
-  spelled at call sites; it is centralized in `ui.rs`.
-
-- **Never re-clone daisyUI's CSS.** We do not hand-roll a parallel `.btn`/
-  `.badge` replacement. If a look is only reasonably available from daisyUI's
-  own class, we wrap it in a primitive + enum rather than duplicating the ruleset.
-
-- **Centralize the visual→class mapping.** The typed enum (`UiButtonAppearance`,
-  `UiBadgeColor`) is the single place that names a daisyUI visual class. Changing
-  the skin is a one-line edit in `ui.rs`, not a sweep across `app.rs`.
-
-- **Keep primitives behavioral, not anemic or over-built.** Own
-  semantics/ARIA/events/state and (where required) the structural invariant; add
-  no structural daisyUI class, and do not build a parallel API larger than what we
-  actually use.
-
-**Summary:** owned primitives + typed enums for everything reusable; daisyUI
-visual classes are consumed *only* behind those primitives (never raw at call
-sites); structural/state invariants are owned outright and never delegated to a
-daisyUI class.
-
-### 9.6 Current extraction boundary (what is and isn't a primitive today)
-
-This subsection is the live record of **which daisyUI class bundles are inside an
-owned primitive vs. still raw at a call site, and why** — so the split is a
-deliberate, reviewable choice rather than accident of history.
-
-**Extracted (daisyUI semantic class lives only inside the primitive):**
-
-| Primitive | Owns (daisyUI class or structure) | Reason for owning |
-|---|---|---|
-| `UiButton` (+ `UiButtonSize`, `square`/`join_item`) | `btn`, `btn-primary/ghost/error/neutral/soft`, `btn-sm` | reused everywhere; typed appearance enum so call sites never spell `btn-*` |
-| `UiBadge` (+ `UiBadgeColor`) | `badge badge-sm badge-soft` + colour | reused; typed colour enum |
-| `UiPagination` | `join` layout + page-state transitions | owns behaviour (prev/next/goto) |
-| `UiTable` | `.card-browser__table` structure + `table` skin | owns the structural flex/overflow/selection wrapper |
-| `UiToggle` | `toggle` + `checked` from signal | owns **state** (removed a `NodeRef`+`Effect` hack) |
-| `UiTabs` / `UiTab` | `tabs tabs-box tabs-sm` + `tab`/`tab-active` | owns bar structure + reactive active state |
-| `UiInput` (+ `UiControlSize`) | `input input-bordered` (+ `input-sm`) | canonical spelling of the form-input skin |
-| `UiSelect` | `select select-bordered` (+ `select-sm`) | canonical spelling of the select skin |
-| `UiCard` | `card bg-base-100 shadow-sm` | canonical spelling of the standard surface |
-| `UiBreadcrumbs` | `breadcrumbs` + `<ul>` | canonical spelling of the breadcrumb structure |
-| `UiSubmitButton` | `<button type="submit">` + `btn btn-square join-item` | the submit-button shape `UiButton`'s click model doesn't cover |
-| `FlagDropdown` | `.flag-dropdown` wrapper (own `position`/`display`) + open/close signal | self-contained floating UI (the §9.4 reference) |
-
-**Not extracted (raw daisyUI class still at a call site):**
-
-| Surface / class | Why left raw |
-|---|---|
-| `drawer` / `drawer-content` / `drawer-side` / `drawer-overlay` / `drawer-toggle` / `navbar` | app-shell layout container; single structural instance wired to a `<label for>` + checkbox + overlay. Wrapping it would hide the drawer's critical structure for no value. |
-| `menu` / `menu-active` (sidebar + filter tree) | `:where()`-sensitive structure already owned via the namespaced `.app-sidebar` / `.card-browser__menu` overrides (§9.2). Re-wrapping would re-clone daisyUI's chevron/indent CSS — what §9.5 forbids. |
-| `select select-bordered` (deck-options **assign** picker) | one-way controlled select with parse+emit-`Event` logic; doesn't map to `UiSelect`'s two-way `bind:value`. |
-
-### 9.7 Future direction (aspirational)
-
-The long-term goal is to make **every** visible unit an owned custom component,
-with **all** daisyUI semantic classes living *inside* those components and *only*
-Tailwind utility classes used in `app.rs`/call sites. Under that end-state:
-
-- `app.rs` composes primitives + utilities (`flex`, `gap-*`, `p-*`, `rounded-*`, …)
-  and never references a daisyUI component class (`btn`, `menu`, `drawer`, …).
-- daisyUI semantic classes are confined to `ui.rs` (and `index.html`'s shell-local
-  structural rules), which remains the single place they can change.
-- The remaining "not extracted" rows in §9.6 (`drawer`/`navbar`, `menu`) would
-  eventually be promoted to primitives once their structure/state is fully owned,
-  so call sites stop reaching into daisyUI's layout directly.
-
-This is a **direction, not a current mandate**: only promote a surface to a
-primitive when it can own the behavior/state/structure cleanly (§9.5) rather than
-becoming an anemic rename. Until then, the boundary in §9.6 is authoritative.
+The §9.1–§9.3 guidance (inheritance vs. selector reach-in, why semantic bundles
+caused drift, and the self-containment contract) still applies and is the
+rationale for this model.

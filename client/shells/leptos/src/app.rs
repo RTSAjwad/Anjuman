@@ -4,10 +4,9 @@
 //! events into `shared::Core<Anjuman>` via a reactive `Effect`. The shell is
 //! pure glue: it consumes `ViewModel` and emits `Event`, never holding logic.
 //!
-//! UI is styled with Tailwind + daisyUI (see `src/ui.rs` for the thin wrappers
-//! and `input.css`/`tailwind.css` for the generated stylesheet). Plain HTML
-//! elements with DaisyUI classes are preferred for layout; `#[component]` wraps
-//! the small set of reused primitives (button/badge/pagination).
+//! UI is styled with Tailwind utilities + the semantic theme tokens in
+//! `input.css` (shadcn convention); `src/ui.rs` holds the owned `Ui*` primitives.
+//! See `docs/client/STYLING_MIGRATION.md` and `SHELLS.md` §9.
 
 use leptos::prelude::*;
 use leptos::task;
@@ -1441,12 +1440,11 @@ fn CardSwitch(
     }
 }
 
-/// A collapsible filter category in the browser sidebar, rendered as a daisyUI
-/// `menu` submenu (`<details>`/`<summary>`). Expansion is native (no signal
-/// needed — the browser tracks the `<details>` `open` state), which is exactly
-/// what the "collapsible submenu" pattern wants. A plain `fn` (not
-/// `#[component]`) so it sits inline in the reactive `view!` and re-renders when
-/// its data (e.g. the async-loaded note types) arrives.
+/// A collapsible filter category in the browser sidebar, rendered with a native
+/// `<details>`/`<summary>`. Expansion is native (no signal needed — the browser
+/// tracks the `<details>` `open` state). A plain `fn` (not `#[component]`) so it
+/// sits inline in the reactive `view!` and re-renders when its data (e.g. the
+/// async-loaded note types) arrives.
 fn filter_branch(label: &'static str, leaves: impl IntoView) -> impl IntoView {
     view! {
         <li>
@@ -1475,13 +1473,12 @@ fn filter_leaf(
     }
 }
 
-/// Renders the deck hierarchy as nested daisyUI `menu` submenus. A deck with
-/// children is an expandable `<details>`/`<summary>` (the `<summary>` is plain
-/// text, so daisyUI's chevron renders exactly like its docs). Because the
-/// summary toggles the submenu (it can't also be a filter), the parent deck's
-/// own selectable entry is rendered as the **first item inside** its submenu
-/// (labelled "this deck only"), followed by its children. A leaf deck is a
-/// plain selectable `<li><button>`.
+/// Renders the deck hierarchy as nested collapsible groups. A deck with children
+/// is an expandable `<details>`/`<summary>`. Because the summary toggles the
+/// submenu (it can't also be a filter), the parent deck's own selectable entry
+/// is rendered as the **first item inside** its submenu (labelled "this deck
+/// only"), followed by its children. A leaf deck is a plain selectable
+/// `<li><button>`.
 fn deck_filter_tree(
     decks: Vec<DeckSummary>,
     active: RwSignal<String>,
@@ -1598,13 +1595,8 @@ fn flag_swatch(flag: i64) -> impl IntoView {
 /// menu. The trigger icon is tinted with the current flag's colour (neutral when
 /// unset).
 ///
-/// Open/close is driven by a local `RwSignal` (no native `popover`), so it is
-/// deterministic and immune to global resets. The menu is rendered in the top
-/// layer via `position: fixed` + CSS anchor positioning (`anchor-name` on the
-/// trigger, `position-anchor`/`position-area` on the menu), so it is not clipped
-/// by any `overflow` ancestor (the study navbar *and* the card inspector's
-/// scroll container) and drops below the trigger regardless of container. `id`
-/// must be unique per instance so the two anchors don't collide.
+/// Open/close is driven by a local `RwSignal`; the menu is `position: absolute`
+/// below the trigger within a `relative` wrapper, and closes on selection.
 #[component]
 fn FlagDropdown(
     flag: Signal<i64>,

@@ -358,7 +358,7 @@ pub fn UiDialog(open: Signal<bool>, children: Children) -> impl IntoView {
 
     view! {
         <dialog
-            class="modal m-auto w-full max-w-lg rounded-lg border-none bg-transparent p-0 backdrop:bg-black/40"
+            class="m-auto w-full max-w-lg rounded-lg border-none bg-transparent p-0 backdrop:bg-black/40"
             node_ref=dialog_ref
         >
             <div class="rounded-lg border border-border bg-card p-6 shadow-lg">

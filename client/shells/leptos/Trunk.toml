@@ -2,10 +2,10 @@
 # Build the Leptos shell as a client-side rendered (CSR) WASM app.
 target = "index.html"
 
-# Regenerate the DaisyUI/Tailwind stylesheet before each build. `tailwindcss`
-# here is Tailwind's standalone Rust binary (`tailwindcss_4` from nixpkgs), so no
-# Node runtime is involved — it reads `input.css` (which loads the vendored
-# `daisyui.mjs` plugin) and writes `tailwind.css`, linked from `index.html`.
+# Regenerate the Tailwind stylesheet before each build. `tailwindcss` here is
+# Tailwind's standalone Rust binary (`tailwindcss_4` from nixpkgs), so no Node
+# runtime is involved — it reads `input.css` (the shadcn theme + utilities) and
+# writes `tailwind.css`, linked from `index.html`.
 [[hooks]]
 stage = "pre_build"
 command = "tailwindcss"

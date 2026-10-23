@@ -1,8 +1,8 @@
 # Leptos shell styling migration — off daisyUI, onto owned Tailwind components
 
-Status: **planned** (not yet executed). Owned by the **shell agent**.
-See also `SHELLS.md` §9 (the styling contract this supersedes/extends) and
-`CLIENT.md` §"Agent ownership".
+Status: **done**, on branch `style/daisyui-removal` (not yet merged to `main`).
+Owned by the **shell agent**. See also `SHELLS.md` §9 and `CLIENT.md` §"Agent
+ownership".
 
 ## 1. Goal
 
@@ -119,8 +119,14 @@ regression. Then repeat for the rest.
 
 ## 8. Done
 
-- `cargo build` + `cargo test` green in the client workspace.
-- `trunk build` succeeds.
-- No daisyUI references remain (`grep -r "daisyui\|btn\|modal\|menu\|badge\|drawer\|navbar\|breadcrumbs\|input-bordered\|select-bordered"` returns nothing relevant).
-- `SHELLS.md` §9 updated to reflect the new (no-daisyUI) contract, and §9.6/§9.7
-  boundary tables replaced with the post-migration state.
+- [x] `cargo build` green in the client workspace (native + wasm).
+- [x] `cargo test` green in the client workspace (shared tests unaffected).
+- [x] `trunk build` succeeds (daisyUI plugin removed, shadcn theme active).
+- [x] `daisyui.mjs` deleted; no daisyUI class string remains in markup.
+- [x] `ui.rs` primitives + `app.rs` call sites restyled with Tailwind utilities
+      + theme tokens via `tw_merge`.
+- [x] `SHELLS.md` §9 updated to reflect the post-daisyUI contract (§9.4/§9.5
+      rewritten; daisyUI-consumption tables §9.6/§9.7 removed).
+
+Note: the neutral grayscale palette is the intentional `leptos-ui` default;
+visual tuning toward our own design system is a separate follow-up.
