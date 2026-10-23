@@ -52,33 +52,12 @@ impl UiButtonAppearance {
     }
 }
 
-/// Button size. `Medium` is daisyUI's default (no modifier); `Small` maps to
-/// `btn-sm`. Kept as a typed enum so call sites express *which size* rather than
-/// spelling `btn-sm`. (A `Large` variant can be added trivially if a future
-/// surface needs `btn-lg`.)
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub enum UiButtonSize {
-    #[default]
-    Medium,
-    Small,
-}
-
-impl UiButtonSize {
-    fn class(self) -> &'static str {
-        match self {
-            UiButtonSize::Medium => "",
-            UiButtonSize::Small => " btn-sm",
-        }
-    }
-}
-
 #[component]
 pub fn UiButton<F>(
     #[prop(default = UiButtonAppearance::Primary)] appearance: UiButtonAppearance,
     #[prop(optional)] disabled: bool,
     #[prop(optional, default = "button")] button_type: &'static str,
     #[prop(optional)] aria_label: &'static str,
-    #[prop(optional, default = UiButtonSize::Medium)] size: UiButtonSize,
     #[prop(optional)] square: bool,
     #[prop(optional)] join_item: bool,
     #[prop(optional)] class: &'static str,
@@ -90,7 +69,7 @@ where
 {
     let shape = if square { " btn-square" } else { "" };
     let join = if join_item { " join-item" } else { "" };
-    let combined = format!("{}{}{}{} {class}", appearance.class(), size.class(), shape, join);
+    let combined = format!("{}{}{} {class}", appearance.class(), shape, join);
     view! {
         <button type=button_type class=combined disabled=disabled aria-label=aria_label on:click=on_click>
             {children()}
@@ -271,34 +250,18 @@ pub fn UiTab(
 // Input / Select
 // ---------------------------------------------------------------------------
 
-/// Shared size modifier for text inputs and selects. `Medium` is daisyUI's
-/// default (no modifier); `Small` maps to `input-sm`/`select-sm` respectively
-/// (resolved in each primitive so the correct per-element class is used).
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub enum UiControlSize {
-    #[default]
-    Medium,
-    Small,
-}
-
 /// Owned text input. The **single source of truth** for the daisyUI
-/// `input input-bordered` skin: call sites express only `value`, `on_input`,
-/// an optional `input_type`/`placeholder`/`size`, and a `class` for
-/// call-site-specific layout (`w-full`, `join-item`, `w-20`). Two-way binding is
-/// the call site's job (`bind:value` style) via the `value` signal here.
+/// `input input-bordered` skin: call sites express only `value`, an optional
+/// `input_type`/`placeholder`, and a `class` for call-site-specific layout
+/// (`w-full`, `join-item`, `w-20`). Two-way binding via `value`.
 #[component]
 pub fn UiInput(
     value: RwSignal<String>,
     #[prop(optional, default = "text")] input_type: &'static str,
     #[prop(optional)] placeholder: &'static str,
-    #[prop(optional, default = UiControlSize::Medium)] size: UiControlSize,
     #[prop(optional)] class: &'static str,
 ) -> impl IntoView {
-    let size_class = match size {
-        UiControlSize::Medium => "",
-        UiControlSize::Small => " input-sm",
-    };
-    let combined = format!("input input-bordered{size_class} {class}");
+    let combined = format!("input input-bordered {class}");
     view! {
         <input type=input_type class=combined bind:value=value placeholder=placeholder />
     }
@@ -311,15 +274,9 @@ pub fn UiInput(
 pub fn UiSelect(
     value: RwSignal<String>,
     options: &'static [(&'static str, &'static str)],
-    #[prop(optional, default = UiControlSize::Medium)] size: UiControlSize,
 ) -> impl IntoView {
-    let size_class = match size {
-        UiControlSize::Medium => "",
-        UiControlSize::Small => " select-sm",
-    };
-    let combined = format!("select select-bordered{size_class}");
     view! {
-        <select class=combined bind:value=value>
+        <select class="select select-bordered" bind:value=value>
             {options.iter().map(|(val, lbl)| {
                 view! { <option value=*val>{*lbl}</option> }
             }).collect_view()}
@@ -366,5 +323,22 @@ pub fn UiSubmitButton(
         <button type="submit" class="btn btn-square join-item" aria-label=aria_label>
             {children()}
         </button>
+    }
+}
+
+/// Owned daisyUI modal dialog. The **single source of truth** for the
+/// `modal` + `modal-box` structure: a native `<dialog>` driven by the `open`
+/// signal (daisyUI's `.modal[open]` rule renders the dimmed backdrop and centred
+/// box). Content (including any action/close buttons) is supplied as children.
+/// `open` is read-only here — the caller owns the signal and closes it via its
+/// own buttons.
+#[component]
+pub fn UiDialog(open: Signal<bool>, children: Children) -> impl IntoView {
+    view! {
+        <dialog class="modal" open=move || open.get()>
+            <div class="modal-box">
+                {children()}
+            </div>
+        </dialog>
     }
 }

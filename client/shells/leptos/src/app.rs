@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiBreadcrumbs, UiButton, UiButtonAppearance, UiButtonSize, UiCard, UiControlSize, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTab, UiTable, UiTabs, UiToggle};
+use crate::ui::{UiBadge, UiBadgeColor, UiBreadcrumbs, UiButton, UiButtonAppearance, UiCard, UiDialog, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTab, UiTable, UiTabs, UiToggle};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
@@ -1752,16 +1752,19 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
 /// Suspend (card + note), and Reschedule (set due date), collected into a single
 /// "⋮" dropdown menu (the flag picker is a separate `FlagDropdown` next to it).
 /// Each action forwards a core `Event` using the current card; the core owns the
-/// HTTP + state. The menu uses the same top-layer `position: fixed` + anchor
+/// HTTP + state. Reschedule is a normal menu item that opens a `UiDialog` for the
+/// day offset. The menu uses the same top-layer `position: fixed` + anchor
 /// mechanism as `FlagDropdown` so it isn't clipped by the header's layout.
 #[component]
 fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl IntoView {
-    // Reschedule: a day offset the user types, then confirms with a check.
+    // Reschedule: a day offset the user types, then confirms.
     let days = RwSignal::new(String::new());
+    let reschedule_open = RwSignal::new(false);
     let reschedule = move |_| {
         if let Ok(d) = days.get().trim().parse::<i64>() {
             set_event.set(Event::RescheduleCard { days: d });
             days.set(String::new());
+            reschedule_open.set(false);
         }
     };
 
@@ -1805,14 +1808,21 @@ fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
                 }}
                 <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
 
-                <li class="study-actions__dropdown-row">
-                    <UiInput value=days input_type="number" size=UiControlSize::Small placeholder="days" />
-                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small aria_label="Reschedule" on_click=move |_| { close(); reschedule(()); }>
-                        <Icon glyph=LucideGlyph::Check size="16" />
-                    </UiButton>
+                <li>
+                    <button on:click={ let close = close.clone(); move |_| { close(); reschedule_open.set(true); } }>"Reschedule"</button>
                 </li>
             </ul>
         </div>
+
+        <UiDialog open=reschedule_open.into()>
+            <h3 class="font-bold text-lg">"Reschedule"</h3>
+            <p class="py-4">"How many days from now?"</p>
+            <UiInput value=days input_type="number" placeholder="days" />
+            <div class="modal-action">
+                <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| reschedule_open.set(false)>"Cancel"</UiButton>
+                <UiButton appearance=UiButtonAppearance::Primary on_click=reschedule>"Reschedule"</UiButton>
+            </div>
+        </UiDialog>
     }
 }
 
