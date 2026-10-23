@@ -402,6 +402,7 @@ pub fn RootComponent() -> impl IntoView {
                                                     view! {
                                                         <StudyControls card=card set_event=set_event />
                                                         <FlagDropdown
+                                                            id="study-flag"
                                                             flag=flag_signal
                                                             on_select=move |f| {
                                                                 set_event.set(Event::FlagCard { flag: f as i32 });
@@ -1310,6 +1311,7 @@ fn CardInspector(
                             <dt>"Flag"</dt>
                             <dd>
                                 <FlagDropdown
+                                    id="browser-flag"
                                     flag=Signal::derive(move || flag.get().parse::<i64>().unwrap_or(0))
                                     on_select=move |f| {
                                         set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
@@ -1599,6 +1601,7 @@ fn flag_swatch(flag: i64) -> impl IntoView {
 /// below the trigger within a `relative` wrapper, and closes on selection.
 #[component]
 fn FlagDropdown(
+    id: &'static str,
     flag: Signal<i64>,
     on_select: impl Fn(i64) + Clone + 'static,
 ) -> impl IntoView {
@@ -1621,14 +1624,30 @@ fn FlagDropdown(
         on_select(f);
     };
 
+    // CSS anchor positioning: the trigger names an anchor; the menu is
+    // `position: fixed` + `position-anchor` + `position-area` so it renders in
+    // the top layer (immune to `overflow` ancestor clipping) and drops below the
+    // trigger, left-aligned. `id` must be unique per instance.
+    let anchor = format!("--{id}-anchor");
+    let trigger_style = format!("anchor-name:{anchor}");
+    let menu_style = move || {
+        if open.get() {
+            format!(
+                "position: fixed; position-anchor: {anchor}; position-area: block-end span-inline-start; display: flex;"
+            )
+        } else {
+            "display: none;".to_string()
+        }
+    };
+
     view! {
-        <div class="relative">
-            <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Set flag" on:click=toggle>
+        <div>
+            <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Set flag" style=trigger_style on:click=toggle>
                 <Icon glyph=LucideGlyph::Flag size="20" stroke=stroke />
             </div>
             <ul
-                class="absolute left-0 top-full z-50 mt-1 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
-                style:display=move || if open.get() { "flex" } else { "none" }
+                class="z-50 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+                style=menu_style
             >
                 <li>
                     <button class="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-sm" class:bg-accent=move || flag.get() == 0 on:click={
@@ -1741,14 +1760,22 @@ fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
     let toggle = move |_| open.update(|o| *o = !*o);
     let close = move || open.set(false);
 
+    let menu_style = move || {
+        if open.get() {
+            "position: fixed; position-anchor: --study-actions-anchor; position-area: block-end span-inline-start; display: flex;".to_string()
+        } else {
+            "display: none;".to_string()
+        }
+    };
+
     view! {
-        <div class="relative">
-            <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Card actions" on:click=toggle>
+        <div>
+            <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Card actions" style="anchor-name:--study-actions-anchor" on:click=toggle>
                 <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
             </div>
             <ul
-                class="absolute left-0 top-full z-50 mt-1 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
-                style:display=move || if open.get() { "flex" } else { "none" }
+                class="z-50 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+                style=menu_style
             >
                 {if buried {
                     view! {
