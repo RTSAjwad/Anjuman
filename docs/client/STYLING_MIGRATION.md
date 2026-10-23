@@ -130,3 +130,85 @@ regression. Then repeat for the rest.
 
 Note: the neutral grayscale palette is the intentional `leptos-ui` default;
 visual tuning toward our own design system is a separate follow-up.
+
+---
+
+## 9. Phase 2 — adopt `rust-ui/leptos-ui` as the component source
+
+We are duplicating `leptos-ui`'s components already (same Tailwind utilities,
+same shadcn tokens, same `tw_merge`). Rather than hand-author each `Ui*` a second
+time, adopt their registry as the **copy-and-adapt source**: vendor their
+component bodies under our existing `Ui*` names/signatures so `app.rs` call sites
+keep compiling.
+
+Decisions (locked):
+- **Icons** — keep `lepticons` (already category-gated for WASM size; same Lucide
+  glyphs). Do **not** add their `icons` crate.
+- **Variants** — adopt their `variants!` macro → `tw_merge`'s `TwClass`/`TwVariant`
+  derives (requires the `tw_merge` `variant` feature).
+- **Branch** — continue on `style/daisyui-removal` (no new branch).
+
+### 9.1 New dependency surface (core-agent carve-outs)
+
+The shell agent cannot edit `client/Cargo.toml` `[workspace.dependencies]`; these
+are flagged to the core agent:
+
+1. **`tw_merge` `variant` feature** — change `tw_merge = "0.1"` to
+   `tw_merge = { version = "0.1", features = ["variant"] }`. This pulls in
+   `tw_merge_variants` (the `TwClass`/`TwVariant` derives).
+2. **`paste`** — `paste = "1"` (their `variants!` macro uses `paste!` for
+   identifier pasting).
+3. (No `icons` crate — we keep `lepticons`.)
+
+### 9.2 Vendor the `variants!` macro
+
+Copy `crates/leptos_ui/src/variants.rs` (their `leptos_ui` crate's macro) into our
+`ui.rs` (or a small local `variants` module). We take **only** the `variants!`
+macro, re-exporting `tw_merge::*` + `paste`, **not** the whole `leptos_ui` crate
+(we're not adopting their `icons`/`ui-cli`/`leptos_router` surface). Note their
+macro's `support_href` branch pulls `leptos_router` — we omit that branch since
+we use our own hash routing, not `leptos_router`.
+
+### 9.3 Vendor components, re-exposed as our `Ui*` API
+
+For each primitive, copy the registry body's `variants! { … }` block + thin
+wrapper, then re-expose under our existing signature (or adjust `app.rs` call
+sites where the signature diverges — e.g. their `Button` takes
+`variant`/`size`/`class` as `Signal`s + optional `href`, whereas ours takes an
+`appearance` enum + `on_click`).
+
+| rust-ui component | → our `Ui*` | notes |
+|---|---|---|
+| `Button` | `UiButton` | variant+size enums (Default/Secondary/Destructive/Outline/Ghost/Link; Default/Sm/Lg/Icon) |
+| `Badge` | `UiBadge` | variant = our `UiBadgeColor` (Default/Secondary/Destructive/Success/Warning/Outline) |
+| `Dialog`/`AlertDialog` | `UiDialog` | signal-driven `showModal()`/`close()` |
+| `Input` | `UiInput` | |
+| `Select` (native) | `UiSelect` | |
+| `Switch` | `UiToggle` | |
+| `Tabs` | `UiTabs`/`UiTab` | |
+| `Table` | `UiTable` | |
+| `Breadcrumb` | `UiBreadcrumbs` | |
+| `Card` | `UiCard` | |
+| `Pagination` | `UiPagination` | |
+| `DropdownMenu`/`Popover` | `FlagDropdown` + `StudyControls` menu | |
+
+### 9.4 Theme
+
+Replace our trimmed `input.css` `:root`/`.dark`/`@theme inline` with their verbatim
+block (plus any tokens our call sites actually use), so `bg-primary/90` etc.
+resolve identically to their docs.
+
+### 9.5 Order (proof-of-concept first)
+
+1. Core agent adds `tw_merge` `variant` feature + `paste` (carve-out 9.1).
+2. Vendor `variants!` macro; keep `lepticons`.
+3. Vendor `Button` → `UiButton` as the POC (prove `variants!` + `tw_merge`
+   `variant` compiles in our workspace).
+4. Repeat for the rest (badge, dialog, input, select, switch, tabs, table, card,
+   breadcrumb, pagination, dropdown).
+5. Swap to their verbatim theme; `cargo build`/`trunk build` green; update
+   `SHELLS.md` to name `rust-ui/leptos-ui` as the adopted reference.
+
+Open question deferred: whether to keep our `UiButtonAppearance` enum as a thin
+compatibility layer over their `variants!` enums (recommended, so `app.rs` churn
+is minimal) vs. migrating `app.rs` to the new `variant`/`size` signal API directly.
