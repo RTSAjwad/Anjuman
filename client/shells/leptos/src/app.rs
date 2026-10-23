@@ -20,7 +20,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiBreadcrumbs, UiButton, UiButtonAppearance, UiCard, UiDialog, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTab, UiTable, UiTabs, UiToggle};
+use crate::ui::{UiBadge, UiBadgeColor, UiBreadcrumbs, UiButton, UiButtonAppearance, UiCard, UiDialog, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTab, UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow, UiTabs, UiToggle};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and
@@ -1128,15 +1128,15 @@ fn browser(
                     CurrentRoute::Cards => view! {
                         <div class="card-browser__content">
                             <UiTable>
-                                <thead>
-                                    <tr>
-                                        <th>"Card"</th>
-                                        <th>"Deck"</th>
-                                        <th>"State"</th>
-                                        <th>"Flag"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                                <UiTableHeader>
+                                    <UiTableRow>
+                                        <UiTableHead>"Card"</UiTableHead>
+                                        <UiTableHead>"Deck"</UiTableHead>
+                                        <UiTableHead>"State"</UiTableHead>
+                                        <UiTableHead>"Flag"</UiTableHead>
+                                    </UiTableRow>
+                                </UiTableHeader>
+                                <UiTableBody>
                                     {move || vm_sig.get().browser_cards.iter().map(|c| {
                                         let card_id = c.card_id;
                                         let is_selected = vm_sig.get().browser_selected.as_ref().map(|c| c.card_id) == Some(card_id);
@@ -1147,24 +1147,24 @@ fn browser(
                                         let suspended = c.suspended;
                                         let buried = c.buried;
                                         view! {
-                                            <tr
-                                                class:card-browser__row--selected=is_selected
-                                                on:click=move |_| set_event.set(Event::BrowserSelectCard { card_id })
+                                            <UiTableRow
+                                                selected=Signal::derive(move || is_selected)
+                                                on_click=Callback::new(move |_| set_event.set(Event::BrowserSelectCard { card_id }))
                                             >
-                                                <td>
+                                                <UiTableCell>
                                                     <span class="card-browser__front">
                                                         {front}
                                                         {if suspended { " (suspended)" } else { "" }}
                                                         {if buried { " (buried)" } else { "" }}
                                                     </span>
-                                                </td>
-                                                <td>{deck_title}</td>
-                                                <td>{state}</td>
-                                                <td>{flag_swatch(flag)}</td>
-                                            </tr>
+                                                </UiTableCell>
+                                                <UiTableCell>{deck_title}</UiTableCell>
+                                                <UiTableCell>{state}</UiTableCell>
+                                                <UiTableCell>{flag_swatch(flag)}</UiTableCell>
+                                            </UiTableRow>
                                         }
                                     }).collect_view()}
-                                </tbody>
+                                </UiTableBody>
                             </UiTable>
 
                             <div class="card-browser__pagination">
@@ -1185,33 +1185,33 @@ fn browser(
                     CurrentRoute::Notes => view! {
                         <div class="card-browser__content">
                             <UiTable>
-                                <thead>
-                                    <tr>
-                                        <th>"Sort field"</th>
-                                        <th>"Note type"</th>
-                                        <th>"Tags"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                                <UiTableHeader>
+                                    <UiTableRow>
+                                        <UiTableHead>"Sort field"</UiTableHead>
+                                        <UiTableHead>"Note type"</UiTableHead>
+                                        <UiTableHead>"Tags"</UiTableHead>
+                                    </UiTableRow>
+                                </UiTableHeader>
+                                <UiTableBody>
                                     {move || vm_sig.get().notes.iter().map(|n| {
                                         let note_id = n.id;
                                         let note_type_name = n.note_type_name.clone();
                                         let sort_field = n.sort_field.clone().unwrap_or_default();
                                         let tags = n.tags.join(", ");
                                         view! {
-                                            <tr
-                                                class:card-browser__row--selected=move || vm_sig.get().notes_selected.as_ref().map(|n| n.id) == Some(note_id)
-                                                on:click=move |_| set_event.set(Event::NoteBrowserSelectNote { note_id })
+                                            <UiTableRow
+                                                selected=Signal::derive(move || vm_sig.get().notes_selected.as_ref().map(|n| n.id) == Some(note_id))
+                                                on_click=Callback::new(move |_| set_event.set(Event::NoteBrowserSelectNote { note_id }))
                                             >
-                                                <td>
+                                                <UiTableCell>
                                                     <span class="card-browser__front">{sort_field}</span>
-                                                </td>
-                                                <td>{note_type_name}</td>
-                                                <td>{tags}</td>
-                                            </tr>
+                                                </UiTableCell>
+                                                <UiTableCell>{note_type_name}</UiTableCell>
+                                                <UiTableCell>{tags}</UiTableCell>
+                                            </UiTableRow>
                                         }
                                     }).collect_view()}
-                                </tbody>
+                                </UiTableBody>
                             </UiTable>
 
                             <div class="card-browser__pagination">
