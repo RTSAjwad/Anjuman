@@ -52,6 +52,12 @@ lepticons = { version = "0.13", default-features = false, features = [
     "text",
     "notifications",
 ] }
+# Tailwind class-merge macros (leptos ecosystem) for composing utility + token
+# class strings in the shell's `Ui*` primitives without string-concat conflicts.
+# See docs/client/STYLING_MIGRATION.md. Note: the crate name is `tw_merge`
+# (underscore) — the hyphenated `tw-merge` is a different, abandoned crates.io
+# package. Default features (no `variant`) are sufficient for Phase 0/1.
+tw_merge = "0.1"
 
 [profile.release]
 opt-level = "s"
