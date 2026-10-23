@@ -109,6 +109,57 @@
 }
 
 /* -------------------------------------------------------------------------
+ * Transitional aliases: the shell's hand-written layout CSS (index.html) was
+ * written against thaw's Fluent token names (`--colorNeutralForeground*`, …).
+ * Re-map those names to the shadcn tokens above so the existing layout rules
+ * keep resolving without a rewrite. (The eventual design-system cleanup will
+ * replace the Fluent-named CSS rule-by-rule.)
+ * ------------------------------------------------------------------------- */
+:root {
+  --colorNeutralForeground1: var(--foreground);
+  --colorNeutralForeground2: var(--muted-foreground);
+  --colorNeutralForeground3: var(--muted-foreground);
+  --colorNeutralForegroundDisabled: var(--muted-foreground);
+  --colorNeutralForeground2Hover: var(--foreground);
+  --colorNeutralForeground3Hover: var(--foreground);
+  --colorNeutralForeground2Pressed: var(--foreground);
+  --colorNeutralForegroundOnBrand: var(--primary-foreground);
+  --colorNeutralBackground1: var(--background);
+  --colorNeutralBackground1Hover: var(--accent);
+  --colorNeutralBackground2: var(--muted);
+  --colorNeutralStroke1: var(--border);
+  --colorNeutralStroke2: var(--border);
+  --colorBrandForeground1: var(--primary);
+  --colorBrandBackground2: var(--muted);
+  --colorBrandStroke2: var(--primary);
+  --colorSubtleBackground: var(--muted);
+  --colorSubtleBackgroundHover: var(--accent);
+  --colorSubtleBackgroundPressed: var(--accent);
+  --colorPaletteRedBackground3: var(--destructive);
+  --colorPaletteRedBorder2: var(--destructive);
+  --colorPaletteRedForeground1: var(--destructive);
+  --spacingHorizontalNone: 0px;
+  --spacingHorizontalXXS: 2px;
+  --spacingHorizontalS: 8px;
+  --spacingHorizontalXXL: 24px;
+  --spacingVerticalXS: 4px;
+  --spacingVerticalXXS: 2px;
+  --fontFamilyBase: var(--font-sans);
+  --fontSizeBase100: 12px;
+  --fontSizeBase200: 13px;
+  --fontSizeBase300: 14px;
+  --fontSizeBase400: 16px;
+  --fontSizeBase500: 20px;
+  --fontWeightRegular: 400;
+  --fontWeightSemibold: 600;
+  --lineHeightBase300: 1.25rem;
+  --borderRadiusSmall: 0.25rem;
+  --borderRadiusMedium: 0.375rem;
+  --durationNormal: 200ms;
+  --curveEasyEaseMax: ease;
+}
+
+/* -------------------------------------------------------------------------
  * Sensible globals (a small shadcn-style base, replacing daisyUI/preflight
  * expectations that the shell CSS relied on).
  * ------------------------------------------------------------------------- */

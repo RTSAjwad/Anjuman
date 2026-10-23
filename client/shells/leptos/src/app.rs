@@ -292,23 +292,51 @@ pub fn RootComponent() -> impl IntoView {
                     let route = vm.route;
                     let can_manage_notes = vm.permissions.can_manage_notes;
                     view! {
-                        <div class="drawer lg:drawer-open">
-                            <input
-                                id="sidebar-toggle"
-                                type="checkbox"
-                                class="drawer-toggle"
-                                on:change=move |ev| {
-                                    let checked = event_target_checked(&ev);
-                                    sidebar_expanded.set(checked);
-                                }
-                            />
+                        <div class="flex h-svh w-full">
+                            // Collapsible sidebar: icon-rail (w-14) <-> expanded (w-64),
+                            // driven by the `sidebar_expanded` signal (toggled in the navbar).
+                            <aside
+                                class="flex flex-col items-stretch border-r border-border bg-muted transition-[width] duration-200"
+                                class:w-14=move || !sidebar_expanded.get()
+                                class:w-64=sidebar_expanded
+                            >
+                                <div class="hidden px-3 py-3 font-semibold text-base" class:hidden=move || !sidebar_expanded.get()>"Anjuman"</div>
+                                <nav class="flex flex-1 flex-col gap-1 p-2">
+                                    <button
+                                        class="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium"
+                                        class:bg-accent=move || route == CurrentRoute::DeckList
+                                        on:click=show_deck_list
+                                    >
+                                        <Icon glyph=LucideGlyph::Library size="16" />
+                                        <span class:hidden=move || !sidebar_expanded.get()>"Decks"</span>
+                                    </button>
+                                    <button
+                                        class="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium"
+                                        class:bg-accent=move || route == CurrentRoute::Cards || route == CurrentRoute::Notes
+                                        on:click=show_cards.clone()
+                                    >
+                                        <Icon glyph=LucideGlyph::Table size="16" />
+                                        <span class:hidden=move || !sidebar_expanded.get()>"Browser"</span>
+                                    </button>
+                                </nav>
+                                <div class="mt-auto p-2">
+                                    <p class="hidden px-2 pb-2 text-xs text-muted-foreground" class:hidden=move || !sidebar_expanded.get()>{display_name.clone()}</p>
+                                    <button
+                                        class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm font-medium"
+                                        on:click=logout
+                                    >
+                                        <Icon glyph=LucideGlyph::LogOut size="16" />
+                                        <span class:hidden=move || !sidebar_expanded.get()>"Log out"</span>
+                                    </button>
+                                </div>
+                            </aside>
 
-                            <div class="drawer-content flex h-svh flex-col">
-                                <nav class="navbar min-h-12 w-full gap-2 bg-base-300 px-3">
-                                    <label
-                                        for="sidebar-toggle"
+                            <div class="flex h-full flex-1 flex-col">
+                                <nav class="flex h-12 w-full items-center gap-2 border-b border-border bg-muted px-3">
+                                    <button
                                         aria-label="toggle sidebar"
-                                        class="btn btn-square btn-ghost drawer-button"
+                                        class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent"
+                                        on:click=move |_| sidebar_expanded.update(|v| *v = !*v)
                                     >
                                         {move || {
                                             if sidebar_expanded.get() {
@@ -317,7 +345,7 @@ pub fn RootComponent() -> impl IntoView {
                                                 view! { <Icon glyph=LucideGlyph::PanelRightOpen size="20" /> }.into_any()
                                             }
                                         }}
-                                    </label>
+                                    </button>
 
                                     {match route {
                                         CurrentRoute::DeckList => view! {
@@ -375,7 +403,6 @@ pub fn RootComponent() -> impl IntoView {
                                                     view! {
                                                         <StudyControls card=card set_event=set_event />
                                                         <FlagDropdown
-                                                            id="study-flag"
                                                             flag=flag_signal
                                                             on_select=move |f| {
                                                                 set_event.set(Event::FlagCard { flag: f as i32 });
@@ -455,52 +482,6 @@ pub fn RootComponent() -> impl IntoView {
                                         }
                                     }}
                                 </main>
-                            </div>
-
-                            <div class="drawer-side lg:is-drawer-close:overflow-visible">
-                                <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
-                                <div class="app-sidebar flex min-h-full w-64 flex-col items-start bg-base-200 is-drawer-close:w-14 is-drawer-open:w-64">
-                                    <div class="app-sidebar__brand w-full is-drawer-close:hidden">"Anjuman"</div>
-                                    <ul class="menu w-full grow">
-                                        <li>
-                                            <button
-                                                class:menu-active=move || route == CurrentRoute::DeckList
-                                                class="is-drawer-close:tooltip is-drawer-close:tooltip-right"
-                                                data-tip="Decks"
-                                                on:click=show_deck_list
-                                            >
-                                                <Icon glyph=LucideGlyph::Library size="16" class="my-1.5 inline-block" />
-                                                <span class="is-drawer-close:hidden">"Decks"</span>
-                                            </button>
-                                        </li>
-                                        <li>
-                                            <button
-                                                class:menu-active=move || route == CurrentRoute::Cards || route == CurrentRoute::Notes
-                                                class="is-drawer-close:tooltip is-drawer-close:tooltip-right"
-                                                data-tip="Browser"
-                                                on:click=show_cards.clone()
-                                            >
-                                                <Icon glyph=LucideGlyph::Table size="16" class="my-1.5 inline-block" />
-                                                <span class="is-drawer-close:hidden">"Browser"</span>
-                                            </button>
-                                        </li>
-                                    </ul>
-                                    <div class="mt-auto w-full">
-                                        <p class="app-sidebar__user px-3 pt-3 is-drawer-close:hidden">{display_name.clone()}</p>
-                                        <ul class="menu w-full">
-                                            <li>
-                                                <button
-                                                    class="is-drawer-close:tooltip is-drawer-close:tooltip-right"
-                                                    data-tip="Log out"
-                                                    on:click=logout
-                                                >
-                                                    <Icon glyph=LucideGlyph::LogOut size="16" class="my-1.5 inline-block" />
-                                                    <span class="is-drawer-close:hidden">"Log out"</span>
-                                                </button>
-                                            </li>
-                                        </ul>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     }
@@ -982,8 +963,8 @@ fn browser(
                                 search_apply();
                             }
                         >
-                            <div class="join w-full">
-                                <UiInput value=q_value placeholder="Search…" class="w-full join-item" />
+                            <div class="flex w-full">
+                                <UiInput value=q_value placeholder="Search…" class="flex-1 rounded-r-none" />
                                 <UiSubmitButton aria_label="Search">
                                     <Icon glyph=LucideGlyph::Search size="16" />
                                 </UiSubmitButton>
@@ -997,7 +978,7 @@ fn browser(
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
-                        <ul class="menu card-browser__menu">
+                        <ul class="card-browser__menu">
                             {filter_branch(
                                 "Decks",
                                 deck_filter_tree(
@@ -1045,7 +1026,7 @@ fn browser(
                                     let label = flag_label(f.parse::<i64>().unwrap());
                                     view! {
                                         <li>
-                                            <button class:menu-active=active on:click=move |_| sel(f_val.clone())>
+                                            <button class="flex w-full items-center rounded-sm px-3 py-1.5 text-sm" class:bg-accent=active on:click=move |_| sel(f_val.clone())>
                                                 <span class="card-browser__flag-sw">
                                                     <span class="card-browser__flag-swatch" style=format!("background-color: {color}")></span>
                                                     <span>{label}</span>
@@ -1083,8 +1064,8 @@ fn browser(
                                 fire_note_filter(1);
                             }
                         >
-                            <div class="join w-full">
-                                <UiInput value=note_query placeholder="Search…" class="w-full join-item" />
+                            <div class="flex w-full">
+                                <UiInput value=note_query placeholder="Search…" class="flex-1 rounded-r-none" />
                                 <UiSubmitButton aria_label="Search">
                                     <Icon glyph=LucideGlyph::Search size="16" />
                                 </UiSubmitButton>
@@ -1098,7 +1079,7 @@ fn browser(
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
-                        <ul class="menu card-browser__menu">
+                        <ul class="card-browser__menu">
                             {filter_branch(
                                 "Decks",
                                 deck_filter_tree(
@@ -1330,7 +1311,6 @@ fn CardInspector(
                             <dt>"Flag"</dt>
                             <dd>
                                 <FlagDropdown
-                                    id="browser-flag"
                                     flag=Signal::derive(move || flag.get().parse::<i64>().unwrap_or(0))
                                     on_select=move |f| {
                                         set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
@@ -1342,8 +1322,8 @@ fn CardInspector(
                             <dt>"Reschedule"</dt>
                             <dd>
                                 <div class="card-browser__inspector-reschedule">
-                                    <div class="join">
-                                        <UiInput value=reschedule_days input_type="number" placeholder="days" class="join-item" />
+                                    <div class="flex">
+                                        <UiInput value=reschedule_days input_type="number" placeholder="days" class="rounded-r-none" />
                                         <UiButton
                                             appearance=UiButtonAppearance::Subtle
                                             square=true
@@ -1478,8 +1458,8 @@ fn filter_branch(label: &'static str, leaves: impl IntoView) -> impl IntoView {
     }
 }
 
-/// A single selectable filter leaf, rendered as a daisyUI `menu` item (native
-/// `<button>`), highlighted with `menu-active` when selected.
+/// A single selectable filter leaf (native `<button>`), highlighted with the
+/// accent background when selected.
 fn filter_leaf(
     active: bool,
     value: String,
@@ -1488,7 +1468,7 @@ fn filter_leaf(
 ) -> impl IntoView {
     view! {
         <li>
-            <button class:menu-active=active on:click=move |_| on_select(value.clone())>
+            <button class="flex w-full rounded-sm px-3 py-1.5 text-sm" class:bg-accent=active on:click=move |_| on_select(value.clone())>
                 {label}
             </button>
         </li>
@@ -1537,7 +1517,7 @@ fn deck_filter_node(
         // the expanded submenu (the summary itself only toggles the submenu).
         let self_item = view! {
             <li>
-                <button class:menu-active=is_active.clone() on:click=move |_| select_self(self_id.clone())>
+                <button class="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-sm" class:bg-accent=is_active.clone() on:click=move |_| select_self(self_id.clone())>
                     {title.clone()}
                     <span class="card-browser__deck-self">{"this deck only"}</span>
                 </button>
@@ -1558,7 +1538,7 @@ fn deck_filter_node(
     } else {
         view! {
             <li>
-                <button class:menu-active=is_active on:click=move |_| on_select(id_str.clone())>
+                <button class="flex w-full rounded-sm px-3 py-1.5 text-sm" class:bg-accent=is_active on:click=move |_| on_select(id_str.clone())>
                     {title}
                 </button>
             </li>
@@ -1627,7 +1607,6 @@ fn flag_swatch(flag: i64) -> impl IntoView {
 /// must be unique per instance so the two anchors don't collide.
 #[component]
 fn FlagDropdown(
-    id: &'static str,
     flag: Signal<i64>,
     on_select: impl Fn(i64) + Clone + 'static,
 ) -> impl IntoView {
@@ -1650,22 +1629,17 @@ fn FlagDropdown(
         on_select(f);
     };
 
-    let anchor = format!("--{id}-anchor");
-    let trigger_style = format!("anchor-name:{anchor}");
-    let menu_style = format!("position-anchor:{anchor}");
-
     view! {
-        <div class="flag-dropdown">
-            <div tabindex="0" role="button" class="btn btn-ghost btn-square" aria-label="Set flag" style=trigger_style on:click=toggle>
+        <div class="relative">
+            <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Set flag" on:click=toggle>
                 <Icon glyph=LucideGlyph::Flag size="20" stroke=stroke />
             </div>
             <ul
-                class="flag-dropdown__menu rounded-box bg-base-100 shadow-sm"
+                class="absolute left-0 top-full z-50 mt-1 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
                 style:display=move || if open.get() { "flex" } else { "none" }
-                style=menu_style
             >
                 <li>
-                    <button class:menu-active=move || flag.get() == 0 on:click={
+                    <button class="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-sm" class:bg-accent=move || flag.get() == 0 on:click={
                         let choose = choose.clone();
                         move |_| choose(0)
                     }>
@@ -1676,7 +1650,7 @@ fn FlagDropdown(
                     let choose = choose.clone();
                     view! {
                         <li>
-                            <button class:menu-active=move || flag.get() == f on:click=move |_| choose(f)>
+                            <button class="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-sm" class:bg-accent=move || flag.get() == f on:click=move |_| choose(f)>
                                 {flag_swatch(f)}
                             </button>
                         </li>
@@ -1775,50 +1749,47 @@ fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
     let toggle = move |_| open.update(|o| *o = !*o);
     let close = move || open.set(false);
 
-    let anchor = "--study-actions-anchor";
-
     view! {
-        <div class="flag-dropdown">
-            <div tabindex="0" role="button" class="btn btn-ghost btn-square" aria-label="Card actions" style=format!("anchor-name:{anchor}") on:click=toggle>
+        <div class="relative">
+            <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Card actions" on:click=toggle>
                 <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
             </div>
             <ul
-                class="flag-dropdown__menu rounded-box bg-base-100 shadow-sm"
+                class="absolute left-0 top-full z-50 mt-1 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
                 style:display=move || if open.get() { "flex" } else { "none" }
-                style=format!("position-anchor:{anchor}")
             >
                 {if buried {
                     view! {
-                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnburyCard); } }>"Unbury"</button></li>
+                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnburyCard); } }>"Unbury"</button></li>
                     }.into_any()
                 } else {
                     view! {
-                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryCard); } }>"Bury"</button></li>
+                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryCard); } }>"Bury"</button></li>
                     }.into_any()
                 }}
-                <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryNote); } }>"Bury note"</button></li>
+                <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryNote); } }>"Bury note"</button></li>
                 {if suspended {
                     view! {
-                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnsuspendCard); } }>"Unsuspend"</button></li>
+                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnsuspendCard); } }>"Unsuspend"</button></li>
                     }.into_any()
                 } else {
                     view! {
-                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendCard); } }>"Suspend"</button></li>
+                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendCard); } }>"Suspend"</button></li>
                     }.into_any()
                 }}
-                <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
+                <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
 
                 <li>
-                    <button on:click={ let close = close.clone(); move |_| { close(); reschedule_open.set(true); } }>"Reschedule"</button>
+                    <button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); reschedule_open.set(true); } }>"Reschedule"</button>
                 </li>
             </ul>
         </div>
 
         <UiDialog open=reschedule_open.into()>
-            <h3 class="font-bold text-lg">"Reschedule"</h3>
+            <h3 class="text-lg font-bold">"Reschedule"</h3>
             <p class="py-4">"How many days from now?"</p>
             <UiInput value=days input_type="number" placeholder="days" />
-            <div class="modal-action">
+            <div class="mt-6 flex justify-end gap-2">
                 <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| reschedule_open.set(false)>"Cancel"</UiButton>
                 <UiButton appearance=UiButtonAppearance::Primary on_click=reschedule>"Reschedule"</UiButton>
             </div>
@@ -1932,7 +1903,7 @@ fn deck_options_panel(
                     <div class="deck-options-assign">
                         <span class="deck-options-assign__label">"Preset"</span>
                         <select
-                            class="select select-bordered"
+                            class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                             prop:value=move || assign_selection.get()
                             on:change=move |ev| {
                                 let value = event_target_value(&ev);
@@ -2235,7 +2206,7 @@ fn text_field(label: &'static str, value: RwSignal<String>, placeholder: &'stati
 fn toggle_field(label: &'static str, checked: RwSignal<bool>) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <input type="checkbox" class="toggle" bind:checked=checked />
+            <input type="checkbox" class="h-4 w-4 rounded border-border accent-primary" bind:checked=checked />
         </FieldRow>
     }
 }
