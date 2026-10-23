@@ -1627,18 +1627,14 @@ fn FlagDropdown(
     // CSS anchor positioning: the trigger names an anchor; the menu is
     // `position: fixed` + `position-anchor` + `position-area` so it renders in
     // the top layer (immune to `overflow` ancestor clipping) and drops below the
-    // trigger, left-aligned. `id` must be unique per instance.
+    // trigger, left-aligned. `id` must be unique per instance. The menu stays in
+    // the DOM and is shown/hidden via a `data-state` attribute + opacity/scale
+    // transition (so it animates), note a `display` toggle.
     let anchor = format!("--{id}-anchor");
     let trigger_style = format!("anchor-name:{anchor}");
-    let menu_style = move || {
-        if open.get() {
-            format!(
-                "position: fixed; position-anchor: {anchor}; position-area: block-end span-inline-start; display: flex;"
-            )
-        } else {
-            "display: none;".to_string()
-        }
-    };
+    let menu_style = format!(
+        "position: fixed; position-anchor: {anchor}; position-area: block-end span-inline-start;"
+    );
 
     view! {
         <div>
@@ -1646,8 +1642,9 @@ fn FlagDropdown(
                 <Icon glyph=LucideGlyph::Flag size="20" stroke=stroke />
             </div>
             <ul
-                class="z-50 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+                class="z-50 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md transition-all duration-200 data-[state=closed]:pointer-events-none data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100"
                 style=menu_style
+                data-state=move || if open.get() { "open" } else { "closed" }
             >
                 <li>
                     <button class="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-sm" class:bg-accent=move || flag.get() == 0 on:click={
@@ -1760,13 +1757,7 @@ fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
     let toggle = move |_| open.update(|o| *o = !*o);
     let close = move || open.set(false);
 
-    let menu_style = move || {
-        if open.get() {
-            "position: fixed; position-anchor: --study-actions-anchor; position-area: block-end span-inline-start; display: flex;".to_string()
-        } else {
-            "display: none;".to_string()
-        }
-    };
+    let menu_style = "position: fixed; position-anchor: --study-actions-anchor; position-area: block-end span-inline-start;";
 
     view! {
         <div>
@@ -1774,8 +1765,9 @@ fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
                 <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
             </div>
             <ul
-                class="z-50 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+                class="z-50 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md transition-all duration-200 data-[state=closed]:pointer-events-none data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100"
                 style=menu_style
+                data-state=move || if open.get() { "open" } else { "closed" }
             >
                 {if buried {
                     view! {

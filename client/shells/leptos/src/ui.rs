@@ -107,7 +107,6 @@ crate::variants! {
         variants: {
             variant: {
                 Default: "bg-primary text-primary-foreground",
-                Secondary: "bg-secondary text-secondary-foreground",
                 Destructive: "bg-destructive text-white",
                 Muted: "bg-muted text-muted-foreground",
                 Success: "bg-success text-success-foreground",
