@@ -225,9 +225,10 @@ is minimal) vs. migrating `app.rs` to the new `variant`/`size` signal API direct
       use (`--primary`/`--secondary`/`--muted`/`--accent`/`--destructive`/
       `--success`/`--border`/`--input`/`--ring` + `-foreground`), matching
       `leptos-ui`'s values — no verbatim-swap needed.
-- [ ] Floating UI: `FlagDropdown` + `StudyControls` menu → portal-based
-      `DropdownMenu`/`Popover` (the remaining substantive item; currently
-      `position: absolute` within a `relative` wrapper).
+- [x] Floating UI: `FlagDropdown` + `StudyControls` menu now use CSS anchor
+      positioning (`position: fixed` + `position-anchor` + `position-area`), the
+      idiomatic `leptos-ui` `Popover` approach, so they're top-layer and immune to
+      `overflow` clipping.
 
 **Finding:** `variants!`/`TwClass`/`TwVariant` is only a win for components with a
 *variant matrix* (button appearance/size, badge colour). The single-skin primitives
