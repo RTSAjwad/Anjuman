@@ -1618,13 +1618,6 @@ fn flag_swatch(flag: i64) -> impl IntoView {
 /// menu. The trigger icon is tinted with the current flag's colour (neutral when
 /// unset).
 ///
-/// Open/close is driven entirely by a local `RwSignal` (no native CSS `popover`
-/// A dropdown flag picker: a square ghost button with a coloured Lucide `Flag`
-/// icon as the trigger, and a list of the eight flag values (0 = none, 1–7 the
-/// Anki colours). Clicking an item forwards `on_select(value)` and closes the
-/// menu. The trigger icon is tinted with the current flag's colour (neutral when
-/// unset).
-///
 /// Open/close is driven by a local `RwSignal` (no native `popover`), so it is
 /// deterministic and immune to global resets. The menu is rendered in the top
 /// layer via `position: fixed` + CSS anchor positioning (`anchor-name` on the
@@ -1756,10 +1749,11 @@ fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
 }
 
 /// Study-card actions shown in the top bar while a card is in hand: Bury,
-/// Suspend (card + note), and Reschedule (set due date). Each forwards a core
-/// `Event` using the current card; the core owns the HTTP + state. Flagging is a
-/// separate `FlagDropdown` rendered next to this, mirroring the card browser
-/// inspector.
+/// Suspend (card + note), and Reschedule (set due date), collected into a single
+/// "⋮" dropdown menu (the flag picker is a separate `FlagDropdown` next to it).
+/// Each action forwards a core `Event` using the current card; the core owns the
+/// HTTP + state. The menu uses the same top-layer `position: fixed` + anchor
+/// mechanism as `FlagDropdown` so it isn't clipped by the header's layout.
 #[component]
 fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl IntoView {
     // Reschedule: a day offset the user types, then confirms with a check.
@@ -1774,35 +1768,50 @@ fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl Int
     let buried = card.buried;
     let suspended = card.suspended;
 
-    view! {
-        <div class="study-actions">
-            {if buried {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::UnburyCard)>"Unbury"</UiButton>
-                }.into_any()
-            } else {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::BuryCard)>"Bury"</UiButton>
-                }.into_any()
-            }}
-            <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::BuryNote)>"Bury note"</UiButton>
-            {if suspended {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::UnsuspendCard)>"Unsuspend"</UiButton>
-                }.into_any()
-            } else {
-                view! {
-                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::SuspendCard)>"Suspend"</UiButton>
-                }.into_any()
-            }}
-            <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small on_click=move |_| set_event.set(Event::SuspendNote)>"Suspend note"</UiButton>
+    let open = RwSignal::new(false);
+    let toggle = move |_| open.update(|o| *o = !*o);
+    let close = move || open.set(false);
 
-            <div class="join">
-                <UiInput value=days input_type="number" size=UiControlSize::Small placeholder="days" class="join-item w-20" />
-                <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small join_item=true aria_label="Reschedule" on_click=reschedule>
-                    <Icon glyph=LucideGlyph::Check size="20" />
-                </UiButton>
+    let anchor = "--study-actions-anchor";
+
+    view! {
+        <div class="flag-dropdown">
+            <div tabindex="0" role="button" class="btn btn-ghost btn-square" aria-label="Card actions" style=format!("anchor-name:{anchor}") on:click=toggle>
+                <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
             </div>
+            <ul
+                class="flag-dropdown__menu rounded-box bg-base-100 shadow-sm"
+                style:display=move || if open.get() { "flex" } else { "none" }
+                style=format!("position-anchor:{anchor}")
+            >
+                {if buried {
+                    view! {
+                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnburyCard); } }>"Unbury"</button></li>
+                    }.into_any()
+                } else {
+                    view! {
+                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryCard); } }>"Bury"</button></li>
+                    }.into_any()
+                }}
+                <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryNote); } }>"Bury note"</button></li>
+                {if suspended {
+                    view! {
+                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnsuspendCard); } }>"Unsuspend"</button></li>
+                    }.into_any()
+                } else {
+                    view! {
+                        <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendCard); } }>"Suspend"</button></li>
+                    }.into_any()
+                }}
+                <li><button on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
+
+                <li class="study-actions__dropdown-row">
+                    <UiInput value=days input_type="number" size=UiControlSize::Small placeholder="days" />
+                    <UiButton appearance=UiButtonAppearance::Subtle size=UiButtonSize::Small aria_label="Reschedule" on_click=move |_| { close(); reschedule(()); }>
+                        <Icon glyph=LucideGlyph::Check size="16" />
+                    </UiButton>
+                </li>
+            </ul>
         </div>
     }
 }
