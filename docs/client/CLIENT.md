@@ -10,6 +10,9 @@ This file is the *how* and *where to look*. For building a shell (Leptos now,
 SwiftUI/WinUI/Compose/Libadwaita later), see [`SHELLS.md`](./SHELLS.md) — the
 shared capability-implementation and effect-resolve patterns every shell follows.
 
+The Leptos shell is mid-migration off daisyUI onto owned Tailwind components — see
+[`STYLING_MIGRATION.md`](./STYLING_MIGRATION.md) for the plan and status.
+
 ---
 
 ## 1. What this repo is
