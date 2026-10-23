@@ -327,15 +327,33 @@ pub fn UiSubmitButton(
 }
 
 /// Owned daisyUI modal dialog. The **single source of truth** for the
-/// `modal` + `modal-box` structure: a native `<dialog>` driven by the `open`
-/// signal (daisyUI's `.modal[open]` rule renders the dimmed backdrop and centred
-/// box). Content (including any action/close buttons) is supplied as children.
-/// `open` is read-only here — the caller owns the signal and closes it via its
-/// own buttons.
+/// `modal` + `modal-box` structure. Opening/closing uses the native
+/// `showModal()`/`close()` API (driven reactively from the `open` signal via a
+/// `NodeRef` + `Effect`), which gives daisyUI's dimmed `::backdrop`, top-layer
+/// stacking, and the open/close cross-fade — rather than the `open` attribute
+/// (which leaks the UA `<dialog>` chrome and doesn't animate).
 #[component]
 pub fn UiDialog(open: Signal<bool>, children: Children) -> impl IntoView {
+    let dialog_ref = NodeRef::<leptos::html::Dialog>::new();
+
+    // Drive the native modal state from `open`: `showModal()` on true, `close()`
+    // on false. The native API owns the resulting `[open]`/top-layer state, so
+    // the signal is the single source of truth and the DOM follows. (Dialogs are
+    // inherently imperative in the platform; the imperative call is confined here.)
+    Effect::new(move |_| {
+        if let Some(dialog) = dialog_ref.get() {
+            if open.get() {
+                if !dialog.open() {
+                    let _ = dialog.show_modal();
+                }
+            } else {
+                dialog.close();
+            }
+        }
+    });
+
     view! {
-        <dialog class="modal" open=move || open.get()>
+        <dialog class="modal" node_ref=dialog_ref>
             <div class="modal-box">
                 {children()}
             </div>

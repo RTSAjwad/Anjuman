@@ -22,5 +22,7 @@ gloo-net = "0.7"
 gloo-storage = "0.4"
 wasm-bindgen-futures = "0.4"
 # URL routing: hash-based, so only `Location` (`.hash`/`.set_hash`) + `EventTarget`
-# (`add_event_listener`) are needed plus `Event`/`Window`.
-web-sys = { version = "0.3", features = ["Location", "Window", "Event", "EventTarget"] }
+# (`add_event_listener`) are needed plus `Event`/`Window`. `HtmlDialogElement` is
+# for `UiDialog`'s `showModal()`/`close()` (native modal semantics: top layer,
+# backdrop, open/close transitions).
+web-sys = { version = "0.3", features = ["Location", "Window", "Event", "EventTarget", "HtmlDialogElement"] }

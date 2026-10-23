@@ -256,13 +256,13 @@
       /* daisyUI's `.modal` ships a `border: 0` only in its `[popover]` variant;
        * the native `<dialog open>` path (which we use, see `UiDialog`) falls back
        * to the UA's thick `border: solid` and its default top-of-document
-       * sizing/position. These unlayered rules reassert the modal's chrome so
-       * the dialog renders as the transparent full-viewport overlay daisyUI
-       * intends. */
+       * sizing/position. These unlayered rules reassert only the chrome daisyUI
+       * omits for the `[open]` path (border/position/size), while NOT overriding
+       * `background-color` — daisyUI's layered `.modal[open]` supplies the dim
+       * (`oklch(0 0 0/0.4)`) and must win. */
       dialog.modal {
         border: 0;
         padding: 0;
-        background: transparent;
         position: fixed;
         inset: 0;
         margin: 0;
