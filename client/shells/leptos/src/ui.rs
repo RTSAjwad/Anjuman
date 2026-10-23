@@ -21,36 +21,49 @@ use tw_merge::tw_merge;
 // Button
 // ---------------------------------------------------------------------------
 
-/// The common button skeleton shared by every appearance: centering, gap,
-/// padding, radius, font, focus ring, disabled state, and active scale.
-const BTN_BASE: &str = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md \
-                        text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 \
-                        focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] \
-                        outline-none cursor-pointer active:scale-[0.98] select-none";
+// Generate the typed variant surface for the button: `UiButtonClass` (a
+// `TwClass` for `tw_merge` conflict resolution) plus `UiButtonVariant` and
+// `UiButtonSize` enums (the `TwVariant` derives give `Default` and `as_class()`).
+// Adopted from `rust-ui/leptos-ui`'s `Button` (§9 of STYLING_MIGRATION.md).
+crate::variants! {
+    UiButton {
+        base: "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] cursor-pointer active:scale-[0.98] select-none",
+        variants: {
+            variant: {
+                Primary: "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+                Subtle: "hover:bg-accent hover:text-accent-foreground",
+                Destructive: "bg-destructive text-white shadow-xs hover:bg-destructive/90",
+                Secondary: "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
+                Muted: "bg-muted text-muted-foreground hover:bg-secondary",
+            },
+            size: {
+                Default: "h-9 px-4 py-2",
+                Square: "size-9 px-0 py-0",
+            }
+        }
+    }
+}
 
+/// Our public appearance enumeration. Maps to `UiButtonVariant` so call sites
+/// keep their stable API while the underlying classes come from the adopted
+/// `variants!` surface.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum UiButtonAppearance {
-    /// Solid, prominent action.
     Primary,
-    /// Transparent until hovered.
     Subtle,
-    /// Solid, destructive/danger action (red).
     Danger,
-    /// Solid neutral button.
     Neutral,
-    /// Soft-tinted, low-emphasis button.
     NeutralSoft,
 }
 
-impl UiButtonAppearance {
-    /// The single place an appearance maps to its utility classes.
-    fn class(self) -> &'static str {
-        match self {
-            UiButtonAppearance::Primary => "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
-            UiButtonAppearance::Subtle => "hover:bg-accent hover:text-accent-foreground",
-            UiButtonAppearance::Danger => "bg-destructive text-white shadow-xs hover:bg-destructive/90",
-            UiButtonAppearance::Neutral => "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
-            UiButtonAppearance::NeutralSoft => "bg-muted text-muted-foreground hover:bg-secondary",
+impl From<UiButtonAppearance> for UiButtonVariant {
+    fn from(a: UiButtonAppearance) -> Self {
+        match a {
+            UiButtonAppearance::Primary => UiButtonVariant::Primary,
+            UiButtonAppearance::Subtle => UiButtonVariant::Subtle,
+            UiButtonAppearance::Danger => UiButtonVariant::Destructive,
+            UiButtonAppearance::Neutral => UiButtonVariant::Secondary,
+            UiButtonAppearance::NeutralSoft => UiButtonVariant::Muted,
         }
     }
 }
@@ -70,11 +83,14 @@ pub fn UiButton<F>(
 where
     F: FnMut(leptos::ev::MouseEvent) + 'static,
 {
-    let shape = if square { "size-9" } else { "h-9 px-4 py-2" };
-    let join = if join_item { "rounded-none" } else { "" };
-    let combined = tw_merge!(BTN_BASE, appearance.class(), shape, join, class);
+    let variant: UiButtonVariant = appearance.into();
+    let size = if square { UiButtonSize::Square } else { UiButtonSize::Default };
+    let join = if join_item { " rounded-none" } else { "" };
+    // `UiButtonClass` resolves conflicts (base + variant + size), then the
+    // caller's class and the join modifier are appended last-wins.
+    let class_owned = UiButtonClass { variant, size }.with_class(format!("{}{}", class, join));
     view! {
-        <button type=button_type class=combined disabled=disabled aria-label=aria_label on:click=on_click>
+        <button type=button_type class=class_owned disabled=disabled aria-label=aria_label on:click=on_click>
             {children()}
         </button>
     }

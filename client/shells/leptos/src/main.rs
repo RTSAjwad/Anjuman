@@ -9,6 +9,11 @@ mod http;
 mod kv;
 mod router;
 mod ui;
+mod variants;
+
+// `$crate::paste` / `$crate::tw_merge` in `variants::variants!` resolve here.
+pub use paste;
+pub use tw_merge;
 
 fn main() {
     // Better panic messages in the browser console.
