@@ -212,3 +212,26 @@ resolve identically to their docs.
 Open question deferred: whether to keep our `UiButtonAppearance` enum as a thin
 compatibility layer over their `variants!` enums (recommended, so `app.rs` churn
 is minimal) vs. migrating `app.rs` to the new `variant`/`size` signal API directly.
+
+### 9.6 Status (Phase 2)
+
+- [x] Dependencies: `tw_merge` `variant` feature + `paste` (core-agent `c5c26d6`).
+- [x] `variants!` macro vendored (`src/variants.rs`).
+- [x] `UiButton` → `variants!` (`UiButtonClass`/`UiButtonVariant`/`UiButtonSize`),
+      with `UiButtonAppearance` as a compatibility enum.
+- [x] `UiBadge` → `variants!` (`UiBadgeClass`/`UiBadgeVariant`), with
+      `UiBadgeColor` as a compatibility enum.
+- [x] Theme: our trimmed `input.css` already provides every token our components
+      use (`--primary`/`--secondary`/`--muted`/`--accent`/`--destructive`/
+      `--success`/`--border`/`--input`/`--ring` + `-foreground`), matching
+      `leptos-ui`'s values — no verbatim-swap needed.
+- [ ] Floating UI: `FlagDropdown` + `StudyControls` menu → portal-based
+      `DropdownMenu`/`Popover` (the remaining substantive item; currently
+      `position: absolute` within a `relative` wrapper).
+
+**Finding:** `variants!`/`TwClass`/`TwVariant` is only a win for components with a
+*variant matrix* (button appearance/size, badge colour). The single-skin primitives
+(`UiInput`, `UiSelect`, `UiToggle`, `UiTabs`/`UiTab`, `UiTable`, `UiCard`,
+`UiBreadcrumbs`, `UiPagination`, `UiDialog`) are already correctly utility-styled
+via `tw_merge!` and gain nothing from `variants!` — wrapping them would be the
+over-engineering this section warns against. They are therefore left as-is.
