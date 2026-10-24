@@ -7,10 +7,9 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    Button, ButtonVariant, Input, Switch, Pagination, Select,
+    Button, ButtonVariant, FlagSwatch, Input, Switch, Pagination, Select,
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };
-use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
 use lepticons::{Icon, LucideGlyph};
 
 /// The eight Anki flag values (0 = none, 1–7 the colours) for a flag `<select>`.
@@ -432,15 +431,11 @@ pub(crate) fn browser(
                                     let f_val = f.to_string();
                                     let active = flag_active.get() == f_val;
                                     let sel = flag_sel.clone();
-                                    let color = flag_color(f.parse::<i64>().unwrap());
-                                    let label = flag_label(f.parse::<i64>().unwrap());
+                                    let flag = f.parse::<i64>().unwrap();
                                     view! {
                                         <li>
                                             <button class="flex w-full items-center rounded-sm px-3 py-1.5 text-sm" class:bg-accent=active on:click=move |_| sel(f_val.clone())>
-                                                <span class="card-browser__flag-sw">
-                                                    <span class="card-browser__flag-swatch" style=format!("background-color: {color}")></span>
-                                                    <span>{label}</span>
-                                                </span>
+                                                <FlagSwatch flag=flag />
                                             </button>
                                         </li>
                                     }
@@ -571,7 +566,7 @@ pub(crate) fn browser(
                                                 </TableCell>
                                                 <TableCell>{deck_title}</TableCell>
                                                 <TableCell>{state}</TableCell>
-                                                <TableCell>{flag_swatch(flag)}</TableCell>
+                                                <TableCell><FlagSwatch flag=flag /></TableCell>
                                             </TableRow>
                                         }
                                     }).collect_view()}

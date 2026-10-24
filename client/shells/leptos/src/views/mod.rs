@@ -8,7 +8,6 @@
 pub mod browser;
 pub mod deck;
 pub mod deck_options;
-pub mod flag_dropdown;
 pub mod study;
 
 // Re-export the items `RootComponent` (and other views) reference. Leptos view
