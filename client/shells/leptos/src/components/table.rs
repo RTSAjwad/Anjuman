@@ -1,34 +1,41 @@
-//! Table — a composable table, styled to match `rust-ui/leptos-ui`'s `Table`
-//! family. Compose `UiTable` with `UiTableHeader`/`UiTableBody`/`UiTableHead`/
-//! `UiTableRow`/`UiTableCell`.
+//! Table — a composable table, `rust-ui/leptos-ui`'s `Table` family with
+//! **verbatim** class strings. Compose `Table` with `TableHeader`/`TableBody`/
+//! `TableHead`/`TableRow`/`TableCell`.
+//!
+//! ⚠️ **Divergence to revisit (docs §10.6):** rust-ui's `TableRow` is
+//! presentational-only (`data-[state=selected]:bg-muted` with no interaction).
+//! Our browser rows are **selectable**, so we keep `TableRow`'s `selected` and
+//! `on_click` controlled props — `selected` drives `data-state=selected` (the
+//! verbatim selection class) and `on_click` emits row selection. This is a
+//! shell-local interactivity addition, not a class-string change.
 
 use leptos::prelude::*;
 
-/// The `<table>`, wrapped in our scroll container (`.card-browser__table`).
+/// The `<table>`, rust-ui's `Table` (verbatim). The scroll container is the
+/// caller's layout concern (`card-browser__table` in the browser view), not the
+/// component's.
 #[component]
-pub fn UiTable(children: Children) -> impl IntoView {
+pub fn Table(children: Children) -> impl IntoView {
     view! {
-        <div class="card-browser__table">
-            <table class="w-full text-sm">
-                {children()}
-            </table>
-        </div>
+        <table class="w-full max-w-7xl text-sm caption-bottom">
+            {children()}
+        </table>
     }
 }
 
-/// The `<thead>`, with a bottom border and muted background.
+/// The `<thead>` (verbatim `TableHeader`).
 #[component]
-pub fn UiTableHeader(children: Children) -> impl IntoView {
+pub fn TableHeader(children: Children) -> impl IntoView {
     view! {
-        <thead class="[&_tr]:border-b bg-muted">
+        <thead class="[&_tr]:border-b sticky top-0 z-10 bg-card">
             {children()}
         </thead>
     }
 }
 
-/// The `<tbody>` (last row has no bottom border).
+/// The `<tbody>` (verbatim `TableBody`).
 #[component]
-pub fn UiTableBody(children: Children) -> impl IntoView {
+pub fn TableBody(children: Children) -> impl IntoView {
     view! {
         <tbody class="[&_tr:last-child]:border-0">
             {children()}
@@ -36,28 +43,28 @@ pub fn UiTableBody(children: Children) -> impl IntoView {
     }
 }
 
-/// A header cell.
+/// A header cell (verbatim `TableHead`).
 #[component]
-pub fn UiTableHead(children: Children) -> impl IntoView {
+pub fn TableHead(children: Children) -> impl IntoView {
     view! {
-        <th class="h-10 px-3 text-left align-middle font-medium text-muted-foreground">
+        <th class="h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">
             {children()}
         </th>
     }
 }
 
-/// A data row, with a bottom border, hover state, and optional `selected`
-/// highlight + `on_click` (for selectable rows).
+/// A data row (verbatim `TableRow` class string, plus controlled selection —
+/// see module doc).
 #[component]
-pub fn UiTableRow(
+pub fn TableRow(
     children: Children,
     #[prop(optional)] selected: Signal<bool>,
     #[prop(optional)] on_click: Option<Callback<()>>,
 ) -> impl IntoView {
     view! {
         <tr
-            class="cursor-pointer border-b transition-colors hover:bg-muted/50"
-            class:bg-muted=selected
+            class="border-b transition-colors hover:bg-muted/50"
+            data-state=move || if selected.get() { "selected" } else { "" }
             on:click=move |_| if let Some(cb) = on_click.as_ref() { cb.run(()) }
         >
             {children()}
@@ -65,11 +72,11 @@ pub fn UiTableRow(
     }
 }
 
-/// A data cell.
+/// A data cell (verbatim `TableCell`).
 #[component]
-pub fn UiTableCell(children: Children) -> impl IntoView {
+pub fn TableCell(children: Children) -> impl IntoView {
     view! {
-        <td class="px-3 py-2 align-middle">
+        <td class="p-4 align-middle [&:has([role=checkbox])]:pr-0 [&:has([role=checkbox])]:pl-3">
             {children()}
         </td>
     }

@@ -33,6 +33,6 @@ pub use select::UiSelect;
 pub use submit_button::UiSubmitButton;
 pub use switch::Switch;
 pub use table::{
-    UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow,
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };
 pub use tabs::{Tabs, TabsList, TabsTrigger};
