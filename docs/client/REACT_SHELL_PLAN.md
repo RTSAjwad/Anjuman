@@ -384,11 +384,89 @@ the Leptos chrome's nav set as-is (Decks + Browser, with Notes gated on
 ### Phase 3 — Port the four screens
 
 Port `views/{deck,study,deck_options,browser}.rs` semantics to React views,
-consuming the new component layer. Each screen maps directly to the core
-contracts already recorded in `ROADMAP.md` + `SCREENS_SUPPORT.md` (deck list with
-New/Learn/Due counts, study loop + actions, deck options, browser with cards↔notes
-toggle, filter tree, inspector). **No new behaviour** — parity with the Leptos
-shell's core surface, not new features.
+consuming the component layer. Each screen maps directly to the core contracts in
+`ROADMAP.md` + `SCREENS_SUPPORT.md`. **No new behaviour** — parity with the Leptos
+shell's core surface. Order by dependency: the deck list first (it opens the other
+three), then study, then deck-options, then the browser.
+
+**Phase 2 is folded into Phase 3** — we pull remaining shadcn components (`Select`,
+`Switch`, `Dialog`, `Popover`, `Table`, `Pagination`, `ScrollArea`, `Collapsible`)
+per-screen, as each screen needs them, rather than pre-installing the whole set.
+
+#### 3.1 Deck list (`screens.tsx` → `deck-list.tsx`)
+
+Mirror `views/deck.rs`:
+- **Three states**: `decks_error` → error `Card`; empty `decks` → “No decks yet”;
+  else the tree.
+- **Tree**: recurse `DeckSummary.children` into an indented grid with a fixed
+  header row (Deck | New | Learn | Due) and per-row expander + title + three
+  coloured counts. **New column is `new_count`, Learn is `learning_count` (blue?),
+  Due is `review_count`** — confirm badge colours vs. the deck.rs mapping
+  (new=default/blue, learn=destructive/red, review=success/green; zero → muted).
+- **Expand/collapse** is transient shell state — a `Set<bigint>` of open deck ids
+  in `useState`, collapsed by default (the documented divergence: no persistence).
+- **Studyable gating**: `deck.studyable` → clickable label (`OpenDeck{id}` →
+  `Study`); else a greyed, non-interactive context-only row (title “Shared for
+  context only”).
+- **Actions**: gear (Settings icon) on studyable rows → `OpenDeckOptions{id}`.
+- `deck_ancestor_titles` helper (port from `deck.rs`) for breadcrumbs.
+
+#### 3.2 Study screen (`study.tsx`)
+
+Mirror `views/study.rs`:
+- **Header** (in the chrome): due-count badges (`study_count_badges`) + the
+  `StudyControls` dropdown when `current_card` is present, + breadcrumb with
+  deck-ancestor titles + “Study”.
+- **Body**: `study_error`/`card_action_error` banners; `current_card` → `StudyCard`
+  (reveal/answer buttons, card `styling` rendered into an `<iframe>` with the
+  documented dark-mode CSS-inversion); `None` → busy “Loading…” or the
+  “Nothing due” completion state with a “Check again” → `StartStudy`.
+- **Study actions** (Bury/Bury note/Suspend/Suspend note/Reschedule + flag
+  select), each forwarding the matching `Event` (using `current_card`), with the
+  inverse affordances gated on `card.buried`/`card.suspended`. Reschedule opens a
+  `Dialog` for a day offset. **Controlled**: flag `Select` value from
+  `current_card.flag`, no local mirror.
+- Remove the placeholder `revealed` shell signal if a clean `useState` suffices;
+  keep it if the core doesn't reset reveal (confirm — `StudyCard` reveal is shell
+  state, reset on `current_card` change).
+
+#### 3.3 Deck options (`deck-options.tsx`)
+
+Mirror `views/deck_options.rs` + the US-4.9/4.10/4.11 contracts:
+- Read-only **view** of `view.deck_options` (the `DeckOptionsView`), gated on
+  `can_manage_presets` for edit/save.
+- **Preset assign** affordance (US-4.11): `Event::DeckOptionsAssign { deck_id,
+  options_id }`; synthesize a “Default (id 0)” entry (server `GET /deck-options`
+  doesn't include id 0). Fire `DeckOptionsListRequested` to populate `vm.presets`.
+- **Disable edit/save when the loaded preset `id == 0`** (the global default is
+  read-only — the server 403s mutation).
+- `deck_options_error`/`presets_error` banners.
+
+#### 3.4 Browser (`browser.tsx`) — cards + notes
+
+Mirror `views/browser.rs` (the merged card/notes browser, US-4.12/4.13):
+- **Cards↔Notes toggle** already in the header (Tabs); the selected view drives
+  `CardsRequested`/`NotesRequested` from the browser state.
+- **Table**: rows from `browser_cards`/`notes` (columns: front/note-type, deck,
+  state/flag, sort field for notes) + `Pagination` from
+  `browser_page`/`per_page`/`total` (and notes equivalents).
+- **Filter sidebar**: deck tree (parent also selectable, flag colour swatches),
+  note-type dropdown (`vm.note_types` via `NoteTypesRequested`), state/flag/sort/
+  query; rebuilding + re-firing the `*Requested` filter event. **No new note
+  creation** (descoped).
+- **Inspector pane**: selected card/note (`browser_selected`/`notes_selected`),
+  suspend/bury `Switch`es (controlled from the selected view), flag `Select`
+  (`0–7`), reschedule `Dialog` — forwarding `Browser*`/`Note*` events.
+- The card-browser (not now the notes view) is the Phase-3 target; notes table
+  parity is a follow-on if time permits.
+
+**Exit criteria:** all four screens render real data, nav reaches them via core
+`Event`s, every affordance forwards its `Event` (no shell-local business logic),
+and `pnpm run build` + `typecheck` green.
+
+**Decisions deferred to Phase 4 (parity audit):** whether to fully port the notes
+view now or track it as shell coverage; the `decks_loaded`/0-deck hydration gap
+(carve-out pending); and the `revealed`/study reveal ownership question.
 
 ### Phase 4 — Parity audit + docs
 
