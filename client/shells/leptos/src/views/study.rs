@@ -3,9 +3,21 @@ use shared::app::{StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiDialog, UiFlagSelect, UiInput,
+    UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiDialog, UiInput, UiSelect,
 };
 use lepticons::{Icon, LucideGlyph};
+
+/// The eight Anki flag values (0 = none, 1–7 the colours) for a flag `<select>`.
+const FLAG_OPTIONS: &[(&str, &str)] = &[
+    ("0", "No flag"),
+    ("1", "Red"),
+    ("2", "Orange"),
+    ("3", "Green"),
+    ("4", "Blue"),
+    ("5", "Pink"),
+    ("6", "Turquoise"),
+    ("7", "Purple"),
+];
 
 /// The study screen: one card at a time, centred in the available space, with
 /// the reveal/answer controls pinned to the bottom. Due counts live in the
@@ -116,9 +128,13 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
                 </ul>
             </div>
 
-            <UiFlagSelect
-                value=Signal::derive(move || flag)
-                on_change=Callback::new(move |f| set_event.set(Event::FlagCard { flag: f as i32 }))
+            <UiSelect
+                value=Signal::derive(move || flag.to_string())
+                options=FLAG_OPTIONS
+                on_change=Some(Callback::new(move |f: String| {
+                    let flag = f.parse::<i64>().unwrap_or(0);
+                    set_event.set(Event::FlagCard { flag: flag as i32 });
+                }))
             />
         </div>
 

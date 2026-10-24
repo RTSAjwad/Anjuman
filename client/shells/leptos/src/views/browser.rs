@@ -7,11 +7,23 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    UiButton, UiButtonAppearance, UiFlagSelect, UiInput, UiPagination, UiSubmitButton, UiTable,
+    UiButton, UiButtonAppearance, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTable,
     UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow, UiToggle,
 };
 use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
 use lepticons::{Icon, LucideGlyph};
+
+/// The eight Anki flag values (0 = none, 1–7 the colours) for a flag `<select>`.
+const FLAG_OPTIONS: &[(&str, &str)] = &[
+    ("0", "No flag"),
+    ("1", "Red"),
+    ("2", "Orange"),
+    ("3", "Green"),
+    ("4", "Blue"),
+    ("5", "Pink"),
+    ("6", "Turquoise"),
+    ("7", "Purple"),
+];
 
 /// The card browser (US-4.12): a management-oriented card table with
 /// filter/sort controls (a hand-rolled collapsible filter tree in the sidebar),
@@ -708,11 +720,15 @@ fn CardInspector(
                         <div class="card-browser__inspector-row">
                             <dt>"Flag"</dt>
                             <dd>
-                                <UiFlagSelect
-                                    value=Signal::derive(move || flag.get().parse::<i64>().unwrap_or(0))
-                                    on_change=Callback::new(move |f| {
-                                        set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
-                                    })
+                                <UiSelect
+                                    value=Signal::derive(move || flag.get())
+                                    options=FLAG_OPTIONS
+                                    on_change=Some(Callback::new(move |f: String| {
+                                        set_event.set(Event::BrowserFlagCard {
+                                            card_id,
+                                            flag: f.parse::<i64>().unwrap_or(0) as i32,
+                                        });
+                                    }))
                                 />
                             </dd>
                         </div>

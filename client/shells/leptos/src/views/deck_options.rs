@@ -430,7 +430,11 @@ fn select_field(
 ) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <UiSelect value=value options=options />
+            <UiSelect
+                value=Signal::derive(move || value.get())
+                options=options
+                on_change=Some(Callback::new(move |v: String| value.set(v)))
+            />
         </FieldRow>
     }
 }
@@ -446,7 +450,11 @@ fn easy_days_field(days: [RwSignal<String>; 7]) -> impl IntoView {
                 view! {
                     <div class="deck-options-easy-day">
                         <span class="deck-options-easy-day__label">{*name}</span>
-                        <UiSelect value=d options=EASY_DAY_OPTIONS />
+                        <UiSelect
+                            value=Signal::derive(move || d.get())
+                            options=EASY_DAY_OPTIONS
+                            on_change=Some(Callback::new(move |v: String| d.set(v)))
+                        />
                     </div>
                 }
             }).collect_view()}
