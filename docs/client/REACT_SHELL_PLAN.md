@@ -114,9 +114,11 @@ state. Nothing more.
    **Base UI** (unstyled, accessible primitives) + **shadcn/ui** (the
    React/Base-UI component layer) on top. This is the "unstyled primitives +
    utility styling" model we spent phase 1 chasing by hand — here it is the
-   default, maintained posture. (This replaces the earlier "Vite + React SPA
-   with your own router" idea: the walk-through assumes React Router framework
-   mode — `HydratedRouter`, `entry.client.tsx`, `app/routes/*`.)
+   default, maintained posture. Base UI is now shadcn's **default** primitive
+   layer (July 2026), so `shadcn init` yields Base-UI components out of the box.
+   (This replaces the earlier "Vite + React SPA with your own router" idea: the
+   walk-through assumes React Router framework mode — `HydratedRouter`,
+   `entry.client.tsx`, `app/routes/*`.)
 2. **Styling:** Tailwind v4 (already a repo dependency via the standalone Rust
    binary) + shadcn's `cn()`/`tailwind-merge`/`clsx`. **No daisyUI**, no
    semantic-class-leakage problem — components own their styling via tailwind
@@ -288,15 +290,86 @@ live Postgres/Axum) is a manual step.
 - The `npm` scripts' `wasm:build`/`types:build` `cd` targets must be `../../shared`
   (relative to `client/shells/react/`), not `../shared`.
 
-### Phase 1 — Toolchain + shell scaffold
+### Phase 1 — Toolchain, design system, and the app shell
 
-1. Confirm the §2 decisions (Base UI + shadcn + Tailwind v4 + single controlled
-   store — the remaining unconfirmed stack choices).
-2. `shadcn` init + Tailwind v4 + theme tokens (`components.json`, `lib/utils.ts`).
-3. `flake.nix` + `boltffi.toml` wiring (carve-out) so `nix run .#react-client`
-   serves the new shell.
-4. Stand up the base app shell: collapsible icon-rail sidebar (shadcn sidebar),
-   header/breadcrumb, and the top-level `match vm.route` screen switch.
+Phase 0 is complete (full WASM round-trip proven). Phase 1 replaces the template
+styling with Base UI + shadcn and stands up the app chrome: a collapsible
+icon-rail sidebar, a header with breadcrumb, and the top-level
+`ViewModel.route` screen switch. **No per-screen features yet** — screens render
+placeholder stubs; their full content is Phase 3.
+
+#### 1.1 Design-system init (shadcn over Base UI + Tailwind v4)
+
+- **SETTLED: Base UI is shadcn's default** (since July 2026 —
+  https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default). `npx shadcn init`
+  now generates Base-UI-flavoured components out of the box (Radix is opt-in via
+  `-b radix`). So **no registry decision needed** — we run plain `shadcn init`
+  (defaults to Base UI) against the existing React Router app, and consume
+  `@base-ui/react` components. This matches the §2 decision “Base UI + shadcn”.
+- `shadcn init` writes `components.json`, `lib/utils.ts` (`cn()` = `twMerge` +
+  `clsx`), and the theme CSS variables into `app.css` (Tailwind v4 form). Pin
+  `tailwind-merge` + `clsx` (already `^4.2.2` Tailwind via the template).
+- Optional: `pnpm dlx skills add shadcn/ui` installs a project skill for
+  component-add/migrate workflows; nice-to-have, not required for Phase 1.
+
+#### 1.2 Component layer (pull the Phase-1 subset only)
+
+For Phase 1 we only need the chrome atoms — pull them in and **defer** the rest
+(Phase 2). One commit each:
+
+- `Button`, `Badge`, `Input`, `Separator`, `Tooltip`, `Skeleton` — trivial.
+- `Sidebar` (+ `SidebarProvider`/`SidebarInset`/`SidebarTrigger`/`SidebarMenu`/
+  `SidebarMenuItem`/`SidebarMenuButton`) — the collapsible icon-rail shell. Use the
+  shadcn collapsible icon-rail pattern (`collapsible="icon"`), matching the
+  Leptos `<aside>` rail behaviour.
+- `Breadcrumb` (+ `BreadcrumbItem`/`BreadcrumbLink`/`BreadcrumbPage`/
+  `BreadcrumbSeparator`/`BreadcrumbList`) — the header breadcrumb.
+- `Tabs`/`TabsList`/`TabsTrigger` — the Cards↔Notes tab switch in the header.
+
+#### 1.3 App shell (`root.tsx` + a new layout route)
+
+- Restructure `app/routes.ts` to a single top-level route (`routes/home.tsx`
+  renamed to a layout) whose component renders the **chrome** (sidebar + header)
+  and then `match view.route` to pick a screen component.
+- Keep `CoreProvider` at the `root.tsx` level (already done). The chrome reads
+  `useCore()` for `view.route`, `view.permissions`, and `update`.
+- **Sidebar nav** (mirrors Leptos `RootComponent`):
+  - “Decks” → `Event::ShowDeckList` (active when `route === DeckList`).
+  - “Browser” → `Event::ShowCards` (active when `route === Cards`).
+  - “Notes” tab → `Event::ShowNotes`, gated on `permissions.can_manage_notes`
+    (mirrors the Leptos conditional `TabsTrigger`).
+  - User/email display when authenticated; a logout affordance → `Event::Logout`.
+- **Header breadcrumb** (mirrors Leptos `route` match): `DeckList` → `Decks`;
+  `Cards`/`Notes` → the Cards↔Notes `Tabs`; `Study`/`DeckOptions` → the deck
+  title + sub-view (populated fully in Phase 3; a static crumb now).
+- **Route switch** (`match view.route`): `DeckList`/`Cards`/`Notes`/`Study`/
+  `DeckOptions` each render a placeholder screen component for now (Phase 3 fills
+  them). The screen switch reads `ViewModel.route` — **no shell-local route state**
+  (per `SHELLS.md` §3; dropping the old `nav_selected` drift).
+
+#### 1.4 Routing glue (Caveat A = A2)
+
+- React Router owns the URL/history (deep-link + back button). Wire a thin
+  mapping so the sidebar nav items, when clicked, both (a) update the URL via
+  React Router `<Link>` and (b) forward the `Show*`/`OpenDeck*` event. The
+  rendered branch still reads `ViewModel.route` (single source of truth).
+- On app load, map the initial URL back to a `Show*` event (so `/cards`
+  deep-links correctly). Keep this **thin** — the core stays authoritative.
+
+#### 1.5 Nix + build
+
+Already done in Phase 0 (nix run .#client serves React). No further carve-out
+needed for Phase 1 unless shadcn init surfaces a missing tool. **Confirm nothing
+new to file** — `pnpm`-only, no `flake.nix` edit expected.
+
+**Exit criteria:** `pnpm run build` + `pnpm run typecheck` green; the app renders
+real screens (via `view.route`), the sidebar collapses to icon-rail, nav forwards
+`Show*` events and the screen actually switches; breadcrumb reflects `view.route`.
+
+**Decisions (settled 2026-10-24):** (1) Base UI is the primitive layer — it is
+shadcn's default (`shadcn init` → Base UI; Radix is opt-in `-b radix`); (2) keep
+the Leptos chrome's nav set as-is (Decks + Browser, with Notes gated on
+`can_manage_notes`).
 
 ### Phase 2 — Build the component layer
 
