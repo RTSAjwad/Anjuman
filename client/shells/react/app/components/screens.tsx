@@ -10,12 +10,14 @@ export function DeckListScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-4">
-      <DeckTree
-        decks={view?.decks ?? []}
-        error={view?.decks_error ?? null}
-        onOpenDeck={(id) => update(eventOpenDeck(id))}
-        onOpenOptions={(id) => update(eventOpenDeckOptions(id))}
-      />
+      <div className="mx-auto flex justify-center">
+        <DeckTree
+          decks={view?.decks ?? []}
+          error={view?.decks_error ?? null}
+          onOpenDeck={(id) => update(eventOpenDeck(id))}
+          onOpenOptions={(id) => update(eventOpenDeckOptions(id))}
+        />
+      </div>
     </div>
   );
 }

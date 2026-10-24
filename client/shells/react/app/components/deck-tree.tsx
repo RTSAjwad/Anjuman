@@ -46,11 +46,11 @@ export function DeckTree({ decks, error, onOpenDeck, onOpenOptions }: DeckTreePr
   }
 
   return (
-    <Card className="p-0">
+    <Card className="min-w-[36rem] max-w-3xl !gap-0 !py-0">
       <div
         role="row"
         className={cn(
-          "grid items-center gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground",
+          "grid items-center gap-2 border-b px-3 py-1.5 text-xs font-medium text-muted-foreground",
           ROW_GRID,
         )}
       >
@@ -186,13 +186,13 @@ function CountBadge({ value, kind }: { value: bigint; kind: "new" | "learn" | "d
       </Badge>
     );
   }
-  const variant =
-    kind === "new" ? "default" : kind === "learn" ? "destructive" : undefined;
+  const variant = kind === "learn" ? "destructive" : "secondary";
   return (
     <Badge
-      variant={variant ?? "secondary"}
+      variant={variant}
       className={cn(
         "justify-self-center",
+        kind === "new" && "bg-blue-500/15 text-blue-600 dark:text-blue-400",
         kind === "due" && "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
       )}
     >
