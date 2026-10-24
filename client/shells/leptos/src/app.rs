@@ -5,8 +5,8 @@
 //! pure glue: it consumes `ViewModel` and emits `Event`, never holding logic.
 //!
 //! UI is styled with Tailwind utilities + the semantic theme tokens in
-//! `input.css` (shadcn convention); `src/ui.rs` holds the owned `Ui*` primitives.
-//! See `docs/client/STYLING_MIGRATION.md` and `SHELLS.md` §9.
+//! `input.css` (shadcn convention); `src/components/` holds the owned `Ui*`
+//! primitives. See `docs/client/STYLING_MIGRATION.md` and `SHELLS.md` §9.
 
 use leptos::prelude::*;
 use leptos::task;
@@ -20,7 +20,7 @@ use std::collections::HashSet;
 
 use crate::core_link;
 use crate::router;
-use crate::ui::{UiBadge, UiBadgeColor, UiBreadcrumbs, UiButton, UiButtonAppearance, UiCard, UiDialog, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTab, UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow, UiTabs, UiToggle};
+use crate::components::{UiBadge, UiBadgeColor, UiBreadcrumbs, UiButton, UiButtonAppearance, UiCard, UiDialog, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTab, UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow, UiTabs, UiToggle};
 use lepticons::{Icon, LucideGlyph};
 
 /// Stable, app-lifetime state for the Browser's filter sidebar, card view, and

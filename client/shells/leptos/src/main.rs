@@ -4,11 +4,11 @@
 //! `lib` target — avoids a Cargo artifact name collision with the binary).
 
 mod app;
+mod components;
 mod core_link;
 mod http;
 mod kv;
 mod router;
-mod ui;
 mod variants;
 
 // `$crate::paste` / `$crate::tw_merge` in `variants::variants!` resolve here.
