@@ -1,0 +1,11 @@
+.DS_Store
+.env
+/node_modules/
+
+# React Router
+/.react-router/
+/build/
+
+# Generated Rust→WASM + TypeScript bindings (regenerated via `boltffi pack wasm`
+# and `shared`'s `codegen` binary).
+/generated/

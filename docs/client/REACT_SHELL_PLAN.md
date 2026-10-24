@@ -265,6 +265,29 @@ Produce a minimal but real round-trip before any UI.
 **Exit criteria:** a `ViewModel` round-trip works end-to-end with zero business
 logic in JS.
 
+**Status: COMPLETE (2026-10-24).** The React shell scaffold builds end-to-end:
+`pnpm run build` → `boltffi pack wasm` + `codegen --language typescript` +
+`react-router build` all pass; the WASM (`shared_bg.wasm`) is bundled and the
+`core.ts` wrapper (mirroring `core_link.rs`/`http.rs`/`kv.rs`) type-checks clean.
+`pnpm dev` serves on `localhost:5173`. Remaining runtime proof (round-trip against
+live Postgres/Axum) is a manual step.
+
+**Shell-local gotchas (record for §8):**
+
+- `verbatimModuleSyntax` (template default) breaks the *generated*
+  `shared_types` code (`Serializer`/`Deserializer` type-only imports); set it to
+  `false` in the shell `tsconfig.json`.
+- The WASM-dependent modules must be suffixed `.client.ts(x)` so React Router
+  excludes them from the SPA build-time prerender (`entry.server.tsx` otherwise
+  500s importing the `shared` wasm package during prerender).
+- `boltffi pack wasm`'s `shared` package exposes an `initialized` promise (not a
+  `default init`) via `web.js`/`bundler.js`; the official Crux walk-through's
+  `entry.client.tsx` gating works verbatim.
+- Generated `KeyValue` bytes are `number[]` (`Seq<uint8>`), whereas `HttpResponse.body`
+  is `Uint8Array` (`bytes`) — convert with `Array.from(...)`/`new Uint8Array(...)`.
+- The `npm` scripts' `wasm:build`/`types:build` `cd` targets must be `../../shared`
+  (relative to `client/shells/react/`), not `../shared`.
+
 ### Phase 1 — Toolchain + shell scaffold
 
 1. Confirm the §2 decisions (Base UI + shadcn + Tailwind v4 + single controlled
