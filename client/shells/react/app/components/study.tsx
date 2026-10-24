@@ -37,6 +37,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
@@ -214,6 +215,7 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
+            <SelectLabel>Flags</SelectLabel>
             {FLAG_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 <Flag
