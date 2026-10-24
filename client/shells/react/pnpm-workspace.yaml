@@ -1,0 +1,6 @@
+# Pin the BoltFFI JS runtime to the same version as the Rust `boltffi_cli`
+# (0.30.1). The generated `shared` npm package declares `@boltffi/runtime: "*"`,
+# which would otherwise resolve to latest and skew the WASM ABI handshake —
+# the same version-pinning rule as the Rust crates (see CLIENT.md §3).
+overrides:
+  "@boltffi/runtime": "0.30.1"
