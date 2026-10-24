@@ -236,3 +236,86 @@ is minimal) vs. migrating `app.rs` to the new `variant`/`size` signal API direct
 `UiBreadcrumbs`, `UiPagination`, `UiDialog`) are already correctly utility-styled
 via `tw_merge!` and gain nothing from `variants!` — wrapping them would be the
 over-engineering this section warns against. They are therefore left as-is.
+
+## 10. Phase 3 — adopt rust-ui components verbatim (in progress)
+
+Goal: replace our hand-rolled `Ui*` primitives with rust-ui/leptos-ui's component
+source **unmodified** (no `Ui` prefix; `Button`, `Badge`, `Card`, `Input`,
+`Switch`, `Tabs`, `Table`, `Breadcrumb`, `Pagination`, `Select`, `Dialog`), and
+record the app-specific things rust-ui has no equivalent for so we can
+idiomatize them later.
+
+### 10.1 Dependency reality (why "verbatim" is bounded)
+
+rust-ui's components are not self-contained: they import from the `leptos_ui`
+crate (`variants!` and `clx!` macros), the `icons` crate (`ChevronRight`,
+`ChevronLeft`, `Ellipsis`, …), `strum` (Input's `InputType`), and — for
+`Pagination` — `leptos_router` (`use_navigate`). Full verbatim adoption therefore
+requires pulling in `leptos_ui` + `icons` + `strum` (+ `leptos_router` for
+pagination), which is a real dependency decision, not a rename.
+
+Concretely, the verdict **per component** (checked against the rust-ui source at
+`app_crates/registry/src/ui/*` and `public/registry/styles/default/*.md`):
+
+| rust-ui component | Depends on | Verbatim-able now? |
+|---|---|---|
+| `Button` | `leptos_ui::variants` (already vendored) | ✅ — restate `variants!` with rust-ui's exact class strings |
+| `Badge` | `leptos_ui::variants` (already vendored) | ✅ — same |
+| `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent` | **only** `leptos` + `tw_merge` | ✅ fully verbatim |
+| `Switch` | `leptos_ui::clx` (trivial) | ✅ — inline the `clx!` wrapper class |
+| `Card` (+`CardHeader`/… | `leptos_ui::clx` | ⚠️ needs `clx!` macro |
+| `Table` family | `leptos_ui::clx` | ⚠️ needs `clx!` macro |
+| `Breadcrumb` family | `leptos_ui::clx` + `icons` | ⚠️ needs deps |
+| `Input` | `strum` | ⚠️ needs `strum` |
+| `Select` / `SelectNative` | `leptos_ui` + JS portal runtime | ❌ JS layer — deferred (see §10.3) |
+| `Dialog` / `DropdownMenu` | JS portal + `use_lock_body_scroll` | ❌ JS layer — deferred |
+| `Pagination` | `leptos_router` | ❌ router-based; our Crux hash-router differs |
+
+### 10.2 Decision (Option 2, as agreed)
+
+Adopt the **pure-Leptos / already-vendored** subset verbatim now, and keep the
+floating/modal layer (`Select`, `Dialog`, the study ⋮ `DropdownMenu`) on our
+CSS-anchor / native-`<dialog>` approach, *named plainly* so call sites read
+`Select`/`Dialog`/`DropdownMenu` rather than `Ui*`. The JS-portal layer is a
+separate later decision.
+
+### 10.3 Deferred (decide later): JS floating layer
+
+rust-ui's `Select` popover, `Dialog`, `DropdownMenu` don't use CSS anchor —
+they use a `Goggles` portal + `ScrollLock`/`use_lock_body_scroll` + a `<script>`
+fragment shipped in `public/app_components/*.js`. That is out of scope for this
+phase.
+
+### 10.4 Not satisfiable by rust-ui (record for later idiomatization)
+
+These are Anjuman-specific and have **no** rust-ui equivalent; they remain ours.
+Recorded so we can later shape them to match rust-ui's conventions (data-*
+attributes, `clx!`-style one-component-per-file, `variants!` where a matrix
+exists):
+
+1. **Study card surface** — sandboxed-iframe card + reveal/answer buttons.
+2. **Deck tree** — tabular deck list with aligned New/Learn/Due count columns
+   (rust-ui has `Collapsible` but no aligned-count tree).
+3. **Filter sidebar tree** — the Cards/Notes browser filter tree where a parent
+   deck is *also* a selectable filter, with flag-colour swatch leaves.
+4. **Card/Note inspector** — the right-hand action/details pane (a `Card` +
+   `dl` composition we own).
+5. **`flag_swatch`** — the coloured-dot + label Anki-flag swatch.
+6. **Collapsible sidebar app shell** — our icon-rail ↔ width-collapse `<aside>`;
+   rust-ui's `Drawer`/`Sheet`/`SideNav` are overlay/route nav, not width-animated
+   rails.
+
+### 10.5 One necessary divergence: controlled vs. internal state
+
+rust-ui's `Tabs` *owns its selection* internally (`TabsCtx { selected:
+RwSignal<String> }`, `default_value=`, `TabsTrigger(value=)` mutates it). We are a
+**Crux** shell, so the active tab must mirror the core's `ViewModel.route`
+unidirectionally — not a separate local `RwSignal` that forks and goes stale.
+
+Therefore `Tabs`/`TabsList`/`TabsContent` are adopted **verbatim** (they're
+presentational), but `TabsTrigger` is a **controlled** variant: it takes
+`value`, an `active: Signal<bool>` derived from the route, and `on_click`, and
+renders rust-ui's exact class strings without `expect_context`-mutating internal
+state. This is the one place where "default code unmodified" yields to the
+unidirectional-dataflow invariant that has been non-negotiable through this
+whole shell.

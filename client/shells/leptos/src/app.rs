@@ -13,7 +13,7 @@ use shared::app::{CurrentRoute, DeckView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    UiBreadcrumbs, UiButton, UiButtonAppearance, UiInput, UiTab, UiTabs,
+    Tabs, TabsList, TabsTrigger, UiBreadcrumbs, UiButton, UiButtonAppearance, UiInput,
 };
 use crate::core_link;
 use crate::router;
@@ -354,27 +354,29 @@ pub fn RootComponent() -> impl IntoView {
                                         }
                                         .into_any(),
                                         CurrentRoute::Cards | CurrentRoute::Notes => view! {
-                                            <UiTabs>
-                                                <UiTab
-                                                    active=Signal::derive(move || route == CurrentRoute::Cards)
-                                                    on_click=show_cards.clone()
-                                                >
-                                                    "Cards"
-                                                </UiTab>
-                                                {if can_manage_notes {
-                                                    view! {
-                                                        <UiTab
-                                                            active=Signal::derive(move || route == CurrentRoute::Notes)
-                                                            on_click=move |_| set_event.set(Event::ShowNotes)
-                                                        >
-                                                            "Notes"
-                                                        </UiTab>
-                                                    }
-                                                    .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }}
-                                            </UiTabs>
+                                            <Tabs>
+                                                <TabsList>
+                                                    <TabsTrigger
+                                                        active=Signal::derive(move || route == CurrentRoute::Cards)
+                                                        on_click=show_cards.clone()
+                                                    >
+                                                        "Cards"
+                                                    </TabsTrigger>
+                                                    {if can_manage_notes {
+                                                        view! {
+                                                            <TabsTrigger
+                                                                active=Signal::derive(move || route == CurrentRoute::Notes)
+                                                                on_click=move |_| set_event.set(Event::ShowNotes)
+                                                            >
+                                                                "Notes"
+                                                            </TabsTrigger>
+                                                        }
+                                                        .into_any()
+                                                    } else {
+                                                        ().into_any()
+                                                    }}
+                                                </TabsList>
+                                            </Tabs>
                                         }
                                         .into_any(),
                                         CurrentRoute::Study => {

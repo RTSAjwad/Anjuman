@@ -18,9 +18,9 @@ mod input;
 mod pagination;
 mod select;
 mod submit_button;
+mod switch;
 mod table;
 mod tabs;
-mod toggle;
 
 pub use badge::{UiBadge, UiBadgeColor};
 pub use breadcrumbs::UiBreadcrumbs;
@@ -31,8 +31,8 @@ pub use input::UiInput;
 pub use pagination::UiPagination;
 pub use select::UiSelect;
 pub use submit_button::UiSubmitButton;
+pub use switch::Switch;
 pub use table::{
     UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow,
 };
-pub use tabs::{UiTab, UiTabs};
-pub use toggle::UiToggle;
+pub use tabs::{Tabs, TabsList, TabsTrigger};

@@ -7,8 +7,8 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    UiButton, UiButtonAppearance, UiInput, UiPagination, UiSelect, UiSubmitButton, UiTable,
-    UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow, UiToggle,
+    Switch, UiButton, UiButtonAppearance, UiInput, UiPagination, UiSelect, UiSubmitButton,
+    UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow,
 };
 use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
 use lepticons::{Icon, LucideGlyph};
@@ -838,8 +838,8 @@ fn NoteInspector(
 /// event via `on_toggle` (suspend vs unsuspend, bury vs unbury). The core's
 /// response re-syncs `checked`, which drives the visible toggle back to truth.
 ///
-/// The toggle itself is the owned `UiToggle` primitive (signal-driven
-/// `prop:checked`, no DOM mirroring).
+/// The toggle itself is the owned `Switch` primitive (signal-driven
+/// `checked`, no DOM mirroring).
 #[component]
 fn CardSwitch(
     checked: Signal<bool>,
@@ -849,7 +849,7 @@ fn CardSwitch(
 ) -> impl IntoView {
     view! {
         <label class="card-browser__switch">
-            <UiToggle checked=checked on_toggle=on_toggle disabled=disabled />
+            <Switch checked=checked on_toggle=on_toggle disabled=disabled />
             <span class="card-browser__switch-label">{label}</span>
         </label>
     }
