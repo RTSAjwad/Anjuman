@@ -17,7 +17,6 @@ mod dialog;
 mod input;
 mod pagination;
 mod select;
-mod submit_button;
 mod switch;
 mod table;
 mod tabs;
@@ -30,7 +29,6 @@ pub use dialog::UiDialog;
 pub use input::Input;
 pub use pagination::UiPagination;
 pub use select::UiSelect;
-pub use submit_button::UiSubmitButton;
 pub use switch::Switch;
 pub use table::{
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,

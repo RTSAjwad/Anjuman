@@ -7,7 +7,7 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    Button, ButtonAppearance, Input, Switch, UiPagination, UiSelect, UiSubmitButton,
+    Button, ButtonAppearance, Input, Switch, UiPagination, UiSelect,
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };
 use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
@@ -375,9 +375,9 @@ pub(crate) fn browser(
                         >
                             <div class="flex w-full">
                                 <Input value=q_value placeholder="Search…" class="flex-1 rounded-r-none" />
-                                <UiSubmitButton aria_label="Search">
+                                <Button button_type="submit" aria_label="Search" square=true on_click=|_| {}>
                                     <Icon glyph=LucideGlyph::Search size="16" />
-                                </UiSubmitButton>
+                                </Button>
                             </div>
                         </form>
 
@@ -476,9 +476,9 @@ pub(crate) fn browser(
                         >
                             <div class="flex w-full">
                                 <Input value=note_query placeholder="Search…" class="flex-1 rounded-r-none" />
-                                <UiSubmitButton aria_label="Search">
+                                <Button button_type="submit" aria_label="Search" square=true on_click=|_| {}>
                                     <Icon glyph=LucideGlyph::Search size="16" />
-                                </UiSubmitButton>
+                                </Button>
                             </div>
                         </form>
 
