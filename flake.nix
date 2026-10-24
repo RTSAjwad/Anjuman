@@ -74,6 +74,13 @@
         client-packages = with pkgs; [
           rust-toolchain
 
+          # `cargo rustc` is invoked by `boltffi pack wasm` to emit binding
+          # metadata; `shared` compiles to a `cdylib`/`staticlib` and needs a C
+          # linker. The dev shell inherits one from `stdenv`, but the `nix run
+          # .#client` app and the process-compose `frontend` process run pnpm
+          # outside `mkShell`, so it must be listed explicitly.
+          stdenv.cc
+
           # Web (Leptos) shell tooling.
           trunk
           wasm-bindgen-cli
@@ -146,8 +153,11 @@
             meta.description = "Run the Anjuman Axum backend on 127.0.0.1:3000";
           };
 
-          # `nix run .#client` — `trunk serve` the Leptos shell (hot-reload on
-          # http://127.0.0.1:8080).
+          # `nix run .#client` — serve the React shell. The WASM core + generated
+          # types are built separately (they only change when the core changes);
+          # run `pnpm run build` (or `pnpm run wasm:build`/`types:build`) first,
+          # then this dev server. Links node_modules if needed and starts the
+          # React Router dev server on http://127.0.0.1:5173.
           client = {
             type = "app";
             program = let
@@ -155,11 +165,15 @@
                 name = "anjuman-client";
                 runtimeInputs = client-packages;
                 text = ''
-                  exec trunk serve --open=false "$@"
+                  cd client/shells/react
+                  if [ ! -d node_modules ]; then
+                    pnpm install
+                  fi
+                  exec pnpm run dev "$@"
                 '';
               };
             in "${serve}/bin/anjuman-client";
-            meta.description = "Serve the Anjuman Leptos shell with trunk (127.0.0.1:8080)";
+            meta.description = "Serve the Anjuman React shell (127.0.0.1:5173)";
           };
         };
 
@@ -246,16 +260,21 @@
               depends_on.pg.condition = "process_healthy";
             };
 
-            # Serve the Leptos shell with trunk (hot reload on 127.0.0.1:8080).
+            # Serve the React shell (links node_modules if needed, then React
+            # Router dev server on 127.0.0.1:5173). WASM + types are built
+            # separately via `pnpm run build`.
             frontend = {
               command = pkgs.writeShellApplication {
-                name = "anjuman-trunk";
+                name = "anjuman-react";
                 runtimeInputs = client-packages;
                 text = ''
-                  exec trunk serve --open=false
+                  if [ ! -d node_modules ]; then
+                    pnpm install
+                  fi
+                  exec pnpm run dev
                 '';
               };
-              working_dir = "client/shells/leptos";
+              working_dir = "client/shells/react";
             };
           };
         };
