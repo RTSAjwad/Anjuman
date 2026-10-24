@@ -3,7 +3,7 @@ use shared::app::{StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Badge, BadgeColor, Button, ButtonAppearance, Dialog, FloatingLayer, Input, Select,
+    Badge, BadgeVariant, Button, ButtonVariant, Dialog, FloatingLayer, Input, Select,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -67,13 +67,13 @@ pub(crate) fn study_screen(
 pub(crate) fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
     view! {
         <div class="thaw-study-counts">
-            <Badge color=BadgeColor::Brand>
+            <Badge variant=BadgeVariant::Default>
                 {counts.new_count.to_string()}
             </Badge>
-            <Badge color=BadgeColor::Danger>
+            <Badge variant=BadgeVariant::Destructive>
                 {(counts.learning_count + counts.relearning_count).to_string()}
             </Badge>
-            <Badge color=BadgeColor::Success>
+            <Badge variant=BadgeVariant::Success>
                 {counts.review_count.to_string()}
             </Badge>
         </div>
@@ -163,8 +163,8 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
             <p class="py-4">"How many days from now?"</p>
             <Input value=days input_type="number" placeholder="days" />
             <div class="mt-6 flex justify-end gap-2">
-                <Button appearance=ButtonAppearance::Subtle on_click=move |_| reschedule_open.set(false)>"Cancel"</Button>
-                <Button appearance=ButtonAppearance::Primary on_click=reschedule>"Reschedule"</Button>
+                <Button variant=ButtonVariant::Ghost on_click=move |_| reschedule_open.set(false)>"Cancel"</Button>
+                <Button variant=ButtonVariant::Default on_click=reschedule>"Reschedule"</Button>
             </div>
         </Dialog>
     }
@@ -216,7 +216,7 @@ fn study_card_view(
                         .into_any()
                     } else {
                         view! {
-                            <Button appearance=ButtonAppearance::Neutral on_click=move |_| revealed.set(true)>
+                            <Button variant=ButtonVariant::Secondary on_click=move |_| revealed.set(true)>
                                 "Show answer"
                             </Button>
                         }
@@ -238,8 +238,8 @@ fn card_html(body: &str, styling: &str) -> String {
 }
 
 /// A single answer button (label + predicted interval underneath). The "Again"
-/// answer (rating 1) renders as a soft danger/error button; Hard/Good/Easy are
-/// soft default buttons.
+/// answer (rating 1) renders as a destructive button; Hard/Good/Easy are ghost
+/// (quiet) buttons.
 fn answer_button<R, I>(
     rating: R,
     interval_for: I,
@@ -251,17 +251,17 @@ where
     I: Fn(i32) -> Option<i64> + Clone,
 {
     let interval = interval_for(n).map(format_interval).unwrap_or_default();
-    // "Again" (rating 1) is a soft danger/error button; Hard/Good/Easy are soft
-    // neutral buttons.
-    let (appearance, extra_class) = if n == 1 {
-        (ButtonAppearance::Danger, "btn-soft")
+    // "Again" (rating 1) is destructive; Hard/Good/Easy are ghost (quiet).
+    // "Again" (rating 1) is destructive; Hard/Good/Easy are ghost (quiet).
+    let variant = if n == 1 {
+        ButtonVariant::Destructive
     } else {
-        (ButtonAppearance::NeutralSoft, "")
+        ButtonVariant::Ghost
     };
 
     view! {
         <div class="thaw-study-answer">
-            <Button appearance=appearance class=extra_class on_click=move |_| rating(n)>
+            <Button variant=variant on_click=move |_| rating(n)>
                 {label}
             </Button>
             <span class="thaw-study-answer__interval">{interval}</span>
@@ -298,7 +298,7 @@ fn study_done_view(set_event: WriteSignal<Event>) -> impl IntoView {
     view! {
         <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
             <p style="color: #888;">"Nothing due right now. Nice work!"</p>
-            <Button appearance=ButtonAppearance::Primary on_click=move |_| set_event.set(Event::StartStudy)>
+            <Button variant=ButtonVariant::Default on_click=move |_| set_event.set(Event::StartStudy)>
                 "Check again"
             </Button>
         </div>

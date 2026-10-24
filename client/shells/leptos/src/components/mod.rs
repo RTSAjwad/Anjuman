@@ -22,9 +22,9 @@ mod switch;
 mod table;
 mod tabs;
 
-pub use badge::{Badge, BadgeColor};
+pub use badge::{Badge, BadgeVariant};
 pub use breadcrumbs::Breadcrumb;
-pub use button::{Button, ButtonAppearance};
+pub use button::{Button, ButtonVariant};
 pub use card::Card;
 pub use dialog::Dialog;
 pub use floating_layer::FloatingLayer;

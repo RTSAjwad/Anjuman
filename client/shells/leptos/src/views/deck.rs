@@ -3,7 +3,7 @@ use shared::app::{DeckSummary, DeckView};
 use shared::ViewModel;
 use std::collections::HashSet;
 
-use crate::components::{Badge, BadgeColor, Card};
+use crate::components::{Badge, BadgeVariant, Card};
 use lepticons::{Icon, LucideGlyph};
 
 /// Renders the authenticated user's deck list (title + due counts), with
@@ -190,13 +190,13 @@ fn deck_item(
                     .into_any()
                 }}
             </div>
-            <Badge color=deck_badge_color(deck.new_count, BadgeColor::Brand)>
+            <Badge variant=deck_badge_color(deck.new_count, BadgeVariant::Default)>
                 {deck.new_count.to_string()}
             </Badge>
-            <Badge color=deck_badge_color(deck.learning_count, BadgeColor::Danger)>
+            <Badge variant=deck_badge_color(deck.learning_count, BadgeVariant::Destructive)>
                 {deck.learning_count.to_string()}
             </Badge>
-            <Badge color=deck_badge_color(deck.review_count, BadgeColor::Success)>
+            <Badge variant=deck_badge_color(deck.review_count, BadgeVariant::Success)>
                 {deck.review_count.to_string()}
             </Badge>
             <div class="thaw-deck-row__actions">
@@ -232,9 +232,9 @@ fn deck_item(
 /// The badge colour for a due-count cell: a zero count is shown in a neutral
 /// grey (`Informative`), otherwise the per-state colour (new = blue, learning =
 /// red, review = green).
-fn deck_badge_color(count: i64, themed: BadgeColor) -> BadgeColor {
+fn deck_badge_color(count: i64, themed: BadgeVariant) -> BadgeVariant {
     if count == 0 {
-        BadgeColor::Informative
+        BadgeVariant::Muted
     } else {
         themed
     }

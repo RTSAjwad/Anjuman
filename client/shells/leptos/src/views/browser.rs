@@ -7,7 +7,7 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    Button, ButtonAppearance, Input, Switch, Pagination, Select,
+    Button, ButtonVariant, Input, Switch, Pagination, Select,
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };
 use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
@@ -743,7 +743,7 @@ fn CardInspector(
                                     <div class="flex">
                                         <Input value=reschedule_days input_type="number" placeholder="days" class="rounded-r-none" />
                                         <Button
-                                            appearance=ButtonAppearance::Subtle
+                                            variant=ButtonVariant::Ghost
                                             square=true
                                             join_item=true
                                             aria_label="Reschedule"

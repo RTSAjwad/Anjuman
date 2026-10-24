@@ -13,7 +13,7 @@ use shared::app::{CurrentRoute, DeckView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Button, ButtonAppearance, Tabs, TabsList, TabsTrigger, Breadcrumb, Input,
+    Button, ButtonVariant, Tabs, TabsList, TabsTrigger, Breadcrumb, Input,
 };
 use crate::core_link;
 use crate::router;
@@ -486,7 +486,7 @@ pub fn RootComponent() -> impl IntoView {
                                 <Input value=email placeholder="Email" />
                                 <Input value=password placeholder="Password" input_type="password" />
                                 <Button
-                                    appearance=ButtonAppearance::Primary
+                                    variant=ButtonVariant::Default
                                     on_click=submit
                                     disabled=vm.busy
                                 >
@@ -506,7 +506,7 @@ pub fn RootComponent() -> impl IntoView {
                                         let q = quick_login.clone();
                                         view! {
                                             <Button
-                                                appearance=ButtonAppearance::Subtle
+                                                variant=ButtonVariant::Ghost
                                                 on_click=move |_| q(creds)
                                                 disabled=vm.busy
                                             >

@@ -337,20 +337,21 @@ whole shell.
 
 ### 10.6 State + naming divergences (revisit later)
 
-| Component | Divergence | Resolution to revisit |
+| Component | Divergence | Resolution |
 |---|---|---|
 | `Switch` | rust-ui owns its state (`RwSignal`) and toggles internally; ours is controlled (`checked`/`on_toggle`). | Cardinal unidirectional-dataflow — keep. |
 | `Tabs` | rust-ui owns selection internally (`TabsCtx`); ours is controlled (`active: Signal<bool>` + `on_click`). | Cardinal — keep (§10.5). |
-| `Button` | rust-ui variant names (`Default`/`Ghost`/`Secondary`/…) vs our `Primary`/`Subtle`/`Danger`/`Neutral`/`NeutralSoft`. | Rename our call sites to rust-ui's vocabulary (or accept a permanent thin `ButtonAppearance` alias). |
-| `Badge` | rust-ui variant names vs our `Brand`/`Danger`/`Success`/`Informative`. | Same — reconcile names. |
 | `TableRow` | rust-ui's is presentational-only; ours adds controlled `selected`/`on_click` (selectable browser rows). | Cardinal shell interactivity — keep; class strings are verbatim (`data-state` drives the selection class). |
-| `Card` / `Badge` / `Button` | `Size`/`Variant` matrix entries unused by callers. | Remove the module `#![allow(dead_code)]` as callers adopt the full matrix. |
+| `Button` | ~~rust-ui names vs our alias enum~~ | **Resolved** — call sites now use `ButtonVariant` directly (`Default`/`Ghost`/`Secondary`/`Destructive`). |
+| `Badge` | ~~rust-ui names vs our alias enum~~ | **Resolved** — call sites now use `BadgeVariant` directly (`Default`/`Muted`/`Destructive`/`Success`). |
 
-The `Button`/`Badge` class **strings** are rust-ui's verbatim already; only the
-call-site enum names are a naming gap. Both `button.rs` and `badge.rs` (and `card.rs`)
-carry a module-level `#![allow(dead_code)]` because the verbatim variant/size matrix
-includes entries our callers don't use yet. Remove that allow as callers adopt
-the full matrix.
+**Matrix trim (also resolved):** `Button`/`Badge` (and `Card`) no longer carry the
+full rust-ui variant/size matrix as dead code behind a module `#![allow(dead_code)]`.
+The `variants!` matrices are trimmed to the variants/sizes Anjuman actually uses
+(e.g. `Button` has `Default`/`Ghost`/`Secondary`/`Destructive` × `Default`/`Icon`,
+not `Link`/`Warning`/`Success`/`Bordered` or `Sm`/`Lg`/`IconSm`/`IconXs`), so the
+allow is gone. Add back any entry verbatim (class strings unchanged) when a caller
+first needs it.
 
 ### 10.7 Status (verbatim adoption, in progress)
 

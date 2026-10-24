@@ -3,7 +3,7 @@ use shared::app::{DeckOptionsEdit, DeckOptionsView, PresetSummary};
 use shared::Event;
 
 use crate::components::{
-    Button, ButtonAppearance, Input, Select,
+    Button, ButtonVariant, Input, Select,
 };
 use crate::views::study::format_interval;
 
@@ -225,7 +225,7 @@ pub(crate) fn deck_options_panel(
                 }}
                 {if can_edit {
                     view! {
-                        <Button appearance=ButtonAppearance::Primary on_click=on_save>
+                        <Button variant=ButtonVariant::Default on_click=on_save>
                             "Save"
                         </Button>
                     }
