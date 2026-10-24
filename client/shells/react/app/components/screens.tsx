@@ -1,10 +1,11 @@
-// Screen components. The deck list is real (Phase 3); study, deck options, and
-// the browser are still placeholders pending their port.
+// Screen components. The deck list, study, and deck options are real (Phase 3);
+// the browser is still a placeholder pending its port.
 
 import { useCore } from "../lib/core-provider.client";
 import { eventOpenDeck, eventOpenDeckOptions } from "shared_types/app";
 import { DeckTree } from "./deck-tree";
 import { StudyScreen as StudyScreenView } from "./study";
+import { DeckOptionsScreen as DeckOptionsView } from "./deck-options";
 
 export function DeckListScreen() {
   const { view, update } = useCore();
@@ -38,10 +39,19 @@ export function StudyScreen() {
 }
 
 export function DeckOptionsScreen() {
+  const { view, update } = useCore();
+  if (view === null) return null;
+
   return (
-    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      Deck options — coming in Phase 3.
-    </div>
+    <DeckOptionsView
+      deckId={view.selected_deck?.id ?? null}
+      options={view.deck_options}
+      error={view.deck_options_error}
+      presets={view.presets}
+      presetsError={view.presets_error}
+      canManagePresets={view.permissions.can_manage_presets}
+      update={update}
+    />
   );
 }
 
