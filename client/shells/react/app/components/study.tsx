@@ -200,6 +200,35 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
 
   return (
     <div className="flex items-center gap-1">
+      <Select
+        items={FLAG_OPTIONS}
+        value={flag}
+        onValueChange={(v) => update(eventFlagCard(Number(v)))}
+      >
+        <SelectTrigger className="w-[9rem]" aria-label="Flag">
+          <Flag
+            className={cn("size-4", flag !== "0" && flagColor(flag), flag !== "0" && "fill-current")}
+          />
+          <SelectValue placeholder="Flags" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {FLAG_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                <Flag
+                  className={cn(
+                    "size-4",
+                    opt.color,
+                    opt.value !== "0" && "fill-current",
+                  )}
+                />
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -224,35 +253,6 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
           <DropdownMenuItem onClick={() => setRescheduleOpen(true)}>Reschedule</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <Select
-        items={FLAG_OPTIONS}
-        value={flag}
-        onValueChange={(v) => update(eventFlagCard(Number(v)))}
-      >
-        <SelectTrigger className="w-[9rem] hover:bg-accent hover:text-accent-foreground" aria-label="Flag">
-          <Flag
-            className={cn("size-4", flag !== "0" && flagColor(flag), flag !== "0" && "fill-current")}
-          />
-          <SelectValue placeholder="Flags" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            {FLAG_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                <Flag
-                  className={cn(
-                    "size-4",
-                    opt.color,
-                    opt.value !== "0" && "fill-current",
-                  )}
-                />
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
 
       <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
         <DialogContent>
