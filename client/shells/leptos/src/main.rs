@@ -9,7 +9,6 @@ mod core_link;
 mod http;
 mod kv;
 mod router;
-mod styles;
 mod variants;
 mod views;
 

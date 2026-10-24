@@ -6,19 +6,23 @@
 //! being unidirectional — it reads the selected value from a reactive `value`
 //! signal and forwards a `String` via `on_change` (read from the view, emit an
 //! event, let the core re-render). Options are `(value, label)` pairs.
+//!
+//! Styled purely with Tailwind utilities (rust-ui/shadcn convention: no scoping,
+//! no `<style>` injection). Every element carries its own explicit reset
+//! (`list-none m-0` on the list, `p-*` on items) so ancestor reach-in cannot
+//! change the spacing — the component is self-contained by construction.
+
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use leptos::prelude::*;
 use tw_merge::tw_merge;
 
 use lepticons::{Icon, LucideGlyph};
 
-use crate::styles::scoped_style;
-
-/// Scoped rules that make the select's interior immune to ancestor leakage
-/// (list markers/margins/padding from unlayered author CSS or preflight). These
-/// are injected once and scoped under the returned class, so the select renders
-/// identically no matter where it is mounted.
-const SELECT_CSS: &str = ".anj-ui-select ul{list-style:none;margin:0;padding:0}.anj-ui-select li{margin:0}.anj-ui-select button{margin:0;font:inherit;color:inherit}";
+/// A process-wide counter so each mounted `UiSelect` gets a unique CSS-anchor
+/// name (CSS `anchor-name` must be unique per page; two selects sharing one name
+/// would resolve each other's anchor and drift).
+static NEXT_ANCHOR: AtomicU64 = AtomicU64::new(0);
 
 /// Owned, unidirectional select. `value` is the raw string form of the selected
 /// option (e.g. `"1"`, `"normal"`); `options` are `(value, label)` pairs. The
@@ -31,9 +35,10 @@ pub fn UiSelect(
     options: &'static [(&'static str, &'static str)],
     on_change: Option<Callback<String>>,
 ) -> impl IntoView {
-    let scope = scoped_style("ui-select", SELECT_CSS);
+    // A unique anchor name per instance (see `NEXT_ANCHOR`).
+    let anchor = format!("--ui-select-anchor-{}", NEXT_ANCHOR.fetch_add(1, Ordering::Relaxed));
 
-    let class = tw_merge!(
+    let trigger_class = tw_merge!(
         "flex h-9 w-full items-center justify-between gap-2 whitespace-nowrap rounded-md \
          border border-input bg-transparent px-3 py-1 text-sm shadow-sm \
          focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -58,17 +63,18 @@ pub fn UiSelect(
         }
     };
 
-    // CSS anchor positioning: the trigger names an anchor; the popover is
-    // `position: fixed` + `position-anchor` + `position-area` (block-end /
-    // inline-start) so it drops below the trigger, left-aligned, top-layer.
-    let menu_style = "position: fixed; position-anchor: --ui-select-anchor; position-area: block-end span-inline-start;";
+    let trigger_style = format!("anchor-name:{}", anchor);
+    let menu_style = format!(
+        "position: fixed; position-anchor: {}; position-area: block-end span-inline-start;",
+        anchor
+    );
 
     view! {
-        <div class=scope>
+        <div>
             <button
                 type="button"
-                class=class
-                style="anchor-name:--ui-select-anchor"
+                class=trigger_class
+                style=trigger_style
                 aria-haspopup="listbox"
                 aria-expanded=move || open.get()
                 on:click=toggle
@@ -77,7 +83,7 @@ pub fn UiSelect(
                 <Icon glyph=LucideGlyph::ChevronDown size="16" class="opacity-50" />
             </button>
             <ul
-                class="z-50 flex w-full min-w-[--anchor-size-inline] flex-col rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md transition-all duration-200 data-[state=closed]:pointer-events-none data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100"
+                class="z-50 flex w-full min-w-[--anchor-size-inline] list-none flex-col rounded-md border border-border bg-popover p-1 m-0 text-popover-foreground shadow-md transition-all duration-200 data-[state=closed]:pointer-events-none data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100"
                 style=menu_style
                 data-state=move || if open.get() { "open" } else { "closed" }
             >
@@ -85,7 +91,7 @@ pub fn UiSelect(
                     let choose = choose.clone();
                     let is_selected = move || value.get() == *v;
                     view! {
-                        <li>
+                        <li class="m-0">
                             <button
                                 type="button"
                                 class="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors duration-200 text-popover-foreground hover:bg-accent hover:text-accent-foreground"

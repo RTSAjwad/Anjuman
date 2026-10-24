@@ -190,7 +190,8 @@
  * internals (the "identical markup renders differently" bug). They now live in
  * `@layer components`, so they participate in the normal cascade order:
  * `base` < `components` < `utilities`. Page/layout belongs here; *component*
- * internals belong in the component (see `src/styles.rs` `scoped_style`).
+ * internals are styled by each component's own explicit utility classes
+ * (rust-ui/shadcn convention — no scoped styles).
  * ------------------------------------------------------------------------- */
 @layer components {
   .thaw-deck-header,
