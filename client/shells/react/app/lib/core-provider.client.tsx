@@ -16,6 +16,7 @@ import type { Event, ViewModel } from "shared_types/app";
 // No component-local mirrored state that can drift from the core.
 interface CoreContextValue {
   view: ViewModel | null;
+  ready: boolean;
   update: (event: Event) => void;
 }
 
@@ -23,6 +24,7 @@ const CoreContext = createContext<CoreContextValue | null>(null);
 
 export function CoreProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<ViewModel | null>(null);
+  const [ready, setReady] = useState(false);
   const coreRef = useRef<Core | null>(null);
 
   // Hold the Core in a ref so its identity is stable; it drives `setView`.
@@ -36,6 +38,7 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       // First render arrives via the Core's first `view()` call; ensure state is
       // populated even if no event fires (initialize already calls setState).
       setView(core.view());
+      setReady(true);
     });
   }, [core]);
 
@@ -46,7 +49,7 @@ export function CoreProvider({ children }: { children: ReactNode }) {
     [core],
   );
 
-  const value = useMemo(() => ({ view, update }), [view, update]);
+  const value = useMemo(() => ({ view, ready, update }), [view, ready, update]);
 
   return <CoreContext.Provider value={value}>{children}</CoreContext.Provider>;
 }

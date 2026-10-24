@@ -11,13 +11,17 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
-  const { view, update } = useCore();
+  const { view, ready, update } = useCore();
 
-  // Fire the session restore once on mount; the core emits the KeyValue effect
-  // (token lookup in localStorage) and, if a token exists, an Http effect.
+  // Fire the session restore once the WASM core is ready (the core emits the
+  // KeyValue effect — token lookup in localStorage — and, if a token exists, an
+  // Http effect). Gated on `ready` because `update` throws before `initialize()`
+  // resolves, and `CoreFfi` is only constructed once `shared_bg.wasm` is loaded.
   useEffect(() => {
-    update(eventRestoreSession());
-  }, [update]);
+    if (ready) {
+      update(eventRestoreSession());
+    }
+  }, [ready, update]);
 
   if (view === null) {
     return <p>Loading…</p>;
