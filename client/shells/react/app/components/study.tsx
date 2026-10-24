@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
-import { EllipsisVertical } from "lucide-react";
+
 
 const FLAG_OPTIONS = [
   { value: "0", label: "No flag" },
@@ -196,12 +196,8 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
     <div className="flex items-center gap-1">
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={
-            <Button variant="ghost" size="icon-sm" aria-label="Card actions" />
-          }
-        >
-          <EllipsisVertical />
-        </DropdownMenuTrigger>
+          render={<Button variant="outline" size="sm">Actions</Button>}
+        />
         <DropdownMenuContent align="start" className="w-44">
           <DropdownMenuItem onClick={() => update(card.buried ? eventUnburyCard() : eventBuryCard())}>
             {card.buried ? "Unbury" : "Bury"}
