@@ -319,3 +319,18 @@ renders rust-ui's exact class strings without `expect_context`-mutating internal
 state. This is the one place where "default code unmodified" yields to the
 unidirectional-dataflow invariant that has been non-negotiable through this
 whole shell.
+
+### 10.6 State + naming divergences (revisit later)
+
+| Component | Divergence | Resolution to revisit |
+|---|---|---|
+| `Switch` | rust-ui owns its state (`RwSignal`) and toggles internally; ours is controlled (`checked`/`on_toggle`). | Cardinal unidirectional-dataflow — keep. |
+| `Tabs` | rust-ui owns selection internally (`TabsCtx`); ours is controlled (`active: Signal<bool>` + `on_click`). | Cardinal — keep (§10.5). |
+| `Button` | rust-ui variant names (`Default`/`Ghost`/`Secondary`/…) vs our `Primary`/`Subtle`/`Danger`/`Neutral`/`NeutralSoft`. | Rename our call sites to rust-ui's vocabulary (or accept a permanent thin `ButtonAppearance` alias). |
+| `Badge` | rust-ui variant names vs our `Brand`/`Danger`/`Success`/`Informative`. | Same — reconcile names. |
+
+The `Button`/`Badge` class **strings** are rust-ui's verbatim already; only the
+call-site enum names are a naming gap. Both `button.rs` and `badge.rs` carry a
+module-level `#![allow(dead_code)]` because the verbatim variant/size matrix
+includes entries our callers don't use yet. Remove that allow as callers adopt
+the full matrix.

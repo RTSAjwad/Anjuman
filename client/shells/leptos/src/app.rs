@@ -13,7 +13,7 @@ use shared::app::{CurrentRoute, DeckView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Tabs, TabsList, TabsTrigger, UiBreadcrumbs, UiButton, UiButtonAppearance, UiInput,
+    Button, ButtonAppearance, Tabs, TabsList, TabsTrigger, UiBreadcrumbs, UiInput,
 };
 use crate::core_link;
 use crate::router;
@@ -485,13 +485,13 @@ pub fn RootComponent() -> impl IntoView {
                             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
                                 <UiInput value=email placeholder="Email" />
                                 <UiInput value=password placeholder="Password" input_type="password" />
-                                <UiButton
-                                    appearance=UiButtonAppearance::Primary
+                                <Button
+                                    appearance=ButtonAppearance::Primary
                                     on_click=submit
                                     disabled=vm.busy
                                 >
                                     "Log in"
-                                </UiButton>
+                                </Button>
                                 {vm.error.clone().map(|err| view! {
                                     <p style="color: #c00;">{err}</p>
                                 })}
@@ -505,13 +505,13 @@ pub fn RootComponent() -> impl IntoView {
                                         };
                                         let q = quick_login.clone();
                                         view! {
-                                            <UiButton
-                                                appearance=UiButtonAppearance::Subtle
+                                            <Button
+                                                appearance=ButtonAppearance::Subtle
                                                 on_click=move |_| q(creds)
                                                 disabled=vm.busy
                                             >
                                                 {role}
-                                            </UiButton>
+                                            </Button>
                                         }
                                     }).collect_view()}
                                 </div>

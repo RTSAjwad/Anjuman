@@ -3,7 +3,7 @@ use shared::app::{DeckSummary, DeckView};
 use shared::ViewModel;
 use std::collections::HashSet;
 
-use crate::components::{UiBadge, UiBadgeColor, UiCard};
+use crate::components::{Badge, BadgeColor, UiCard};
 use lepticons::{Icon, LucideGlyph};
 
 /// Renders the authenticated user's deck list (title + due counts), with
@@ -190,15 +190,15 @@ fn deck_item(
                     .into_any()
                 }}
             </div>
-            <UiBadge color=deck_badge_color(deck.new_count, UiBadgeColor::Brand)>
+            <Badge color=deck_badge_color(deck.new_count, BadgeColor::Brand)>
                 {deck.new_count.to_string()}
-            </UiBadge>
-            <UiBadge color=deck_badge_color(deck.learning_count, UiBadgeColor::Danger)>
+            </Badge>
+            <Badge color=deck_badge_color(deck.learning_count, BadgeColor::Danger)>
                 {deck.learning_count.to_string()}
-            </UiBadge>
-            <UiBadge color=deck_badge_color(deck.review_count, UiBadgeColor::Success)>
+            </Badge>
+            <Badge color=deck_badge_color(deck.review_count, BadgeColor::Success)>
                 {deck.review_count.to_string()}
-            </UiBadge>
+            </Badge>
             <div class="thaw-deck-row__actions">
                 {if studyable {
                     let on_navigate = on_navigate;
@@ -232,9 +232,9 @@ fn deck_item(
 /// The badge colour for a due-count cell: a zero count is shown in a neutral
 /// grey (`Informative`), otherwise the per-state colour (new = blue, learning =
 /// red, review = green).
-fn deck_badge_color(count: i64, themed: UiBadgeColor) -> UiBadgeColor {
+fn deck_badge_color(count: i64, themed: BadgeColor) -> BadgeColor {
     if count == 0 {
-        UiBadgeColor::Informative
+        BadgeColor::Informative
     } else {
         themed
     }

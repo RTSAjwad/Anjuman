@@ -3,7 +3,7 @@ use shared::app::{StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiDialog, UiInput, UiSelect,
+    Badge, BadgeColor, Button, ButtonAppearance, UiDialog, UiInput, UiSelect,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -67,15 +67,15 @@ pub(crate) fn study_screen(
 pub(crate) fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
     view! {
         <div class="thaw-study-counts">
-            <UiBadge color=UiBadgeColor::Brand>
+            <Badge color=BadgeColor::Brand>
                 {counts.new_count.to_string()}
-            </UiBadge>
-            <UiBadge color=UiBadgeColor::Danger>
+            </Badge>
+            <Badge color=BadgeColor::Danger>
                 {(counts.learning_count + counts.relearning_count).to_string()}
-            </UiBadge>
-            <UiBadge color=UiBadgeColor::Success>
+            </Badge>
+            <Badge color=BadgeColor::Success>
                 {counts.review_count.to_string()}
-            </UiBadge>
+            </Badge>
         </div>
     }
 }
@@ -143,8 +143,8 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
             <p class="py-4">"How many days from now?"</p>
             <UiInput value=days input_type="number" placeholder="days" />
             <div class="mt-6 flex justify-end gap-2">
-                <UiButton appearance=UiButtonAppearance::Subtle on_click=move |_| reschedule_open.set(false)>"Cancel"</UiButton>
-                <UiButton appearance=UiButtonAppearance::Primary on_click=reschedule>"Reschedule"</UiButton>
+                <Button appearance=ButtonAppearance::Subtle on_click=move |_| reschedule_open.set(false)>"Cancel"</Button>
+                <Button appearance=ButtonAppearance::Primary on_click=reschedule>"Reschedule"</Button>
             </div>
         </UiDialog>
     }
@@ -196,9 +196,9 @@ fn study_card_view(
                         .into_any()
                     } else {
                         view! {
-                            <UiButton appearance=UiButtonAppearance::Neutral on_click=move |_| revealed.set(true)>
+                            <Button appearance=ButtonAppearance::Neutral on_click=move |_| revealed.set(true)>
                                 "Show answer"
-                            </UiButton>
+                            </Button>
                         }
                         .into_any()
                     }
@@ -234,16 +234,16 @@ where
     // "Again" (rating 1) is a soft danger/error button; Hard/Good/Easy are soft
     // neutral buttons.
     let (appearance, extra_class) = if n == 1 {
-        (UiButtonAppearance::Danger, "btn-soft")
+        (ButtonAppearance::Danger, "btn-soft")
     } else {
-        (UiButtonAppearance::NeutralSoft, "")
+        (ButtonAppearance::NeutralSoft, "")
     };
 
     view! {
         <div class="thaw-study-answer">
-            <UiButton appearance=appearance class=extra_class on_click=move |_| rating(n)>
+            <Button appearance=appearance class=extra_class on_click=move |_| rating(n)>
                 {label}
-            </UiButton>
+            </Button>
             <span class="thaw-study-answer__interval">{interval}</span>
         </div>
     }
@@ -278,9 +278,9 @@ fn study_done_view(set_event: WriteSignal<Event>) -> impl IntoView {
     view! {
         <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
             <p style="color: #888;">"Nothing due right now. Nice work!"</p>
-            <UiButton appearance=UiButtonAppearance::Primary on_click=move |_| set_event.set(Event::StartStudy)>
+            <Button appearance=ButtonAppearance::Primary on_click=move |_| set_event.set(Event::StartStudy)>
                 "Check again"
-            </UiButton>
+            </Button>
         </div>
     }
 }

@@ -22,9 +22,9 @@ mod switch;
 mod table;
 mod tabs;
 
-pub use badge::{UiBadge, UiBadgeColor};
+pub use badge::{Badge, BadgeColor};
 pub use breadcrumbs::UiBreadcrumbs;
-pub use button::{UiButton, UiButtonAppearance};
+pub use button::{Button, ButtonAppearance};
 pub use card::UiCard;
 pub use dialog::UiDialog;
 pub use input::UiInput;

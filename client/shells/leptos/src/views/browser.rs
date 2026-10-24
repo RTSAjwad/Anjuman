@@ -7,7 +7,7 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    Switch, UiButton, UiButtonAppearance, UiInput, UiPagination, UiSelect, UiSubmitButton,
+    Button, ButtonAppearance, Switch, UiInput, UiPagination, UiSelect, UiSubmitButton,
     UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow,
 };
 use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
@@ -738,8 +738,8 @@ fn CardInspector(
                                 <div class="card-browser__inspector-reschedule">
                                     <div class="flex">
                                         <UiInput value=reschedule_days input_type="number" placeholder="days" class="rounded-r-none" />
-                                        <UiButton
-                                            appearance=UiButtonAppearance::Subtle
+                                        <Button
+                                            appearance=ButtonAppearance::Subtle
                                             square=true
                                             join_item=true
                                             aria_label="Reschedule"
@@ -751,7 +751,7 @@ fn CardInspector(
                                             }
                                         >
                                             <Icon glyph=LucideGlyph::Check size="16" />
-                                        </UiButton>
+                                        </Button>
                                     </div>
                                 </div>
                             </dd>
