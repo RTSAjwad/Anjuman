@@ -92,7 +92,7 @@ function Layout() {
         onLogout={() => update(eventLogout())}
       />
       <SidebarInset className="min-w-0 flex-1">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-muted px-3">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
           <SidebarTrigger />
           {route === "DeckList" ? (
             <Breadcrumb>
@@ -253,7 +253,14 @@ function BrowserTabs({
   onShowNotes: () => void;
 }) {
   return (
-    <Tabs value={route} onValueChange={(v) => (v === "notes" ? onShowNotes() : onShowCards())}>
+    <Tabs
+      value={route}
+      onValueChange={(v) => {
+        if (v === null) return;
+        if (v === "notes") onShowNotes();
+        else onShowCards();
+      }}
+    >
       <TabsList>
         <TabsTrigger value="cards">Cards</TabsTrigger>
         {canManageNotes ? <TabsTrigger value="notes">Notes</TabsTrigger> : null}
