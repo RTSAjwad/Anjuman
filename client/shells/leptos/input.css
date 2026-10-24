@@ -345,25 +345,6 @@
     padding: 0.5rem 0.5rem;
     border-bottom: 1px solid var(--colorNeutralStroke2);
   }
-  .card-browser__menu {
-    width: 100%;
-    padding: 0;
-  }
-  .card-browser__menu li > details > ul,
-  .card-browser__menu li > ul {
-    margin-inline-start: calc(0.25rem * 4);
-    padding-inline-start: calc(0.25rem * 2);
-    white-space: nowrap;
-  }
-  .card-browser__menu li > details > summary {
-    display: grid;
-    list-style: none;
-  }
-  .card-browser__menu .card-browser__deck-self {
-    font-size: var(--fontSizeBase100);
-    color: var(--colorNeutralForeground3);
-    font-weight: var(--fontWeightRegular);
-  }
   .card-browser__main {
     flex: 1 1 auto;
     min-width: 0;

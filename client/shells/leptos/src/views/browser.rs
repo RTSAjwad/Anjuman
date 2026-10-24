@@ -1,15 +1,15 @@
 use leptos::prelude::*;
 use leptos::task;
 use shared::app::{
-    CardBrowserFilter, CardBrowserView, CurrentRoute, DeckSummary, NoteBrowserFilter, NoteView,
+    CardBrowserFilter, CardBrowserView, CurrentRoute, NoteBrowserFilter, NoteView,
 };
 use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    Button, ButtonVariant, FlagSwatch, Input, Inspector, InspectorFields, InspectorRow,
-    LabeledSwitch, Pagination, Select, Table, TableBody, TableCell, TableHead, TableHeader,
-    TableRow,
+    Button, ButtonVariant, deck_filter_tree, filter_branch, filter_leaf, FlagSwatch, Input, Inspector,
+    InspectorFields, InspectorRow, LabeledSwitch, Pagination, Select, Table, TableBody, TableCell,
+    TableHead, TableHeader, TableRow,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -388,13 +388,13 @@ pub(crate) fn browser(
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
-                        <ul class="card-browser__menu">
+                        <ul class="w-full p-0">
                             {filter_branch(
                                 "Decks",
                                 deck_filter_tree(
                                     vm_sig.get().decks.clone(),
                                     deck_active,
-                                    deck_sel,
+                                    deck_sel.clone(),
                                 ),
                             )}
 
@@ -405,7 +405,7 @@ pub(crate) fn browser(
                                     let active = note_active.get() == id_str;
                                     let name = nt.name.clone();
                                     let sel = note_sel.clone();
-                                    filter_leaf(active, id_str, name, move |id| sel(id))
+                                    filter_leaf(active, name, move || sel(id_str.clone()))
                                 }).collect_view()},
                             )}
 
@@ -422,7 +422,7 @@ pub(crate) fn browser(
                                         "relearning" => "Relearning",
                                         _ => unreachable!(),
                                     };
-                                    filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
+                                    filter_leaf(active, label.to_string(), move || sel(s_val.clone()))
                                 }).collect_view(),
                             )}
 
@@ -456,7 +456,7 @@ pub(crate) fn browser(
                                         "question" => "Question",
                                         _ => unreachable!(),
                                     };
-                                    filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
+                                    filter_leaf(active, label.to_string(), move || sel(s_val.clone()))
                                 }).collect_view(),
                             )}
                         </ul>
@@ -485,13 +485,13 @@ pub(crate) fn browser(
                             <p class="deck-options__error">"Could not load note types: " {err}</p>
                         })}
 
-                        <ul class="card-browser__menu">
+                        <ul class="w-full p-0">
                             {filter_branch(
                                 "Decks",
                                 deck_filter_tree(
                                     vm_sig.get().decks.clone(),
                                     note_deck_filter,
-                                    select_note_deck,
+                                    select_note_deck.clone(),
                                 ),
                             )}
 
@@ -502,7 +502,7 @@ pub(crate) fn browser(
                                     let active = note_note_type.get() == id_str;
                                     let name = nt.name.clone();
                                     let sel = select_note_type_filter.clone();
-                                    filter_leaf(active, id_str, name, move |id| sel(id))
+                                    filter_leaf(active, name, move || sel(id_str.clone()))
                                 }).collect_view()},
                             )}
 
@@ -519,7 +519,7 @@ pub(crate) fn browser(
                                         "question" => "Question",
                                         _ => unreachable!(),
                                     };
-                                    filter_leaf(active, s_val, label.to_string(), move |id| sel(id))
+                                    filter_leaf(active, label.to_string(), move || sel(s_val.clone()))
                                 }).collect_view(),
                             )}
                         </ul>
@@ -782,109 +782,5 @@ fn NoteInspector(
                 .into_any()
             }}
         </Inspector>
-    }
-}
-
-/// A collapsible filter category in the browser sidebar, rendered with a native
-/// `<details>`/`<summary>`. Expansion is native (no signal needed — the browser
-/// tracks the `<details>` `open` state). A plain `fn` (not `#[component]`) so it
-/// sits inline in the reactive `view!` and re-renders when its data (e.g. the
-/// async-loaded note types) arrives.
-fn filter_branch(label: &'static str, leaves: impl IntoView) -> impl IntoView {
-    view! {
-        <li>
-            <details>
-                <summary>{label}</summary>
-                <ul>{leaves}</ul>
-            </details>
-        </li>
-    }
-}
-
-/// A single selectable filter leaf (native `<button>`), highlighted with the
-/// accent background when selected.
-fn filter_leaf(
-    active: bool,
-    value: String,
-    label: String,
-    on_select: impl Fn(String) + 'static,
-) -> impl IntoView {
-    view! {
-        <li>
-            <button class="flex w-full rounded-sm px-3 py-1.5 text-sm" class:bg-accent=active on:click=move |_| on_select(value.clone())>
-                {label}
-            </button>
-        </li>
-    }
-}
-
-/// Renders the deck hierarchy as nested collapsible groups. A deck with children
-/// is an expandable `<details>`/`<summary>`. Because the summary toggles the
-/// submenu (it can't also be a filter), the parent deck's own selectable entry
-/// is rendered as the **first item inside** its submenu (labelled "this deck
-/// only"), followed by its children. A leaf deck is a plain selectable
-/// `<li><button>`.
-fn deck_filter_tree(
-    decks: Vec<DeckSummary>,
-    active: RwSignal<String>,
-    on_select: impl Fn(String) + Clone + 'static,
-) -> impl IntoView {
-    decks
-        .into_iter()
-        .map(|deck| deck_filter_node(deck, active.clone(), on_select.clone()))
-        .collect_view()
-}
-
-/// A single deck node in the filter menu.
-fn deck_filter_node(
-    deck: DeckSummary,
-    active: RwSignal<String>,
-    on_select: impl Fn(String) + Clone + 'static,
-) -> impl IntoView {
-    let id_str = deck.id.to_string();
-    let title = deck.title;
-    let has_children = !deck.children.is_empty();
-    let children = deck.children;
-
-    // Active-state reader for this deck (used by the selectable entries).
-    let is_active = {
-        let id_str = id_str.clone();
-        move || active.get() == id_str
-    };
-
-    if has_children {
-        let select_self = on_select.clone();
-        let self_id = id_str.clone();
-        // The parent's own "filter to this deck only" entry, shown first inside
-        // the expanded submenu (the summary itself only toggles the submenu).
-        let self_item = view! {
-            <li>
-                <button class="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-sm" class:bg-accent=is_active.clone() on:click=move |_| select_self(self_id.clone())>
-                    {title.clone()}
-                    <span class="card-browser__deck-self">{"this deck only"}</span>
-                </button>
-            </li>
-        };
-        view! {
-            <li>
-                <details>
-                    <summary>{title}</summary>
-                    <ul>
-                        {self_item}
-                        {deck_filter_tree(children, active.clone(), on_select)}
-                    </ul>
-                </details>
-            </li>
-        }
-        .into_any()
-    } else {
-        view! {
-            <li>
-                <button class="flex w-full rounded-sm px-3 py-1.5 text-sm" class:bg-accent=is_active on:click=move |_| on_select(id_str.clone())>
-                    {title}
-                </button>
-            </li>
-        }
-        .into_any()
     }
 }
