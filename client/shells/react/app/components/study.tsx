@@ -34,6 +34,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -219,18 +220,21 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
       </DropdownMenu>
 
       <Select
+        items={FLAG_OPTIONS}
         value={flag}
         onValueChange={(v) => update(eventFlagCard(Number(v)))}
       >
-        <SelectTrigger aria-label="Flag">
+        <SelectTrigger className="w-[9rem]" aria-label="Flag">
           <SelectValue placeholder="Flag" />
         </SelectTrigger>
         <SelectContent>
-          {FLAG_OPTIONS.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
-              {opt.label}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            {FLAG_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
 
