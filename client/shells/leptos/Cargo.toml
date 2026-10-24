@@ -25,6 +25,19 @@ gloo-storage = "0.4"
 wasm-bindgen-futures = "0.4"
 # URL routing: hash-based, so only `Location` (`.hash`/`.set_hash`) + `EventTarget`
 # (`add_event_listener`) are needed plus `Event`/`Window`. `HtmlDialogElement` is
-# for `UiDialog`'s `showModal()`/`close()` (native modal semantics: top layer,
+# for `Dialog`'s `showModal()`/`close()` (native modal semantics: top layer,
 # backdrop, open/close transitions).
-web-sys = { version = "0.3", features = ["Location", "Window", "Event", "EventTarget", "HtmlDialogElement"] }
+# `Document` + `HtmlElement` + `Element` + `DomTokenList` support the shared
+# `FloatingLayer` primitive (click-outside containment + body scroll-lock via
+# `document.body()` + `Element::class_list`).
+web-sys = { version = "0.3", features = [
+    "Location",
+    "Window",
+    "Event",
+    "EventTarget",
+    "HtmlDialogElement",
+    "Document",
+    "HtmlElement",
+    "Element",
+    "DomTokenList",
+] }
