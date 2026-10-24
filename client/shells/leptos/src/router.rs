@@ -97,3 +97,129 @@ pub fn on_hashchange(f: impl Fn(String) + 'static) {
 
     std::mem::forget(closure);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- route_to_hash -----------------------------------------------------
+
+    #[test]
+    fn top_level_routes_have_no_params() {
+        assert_eq!(route_to_hash(CurrentRoute::DeckList, None), "#/decks");
+        assert_eq!(route_to_hash(CurrentRoute::Cards, None), "#/cards");
+        assert_eq!(route_to_hash(CurrentRoute::Notes, Some(7)), "#/notes"); // id ignored
+    }
+
+    #[test]
+    fn deck_panels_embed_the_deck_id() {
+        assert_eq!(route_to_hash(CurrentRoute::Study, Some(42)), "#/decks/42/study");
+        assert_eq!(route_to_hash(CurrentRoute::DeckOptions, Some(42)), "#/decks/42/options");
+    }
+
+    #[test]
+    fn deck_panels_without_id_fall_back_to_deck_list() {
+        assert_eq!(route_to_hash(CurrentRoute::Study, None), "#/decks");
+        assert_eq!(route_to_hash(CurrentRoute::DeckOptions, None), "#/decks");
+    }
+
+    // ---- hash_to_event -----------------------------------------------------
+
+    #[test]
+    fn empty_and_root_hash_are_deck_list() {
+        assert!(matches!(hash_to_event(""), Event::ShowDeckList));
+        assert!(matches!(hash_to_event("#/"), Event::ShowDeckList));
+        assert!(matches!(hash_to_event("#"), Event::ShowDeckList));
+        assert!(matches!(hash_to_event("/"), Event::ShowDeckList));
+    }
+
+    #[test]
+    fn plain_names_map_to_top_level_events() {
+        assert!(matches!(hash_to_event("/decks"), Event::ShowDeckList));
+        assert!(matches!(hash_to_event("/cards"), Event::ShowCards));
+        assert!(matches!(hash_to_event("/notes"), Event::ShowNotes));
+    }
+
+    #[test]
+    fn hash_prefix_and_no_leading_slash_are_accepted() {
+        assert!(matches!(hash_to_event("#/decks"), Event::ShowDeckList));
+        assert!(matches!(hash_to_event("decks"), Event::ShowDeckList));
+        assert!(matches!(hash_to_event("#cards"), Event::ShowCards));
+    }
+
+    #[test]
+    fn deck_panel_hashes_map_to_open_events() {
+        assert!(matches!(
+            hash_to_event("#/decks/42/study"),
+            Event::OpenDeck { deck_id: 42 }
+        ));
+        assert!(matches!(
+            hash_to_event("#/decks/42/options"),
+            Event::OpenDeckOptions { deck_id: 42 }
+        ));
+    }
+
+    #[test]
+    fn trailing_slash_is_ignored() {
+        // The segment filter drops empty strings, so a trailing slash is benign.
+        assert!(matches!(hash_to_event("#/decks/"), Event::ShowDeckList));
+        assert!(matches!(
+            hash_to_event("#/decks/42/study/"),
+            Event::OpenDeck { deck_id: 42 }
+        ));
+    }
+
+    #[test]
+    fn malformed_deck_id_falls_back_to_deck_list() {
+        assert!(matches!(
+            hash_to_event("#/decks/not-a-number/study"),
+            Event::ShowDeckList
+        ));
+    }
+
+    #[test]
+    fn unknown_route_falls_back_to_deck_list() {
+        assert!(matches!(hash_to_event("#/settings"), Event::ShowDeckList));
+        assert!(matches!(hash_to_event("#/decks/42/settings"), Event::ShowDeckList));
+    }
+
+    #[test]
+    fn negative_or_zero_deck_id_is_still_openable_at_this_layer() {
+        // The router only *parses*; whether an id is valid is the core's concern
+        // (`OpenDeck` is a no-op for unknown ids). So `-1`/`0` parse through here.
+        assert!(matches!(
+            hash_to_event("#/decks/-1/study"),
+            Event::OpenDeck { deck_id: -1 }
+        ));
+        assert!(matches!(
+            hash_to_event("#/decks/0/options"),
+            Event::OpenDeckOptions { deck_id: 0 }
+        ));
+    }
+
+    // ---- round-trip --------------------------------------------------------
+
+    #[test]
+    fn route_to_hash_then_hash_to_event_is_identity() {
+        let cases = [
+            (CurrentRoute::DeckList, None),
+            (CurrentRoute::Cards, None),
+            (CurrentRoute::Notes, None),
+            (CurrentRoute::Study, Some(9)),
+            (CurrentRoute::DeckOptions, Some(9)),
+        ];
+        for (route, id) in cases {
+            let hash = route_to_hash(route, id);
+            let event = hash_to_event(&hash);
+            let expected = match route {
+                CurrentRoute::DeckList => Event::ShowDeckList,
+                CurrentRoute::Cards => Event::ShowCards,
+                CurrentRoute::Notes => Event::ShowNotes,
+                CurrentRoute::Study => Event::OpenDeck { deck_id: 9 },
+                CurrentRoute::DeckOptions => Event::OpenDeckOptions { deck_id: 9 },
+            };
+            // Events lack `PartialEq`; compare their Debug forms (struct + repr).
+            assert_eq!(format!("{:?}", event), format!("{:?}", expected), "round-trip {hash}");
+        }
+    }
+}
