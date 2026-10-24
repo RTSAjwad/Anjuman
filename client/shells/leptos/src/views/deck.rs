@@ -3,7 +3,7 @@ use shared::app::{DeckSummary, DeckView};
 use shared::ViewModel;
 use std::collections::HashSet;
 
-use crate::components::{Badge, BadgeColor, UiCard};
+use crate::components::{Badge, BadgeColor, Card};
 use lepticons::{Icon, LucideGlyph};
 
 /// Renders the authenticated user's deck list (title + due counts), with
@@ -19,9 +19,9 @@ pub(crate) fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckV
     // Error state — a deck fetch failed.
     if let Some(err) = vm.decks_error {
         return view! {
-            <UiCard>
+            <Card>
                 <p style="color: #c00;">"Could not load decks: " {err}</p>
-            </UiCard>
+            </Card>
         }
         .into_any();
     }
@@ -29,9 +29,9 @@ pub(crate) fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckV
     // Empty state — signed in but no decks yet.
     if vm.decks.is_empty() {
         return view! {
-            <UiCard>
+            <Card>
                 <p style="color: #888;">"No decks yet. Create one to get started."</p>
-            </UiCard>
+            </Card>
         }
         .into_any();
     }
@@ -49,7 +49,7 @@ pub(crate) fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckV
     let decks = vm.decks;
     let open_items = RwSignal::new(HashSet::new());
     view! {
-        <UiCard>
+        <Card>
             <div class="thaw-deck-header" role="row">
                 <span class="thaw-deck-col">"Deck"</span>
                 <span class="thaw-deck-col">"New"</span>
@@ -59,7 +59,7 @@ pub(crate) fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckV
             <div class="thaw-deck-tree" role="tree">
                 {deck_subtree(decks, 0, open_items, on_navigate)}
             </div>
-        </UiCard>
+        </Card>
     }
     .into_any()
 }

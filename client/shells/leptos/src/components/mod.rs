@@ -25,7 +25,7 @@ mod tabs;
 pub use badge::{Badge, BadgeColor};
 pub use breadcrumbs::UiBreadcrumbs;
 pub use button::{Button, ButtonAppearance};
-pub use card::UiCard;
+pub use card::Card;
 pub use dialog::UiDialog;
 pub use input::UiInput;
 pub use pagination::UiPagination;
