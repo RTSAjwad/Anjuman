@@ -213,7 +213,7 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
           />
           <SelectValue placeholder="Flags" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent alignItemWithTrigger={false}>
           <SelectGroup>
             <SelectLabel>Flags</SelectLabel>
             {FLAG_OPTIONS.map((opt) => (
