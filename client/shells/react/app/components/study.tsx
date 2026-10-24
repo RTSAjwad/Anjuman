@@ -41,18 +41,18 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 
-// Anki flag colours (1..=7), plus "no flag". Colours are applied as explicit
-// text-* + fill-* (not `currentColor`) so the parent SelectItem's
-// `focus:**:text-accent-foreground` can't recolour them black on hover/focus.
+// Anki flag colours (1..=7), plus "no flag". The icon uses `fill-current` so it
+// follows `currentColor` — matching the normal shadcn SelectItem behaviour, where
+// the parent recolours its descendants to accent-foreground on hover/focus.
 const FLAG_OPTIONS: { value: string; label: string; color?: string }[] = [
   { value: "0", label: "No flag" },
-  { value: "1", label: "Red", color: "text-red-500 fill-red-500" },
-  { value: "2", label: "Orange", color: "text-orange-500 fill-orange-500" },
-  { value: "3", label: "Green", color: "text-green-500 fill-green-500" },
-  { value: "4", label: "Blue", color: "text-blue-500 fill-blue-500" },
-  { value: "5", label: "Pink", color: "text-pink-500 fill-pink-500" },
-  { value: "6", label: "Turquoise", color: "text-teal-500 fill-teal-500" },
-  { value: "7", label: "Purple", color: "text-purple-500 fill-purple-500" },
+  { value: "1", label: "Red", color: "text-red-500" },
+  { value: "2", label: "Orange", color: "text-orange-500" },
+  { value: "3", label: "Green", color: "text-green-500" },
+  { value: "4", label: "Blue", color: "text-blue-500" },
+  { value: "5", label: "Pink", color: "text-pink-500" },
+  { value: "6", label: "Turquoise", color: "text-teal-500" },
+  { value: "7", label: "Purple", color: "text-purple-500" },
 ];
 
 function flagColor(value: string): string | undefined {
@@ -208,7 +208,7 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
       >
         <SelectTrigger className="w-[9rem]" aria-label="Flag">
           <Flag
-            className={cn("size-4", flag !== "0" && flagColor(flag))}
+            className={cn("size-4", flag !== "0" && flagColor(flag), flag !== "0" && "fill-current")}
           />
           <SelectValue placeholder="Flags" />
         </SelectTrigger>
@@ -217,7 +217,7 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
             {FLAG_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 <Flag
-                  className={cn("size-4", opt.color)}
+                  className={cn("size-4", opt.color, opt.value !== "0" && "fill-current")}
                 />
                 {opt.label}
               </SelectItem>
