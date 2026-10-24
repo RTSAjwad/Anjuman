@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { BrowserTableFeatures } from "~/lib/data-table-features";
+import { BrowserDataTable } from "./data-table";
 import type {
   CardBrowserFilter,
   CardBrowserView,
@@ -31,14 +34,7 @@ import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Switch } from "~/components/ui/switch";
 import { Label } from "~/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "~/components/ui/table";
+
 import {
   Pagination,
   PaginationContent,
@@ -387,73 +383,54 @@ function DeckFilterNode({ deck, selected, onSelect, depth }: { deck: DeckSummary
   );
 }
 
+const cardColumns: ColumnDef<BrowserTableFeatures, CardBrowserView>[] = [
+  {
+    accessorKey: "front",
+    header: "Card",
+    cell: ({ getValue, row }) => (
+      <span>
+        {getValue() as string}
+        {row.original.suspended ? " (suspended)" : ""}
+        {row.original.buried ? " (buried)" : ""}
+      </span>
+    ),
+  },
+  { accessorKey: "deck_title", header: "Deck" },
+  { accessorKey: "state", header: "State" },
+  {
+    id: "flag",
+    header: "Flag",
+    cell: ({ row }) => <FlagSwatch flag={row.original.flag} />,
+  },
+];
+
+const noteColumns: ColumnDef<BrowserTableFeatures, NoteView>[] = [
+  { accessorKey: "sort_field", header: "Sort field", cell: ({ getValue }) => (getValue() as string | null) ?? "" },
+  { accessorKey: "note_type_name", header: "Note type" },
+  { accessorKey: "tags", header: "Tags", cell: ({ getValue }) => (getValue() as string[]).join(", ") },
+];
+
 function CardsTable({ cards, cardSelected, update }: Pick<BrowserScreenProps, "cards" | "cardSelected" | "update">) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Card</TableHead>
-          <TableHead>Deck</TableHead>
-          <TableHead>State</TableHead>
-          <TableHead>Flag</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {cards.map((c) => {
-          const isSel = cardSelected?.card_id === c.card_id;
-          return (
-            <TableRow
-              key={String(c.card_id)}
-              data-state={isSel ? "selected" : undefined}
-              onClick={() => update(eventBrowserSelectCard(c.card_id))}
-              className="cursor-pointer"
-            >
-              <TableCell>
-                <span>
-                  {c.front}
-                  {c.suspended ? " (suspended)" : ""}
-                  {c.buried ? " (buried)" : ""}
-                </span>
-              </TableCell>
-              <TableCell>{c.deck_title}</TableCell>
-              <TableCell>{c.state}</TableCell>
-              <TableCell><FlagSwatch flag={c.flag} /></TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <BrowserDataTable
+      columns={cardColumns}
+      data={cards}
+      getRowKey={(c) => String(c.card_id)}
+      isSelected={(c) => cardSelected?.card_id === c.card_id}
+      onRowClick={(c) => update(eventBrowserSelectCard(c.card_id))}
+    />
   );
 }
 
 function NotesTable({ notes, noteSelected, update }: Pick<BrowserScreenProps, "notes" | "noteSelected" | "update">) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Sort field</TableHead>
-          <TableHead>Note type</TableHead>
-          <TableHead>Tags</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {notes.map((n) => {
-          const isSel = noteSelected?.id === n.id;
-          return (
-            <TableRow
-              key={String(n.id)}
-              data-state={isSel ? "selected" : undefined}
-              onClick={() => update(eventNoteBrowserSelectNote(n.id))}
-              className="cursor-pointer"
-            >
-              <TableCell>{n.sort_field ?? ""}</TableCell>
-              <TableCell>{n.note_type_name}</TableCell>
-              <TableCell>{n.tags.join(", ")}</TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <BrowserDataTable
+      columns={noteColumns}
+      data={notes}
+      getRowKey={(n) => String(n.id)}
+      isSelected={(n) => noteSelected?.id === n.id}
+      onRowClick={(n) => update(eventNoteBrowserSelectNote(n.id))}
+    />
   );
 }
 
