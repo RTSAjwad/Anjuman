@@ -351,61 +351,61 @@ export function DeckOptionsScreen({
         {draft ? (
           <>
             <OptionGroup title="Daily limits">
-              <NumberField label="New cards/day" value={draft.new_per_day} onChange={(v) => set("new_per_day", v)} />
-              <NumberField label="Maximum reviews/day" value={draft.review_per_day} onChange={(v) => set("review_per_day", v)} />
+              <NumberField disabled={!canEdit} label="New cards/day" value={draft.new_per_day} onChange={(v) => set("new_per_day", v)} />
+              <NumberField disabled={!canEdit} label="Maximum reviews/day" value={draft.review_per_day} onChange={(v) => set("review_per_day", v)} />
             </OptionGroup>
 
             <OptionGroup title="New cards">
-              <TextField label="Learning steps" value={draft.learning_steps} onChange={(v) => set("learning_steps", v)} placeholder="1m 10m" />
-              <SelectField label="Insertion order" value={draft.insertion_order} options={INSERTION_ORDER_OPTIONS} onChange={(v) => set("insertion_order", v)} />
+              <TextField disabled={!canEdit} label="Learning steps" value={draft.learning_steps} onChange={(v) => set("learning_steps", v)} placeholder="1m 10m" />
+              <SelectField disabled={!canEdit} label="Insertion order" value={draft.insertion_order} options={INSERTION_ORDER_OPTIONS} onChange={(v) => set("insertion_order", v)} />
             </OptionGroup>
 
             <OptionGroup title="Lapses">
-              <TextField label="Relearning steps" value={draft.relearning_steps} onChange={(v) => set("relearning_steps", v)} placeholder="10m" />
-              <NumberField label="Leech threshold" value={draft.leech_threshold} onChange={(v) => set("leech_threshold", v)} />
-              <SelectField label="Leech action" value={draft.leech_action} options={LEECH_ACTION_OPTIONS} onChange={(v) => set("leech_action", v)} />
+              <TextField disabled={!canEdit} label="Relearning steps" value={draft.relearning_steps} onChange={(v) => set("relearning_steps", v)} placeholder="10m" />
+              <NumberField disabled={!canEdit} label="Leech threshold" value={draft.leech_threshold} onChange={(v) => set("leech_threshold", v)} />
+              <SelectField disabled={!canEdit} label="Leech action" value={draft.leech_action} options={LEECH_ACTION_OPTIONS} onChange={(v) => set("leech_action", v)} />
             </OptionGroup>
 
             <OptionGroup title="Display order">
-              <SelectField label="New card gather order" value={draft.new_gather_order} options={NEW_GATHER_OPTIONS} onChange={(v) => set("new_gather_order", v)} />
-              <SelectField label="New card sort order" value={draft.new_sort_order} options={NEW_SORT_OPTIONS} onChange={(v) => set("new_sort_order", v)} />
-              <SelectField label="New/review order" value={draft.new_review_order} options={NEW_REVIEW_OPTIONS} onChange={(v) => set("new_review_order", v)} />
-              <SelectField label="Interday learning/review order" value={draft.interday_order} options={NEW_REVIEW_OPTIONS} onChange={(v) => set("interday_order", v)} />
-              <SelectField label="Review sort order" value={draft.review_sort_order} options={REVIEW_SORT_OPTIONS} onChange={(v) => set("review_sort_order", v)} />
+              <SelectField disabled={!canEdit} label="New card gather order" value={draft.new_gather_order} options={NEW_GATHER_OPTIONS} onChange={(v) => set("new_gather_order", v)} />
+              <SelectField disabled={!canEdit} label="New card sort order" value={draft.new_sort_order} options={NEW_SORT_OPTIONS} onChange={(v) => set("new_sort_order", v)} />
+              <SelectField disabled={!canEdit} label="New/review order" value={draft.new_review_order} options={NEW_REVIEW_OPTIONS} onChange={(v) => set("new_review_order", v)} />
+              <SelectField disabled={!canEdit} label="Interday learning/review order" value={draft.interday_order} options={NEW_REVIEW_OPTIONS} onChange={(v) => set("interday_order", v)} />
+              <SelectField disabled={!canEdit} label="Review sort order" value={draft.review_sort_order} options={REVIEW_SORT_OPTIONS} onChange={(v) => set("review_sort_order", v)} />
             </OptionGroup>
 
             <OptionGroup title="Burying">
-              <ToggleField label="Bury new siblings" checked={draft.bury_new} onChange={(v) => set("bury_new", v)} />
-              <ToggleField label="Bury review siblings" checked={draft.bury_review} onChange={(v) => set("bury_review", v)} />
-              <ToggleField label="Bury interday learning siblings" checked={draft.bury_interday} onChange={(v) => set("bury_interday", v)} />
+              <ToggleField disabled={!canEdit} label="Bury new siblings" checked={draft.bury_new} onChange={(v) => set("bury_new", v)} />
+              <ToggleField disabled={!canEdit} label="Bury review siblings" checked={draft.bury_review} onChange={(v) => set("bury_review", v)} />
+              <ToggleField disabled={!canEdit} label="Bury interday learning siblings" checked={draft.bury_interday} onChange={(v) => set("bury_interday", v)} />
             </OptionGroup>
 
             <OptionGroup title="Audio">
-              <ToggleField label="Don't play audio automatically" checked={draft.dont_play_audio_automatically} onChange={(v) => set("dont_play_audio_automatically", v)} />
-              <ToggleField label="Skip question when replaying answer" checked={draft.skip_question_when_replaying_answer} onChange={(v) => set("skip_question_when_replaying_answer", v)} />
+              <ToggleField disabled={!canEdit} label="Don't play audio automatically" checked={draft.dont_play_audio_automatically} onChange={(v) => set("dont_play_audio_automatically", v)} />
+              <ToggleField disabled={!canEdit} label="Skip question when replaying answer" checked={draft.skip_question_when_replaying_answer} onChange={(v) => set("skip_question_when_replaying_answer", v)} />
             </OptionGroup>
 
             <OptionGroup title="Timers">
-              <NumberField label="Maximum answer seconds" value={draft.maximum_answer_seconds} onChange={(v) => set("maximum_answer_seconds", v)} />
-              <ToggleField label="Show on-screen timer" checked={draft.show_on_screen_timer} onChange={(v) => set("show_on_screen_timer", v)} />
-              <ToggleField label="Stop on-screen timer on answer" checked={draft.stop_timer_on_answer} onChange={(v) => set("stop_timer_on_answer", v)} />
+              <NumberField disabled={!canEdit} label="Maximum answer seconds" value={draft.maximum_answer_seconds} onChange={(v) => set("maximum_answer_seconds", v)} />
+              <ToggleField disabled={!canEdit} label="Show on-screen timer" checked={draft.show_on_screen_timer} onChange={(v) => set("show_on_screen_timer", v)} />
+              <ToggleField disabled={!canEdit} label="Stop on-screen timer on answer" checked={draft.stop_timer_on_answer} onChange={(v) => set("stop_timer_on_answer", v)} />
             </OptionGroup>
 
             <OptionGroup title="Auto advance">
-              <NumberField label="Seconds to show question" value={draft.auto_advance_show_question} onChange={(v) => set("auto_advance_show_question", v)} />
-              <NumberField label="Seconds to show answer" value={draft.auto_advance_show_answer} onChange={(v) => set("auto_advance_show_answer", v)} />
-              <ToggleField label="Wait for audio" checked={draft.auto_advance_wait_for_audio} onChange={(v) => set("auto_advance_wait_for_audio", v)} />
-              <SelectField label="Question action" value={draft.auto_advance_question_action} options={QUESTION_ACTION_OPTIONS} onChange={(v) => set("auto_advance_question_action", v)} />
-              <SelectField label="Answer action" value={draft.auto_advance_answer_action} options={ANSWER_ACTION_OPTIONS} onChange={(v) => set("auto_advance_answer_action", v)} />
+              <NumberField disabled={!canEdit} label="Seconds to show question" value={draft.auto_advance_show_question} onChange={(v) => set("auto_advance_show_question", v)} />
+              <NumberField disabled={!canEdit} label="Seconds to show answer" value={draft.auto_advance_show_answer} onChange={(v) => set("auto_advance_show_answer", v)} />
+              <ToggleField disabled={!canEdit} label="Wait for audio" checked={draft.auto_advance_wait_for_audio} onChange={(v) => set("auto_advance_wait_for_audio", v)} />
+              <SelectField disabled={!canEdit} label="Question action" value={draft.auto_advance_question_action} options={QUESTION_ACTION_OPTIONS} onChange={(v) => set("auto_advance_question_action", v)} />
+              <SelectField disabled={!canEdit} label="Answer action" value={draft.auto_advance_answer_action} options={ANSWER_ACTION_OPTIONS} onChange={(v) => set("auto_advance_answer_action", v)} />
             </OptionGroup>
 
             <OptionGroup title="FSRS">
-              <NumberField label="Desired retention (%)" value={draft.desired_retention} onChange={(v) => set("desired_retention", v)} />
-              <EasyDaysField days={draft.easy_days} onChange={setEasyDay} />
+              <NumberField disabled={!canEdit} label="Desired retention (%)" value={draft.desired_retention} onChange={(v) => set("desired_retention", v)} />
+              <EasyDaysField disabled={!canEdit} days={draft.easy_days} onChange={setEasyDay} />
             </OptionGroup>
 
             <OptionGroup title="Advanced">
-              <NumberField label="Maximum interval (days)" value={draft.maximum_interval} onChange={(v) => set("maximum_interval", v)} />
+              <NumberField disabled={!canEdit} label="Maximum interval (days)" value={draft.maximum_interval} onChange={(v) => set("maximum_interval", v)} />
               <FieldRow label="FSRS parameters">
                 <span className="text-muted-foreground">
                   {options.fsrs_parameters.length === 0
@@ -489,26 +489,26 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function NumberField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function NumberField({ label, value, onChange, disabled }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
   return (
     <FieldRow label={label}>
-      <Input type="number" value={value} onChange={(e) => onChange(e.target.value)} className="w-[12rem]" />
+      <Input type="number" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className="w-[12rem]" />
     </FieldRow>
   );
 }
 
-function TextField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+function TextField({ label, value, onChange, placeholder, disabled }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean }) {
   return (
     <FieldRow label={label}>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-[12rem]" />
+      <Input value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-[12rem]" />
     </FieldRow>
   );
 }
 
-function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ToggleField({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <FieldRow label={label}>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
     </FieldRow>
   );
 }
@@ -518,17 +518,19 @@ function SelectField({
   value,
   options,
   onChange,
+  disabled,
 }: {
   label: string;
   value: string;
   options: readonly (readonly [string, string])[];
   onChange: (v: string) => void;
+  disabled?: boolean;
 }) {
   const items = options.map(([value, label]) => ({ value, label }));
   const currentLabel = items.find((i) => i.value === value)?.label ?? value;
   return (
     <FieldRow label={label}>
-      <Select items={items} value={value} onValueChange={(v) => { if (v !== null) onChange(v); }}>
+      <Select items={items} value={value} disabled={disabled} onValueChange={(v) => { if (v !== null) onChange(v); }}>
         <SelectTrigger className="w-[12rem]">
           <SelectValue>{currentLabel}</SelectValue>
         </SelectTrigger>
@@ -546,7 +548,7 @@ function SelectField({
   );
 }
 
-function EasyDaysField({ days, onChange }: { days: string[]; onChange: (i: number, v: string) => void }) {
+function EasyDaysField({ days, onChange, disabled }: { days: string[]; onChange: (i: number, v: string) => void; disabled?: boolean }) {
   return (
     <div className="flex flex-wrap gap-2">
       {EASY_DAY_NAMES.map((name, i) => (
@@ -555,6 +557,7 @@ function EasyDaysField({ days, onChange }: { days: string[]; onChange: (i: numbe
           <Select
             items={EASY_DAY_OPTIONS.map(([value, label]) => ({ value, label }))}
             value={days[i] ?? "normal"}
+            disabled={disabled}
             onValueChange={(v) => { if (v !== null) onChange(i, v); }}
           >
             <SelectTrigger className="w-[6rem]">
