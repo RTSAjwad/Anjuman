@@ -13,7 +13,7 @@ use shared::app::{CurrentRoute, DeckView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Button, ButtonVariant, Tabs, TabsList, TabsTrigger, Breadcrumb, Input,
+    Button, ButtonVariant, Tabs, TabsList, TabsTrigger, Breadcrumb, Input, SidebarItem,
 };
 use crate::core_link;
 use crate::router;
@@ -300,23 +300,21 @@ pub fn RootComponent() -> impl IntoView {
                                 class:w-64=sidebar_expanded
                             >
                                 <div class="hidden px-3 py-3 font-semibold text-base" class:hidden=move || !sidebar_expanded.get()>"Anjuman"</div>
-                                <nav class="flex flex-1 flex-col gap-1 p-2">
-                                    <button
-                                        class="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium"
-                                        class:bg-accent=move || route == CurrentRoute::DeckList
-                                        on:click=show_deck_list
-                                    >
-                                        <Icon glyph=LucideGlyph::Library size="16" />
-                                        <span class:hidden=move || !sidebar_expanded.get()>"Decks"</span>
-                                    </button>
-                                    <button
-                                        class="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium"
-                                        class:bg-accent=move || route == CurrentRoute::Cards || route == CurrentRoute::Notes
-                                        on:click=show_cards.clone()
-                                    >
-                                        <Icon glyph=LucideGlyph::Table size="16" />
-                                        <span class:hidden=move || !sidebar_expanded.get()>"Browser"</span>
-                                    </button>
+                                <nav class="flex flex-1 flex-col gap-1 p-2" data-name="Sidebar">
+                                    <SidebarItem
+                                        icon=LucideGlyph::Library
+                                        label="Decks"
+                                        active=Signal::derive(move || route == CurrentRoute::DeckList)
+                                        expanded=sidebar_expanded.into()
+                                        on_click=show_deck_list
+                                    />
+                                    <SidebarItem
+                                        icon=LucideGlyph::Table
+                                        label="Browser"
+                                        active=Signal::derive(move || route == CurrentRoute::Cards || route == CurrentRoute::Notes)
+                                        expanded=sidebar_expanded.into()
+                                        on_click=show_cards.clone()
+                                    />
                                 </nav>
                                 <div class="mt-auto p-2">
                                     <p class="hidden px-2 pb-2 text-xs text-muted-foreground" class:hidden=move || !sidebar_expanded.get()>{display_name.clone()}</p>

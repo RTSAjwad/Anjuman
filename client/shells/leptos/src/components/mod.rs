@@ -21,6 +21,7 @@ mod input;
 mod inspector;
 mod pagination;
 mod select;
+mod sidebar;
 mod switch;
 mod table;
 mod tabs;
@@ -37,6 +38,7 @@ pub use input::Input;
 pub use inspector::{Inspector, InspectorFields, InspectorRow, LabeledSwitch};
 pub use pagination::Pagination;
 pub use select::Select;
+pub use sidebar::SidebarItem;
 pub use table::{
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };
