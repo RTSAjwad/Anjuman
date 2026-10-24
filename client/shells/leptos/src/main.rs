@@ -10,6 +10,7 @@ mod http;
 mod kv;
 mod router;
 mod variants;
+mod views;
 
 // `$crate::paste` / `$crate::tw_merge` in `variants::variants!` resolve here.
 pub use paste;
