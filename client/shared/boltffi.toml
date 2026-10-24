@@ -46,15 +46,16 @@ output = "../shells/jetpack-compose/generated/jniLibs"
 
 # --- Web / WASM (TypeScript bindings) -----------------------------------
 # NOTE: the Leptos shell drives `CoreFfi` in-process (Rust -> Rust), so it does
-# not consume these bindings yet. This target generates the TypeScript bindings
-# available to a future JS/hybrid shell.
+# not consume these bindings. The React web shell (`client/shells/react/`) is a
+# non-Rust shell that consumes the WASM + `bincode` bindings over the FFI
+# `Bridge`, so this target now outputs into `shells/react/generated`.
 [targets.wasm]
-output = "../shells/leptos/generated"
+output = "../shells/react/generated"
 profile = "release"
 artifact_path = "../target/wasm32-unknown-unknown/release/shared.wasm"
 
 [targets.wasm.typescript]
-output = "../shells/leptos/generated/pkg"
+output = "../shells/react/generated/pkg"
 
 [targets.wasm.npm]
 package_name = "shared"

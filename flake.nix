@@ -87,6 +87,9 @@
           # TypeScript type generation (facet) shells out to pnpm.
           pnpm
           nodejs
+          # `tsc` typechecks BoltFFI's generated TS bindings at the end of
+          # `boltffi pack wasm` (React shell). Not otherwise on $PATH.
+          typescript
 
           # FFI bindings + type generation for native shells.
           boltffi-cli
