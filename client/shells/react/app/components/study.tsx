@@ -31,6 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { EllipsisVertical, Flag } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -40,17 +41,22 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 
-
-const FLAG_OPTIONS = [
+// Anki flag colours (1..=7), plus "no flag". The icon is a stroke outline
+// filled with the colour so each row reads as the actual flag swatch.
+const FLAG_OPTIONS: { value: string; label: string; color?: string }[] = [
   { value: "0", label: "No flag" },
-  { value: "1", label: "Red" },
-  { value: "2", label: "Orange" },
-  { value: "3", label: "Green" },
-  { value: "4", label: "Blue" },
-  { value: "5", label: "Pink" },
-  { value: "6", label: "Turquoise" },
-  { value: "7", label: "Purple" },
+  { value: "1", label: "Red", color: "text-red-500" },
+  { value: "2", label: "Orange", color: "text-orange-500" },
+  { value: "3", label: "Green", color: "text-green-500" },
+  { value: "4", label: "Blue", color: "text-blue-500" },
+  { value: "5", label: "Pink", color: "text-pink-500" },
+  { value: "6", label: "Turquoise", color: "text-teal-500" },
+  { value: "7", label: "Purple", color: "text-purple-500" },
 ];
+
+function flagColor(value: string): string | undefined {
+  return FLAG_OPTIONS.find((o) => o.value === value)?.color;
+}
 
 type StudyScreenProps = {
   card: StudyCardView | null;
@@ -196,8 +202,12 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
     <div className="flex items-center gap-1">
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button variant="outline" size="sm">Actions</Button>}
-        />
+          render={
+            <Button variant="ghost" size="icon-sm" aria-label="Card actions" />
+          }
+        >
+          <EllipsisVertical />
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-44">
           <DropdownMenuItem onClick={() => update(card.buried ? eventUnburyCard() : eventBuryCard())}>
             {card.buried ? "Unbury" : "Bury"}
@@ -220,13 +230,23 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
         value={flag}
         onValueChange={(v) => update(eventFlagCard(Number(v)))}
       >
-        <SelectTrigger className="w-[9rem]" aria-label="Flag">
-          <SelectValue placeholder="Flag" />
+        <SelectTrigger className="w-[9rem] hover:bg-accent hover:text-accent-foreground" aria-label="Flag">
+          <Flag
+            className={cn("size-4", flag !== "0" && flagColor(flag), flag !== "0" && "fill-current")}
+          />
+          <SelectValue placeholder="Flags" />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
             {FLAG_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
+                <Flag
+                  className={cn(
+                    "size-4",
+                    opt.color,
+                    opt.value !== "0" && "fill-current",
+                  )}
+                />
                 {opt.label}
               </SelectItem>
             ))}
