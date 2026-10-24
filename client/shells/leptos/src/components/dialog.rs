@@ -1,16 +1,22 @@
 //! Dialog — an owned shadcn-style modal dialog.
 //!
 //! Deferred from rust-ui verbatim adoption (docs §10.3): rust-ui's `Dialog` uses
-//! a JS portal + `use_lock_body_scroll`; ours stays on the native `<dialog>`
-//! approach and is *named* `Dialog` so the call site reads the same. When the JS
-//! floating layer is adopted, this is replaced whole — call sites don't change.
+//! a JS portal + `use_lock_body_scroll` (`window.ScrollLock`). Ours stays on the
+//! native `<dialog>` approach — `showModal()`/`close()` already give top-layer,
+//! `::backdrop` dim, Esc-to-close, and focus trap for free — and we add the one
+//! missing behavior (body scroll-lock) via the shared signal-driven helper in
+//! `floating_layer`. *Named* `Dialog` so the call site reads the same.
 
 use leptos::prelude::*;
 
-/// Owned modal dialog. The single source of truth for a shadcn-style dialog
-/// (native `<dialog>` with `showModal()`/`close()` driven reactively from the
-/// `open` signal). The `::backdrop` dim and the box are styled with utilities,
-/// so there is no dependence on a component library's layered open-state.
+use super::floating_layer::effect_lock_body_scroll;
+
+/// Owned modal dialog. The single source of truth is the `open` signal: it drives
+/// `showModal()`/`close()` on a native `<dialog>` reactively. Backdrop-click-to-
+/// close is intentionally **not** wired here — doing so would require writing
+/// back to the parent's `open` signal (a controlled prop the caller should own);
+/// if it's ever wanted, add an `on_close: Callback<()>` prop rather than calling
+/// `dialog.close()` imperatively behind the signal's back.
 #[component]
 pub fn Dialog(open: Signal<bool>, children: Children) -> impl IntoView {
     let dialog_ref = NodeRef::<leptos::html::Dialog>::new();
@@ -28,6 +34,10 @@ pub fn Dialog(open: Signal<bool>, children: Children) -> impl IntoView {
             }
         }
     });
+
+    // The native `<dialog>` blocks interaction with the page behind it, but the
+    // underlying body can still scroll in some browsers; lock it while open.
+    effect_lock_body_scroll(open);
 
     view! {
         <dialog
