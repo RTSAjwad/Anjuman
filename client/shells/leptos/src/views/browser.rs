@@ -7,7 +7,7 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    Button, ButtonAppearance, Switch, UiInput, UiPagination, UiSelect, UiSubmitButton,
+    Button, ButtonAppearance, Input, Switch, UiPagination, UiSelect, UiSubmitButton,
     UiTable, UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow,
 };
 use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
@@ -374,7 +374,7 @@ pub(crate) fn browser(
                             }
                         >
                             <div class="flex w-full">
-                                <UiInput value=q_value placeholder="Search…" class="flex-1 rounded-r-none" />
+                                <Input value=q_value placeholder="Search…" class="flex-1 rounded-r-none" />
                                 <UiSubmitButton aria_label="Search">
                                     <Icon glyph=LucideGlyph::Search size="16" />
                                 </UiSubmitButton>
@@ -475,7 +475,7 @@ pub(crate) fn browser(
                             }
                         >
                             <div class="flex w-full">
-                                <UiInput value=note_query placeholder="Search…" class="flex-1 rounded-r-none" />
+                                <Input value=note_query placeholder="Search…" class="flex-1 rounded-r-none" />
                                 <UiSubmitButton aria_label="Search">
                                     <Icon glyph=LucideGlyph::Search size="16" />
                                 </UiSubmitButton>
@@ -737,7 +737,7 @@ fn CardInspector(
                             <dd>
                                 <div class="card-browser__inspector-reschedule">
                                     <div class="flex">
-                                        <UiInput value=reschedule_days input_type="number" placeholder="days" class="rounded-r-none" />
+                                        <Input value=reschedule_days input_type="number" placeholder="days" class="rounded-r-none" />
                                         <Button
                                             appearance=ButtonAppearance::Subtle
                                             square=true

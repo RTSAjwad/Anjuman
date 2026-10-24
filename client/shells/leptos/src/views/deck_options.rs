@@ -3,7 +3,7 @@ use shared::app::{DeckOptionsEdit, DeckOptionsView, PresetSummary};
 use shared::Event;
 
 use crate::components::{
-    Button, ButtonAppearance, UiInput, UiSelect,
+    Button, ButtonAppearance, Input, UiSelect,
 };
 use crate::views::study::format_interval;
 
@@ -396,7 +396,7 @@ fn field_row(label: &'static str, children: Children) -> impl IntoView {
 fn number_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <UiInput value=value input_type="number" placeholder=placeholder />
+            <Input value=value input_type="number" placeholder=placeholder />
         </FieldRow>
     }
 }
@@ -406,7 +406,7 @@ fn number_field(label: &'static str, value: RwSignal<String>, placeholder: &'sta
 fn text_field(label: &'static str, value: RwSignal<String>, placeholder: &'static str) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <UiInput value=value placeholder=placeholder />
+            <Input value=value placeholder=placeholder />
         </FieldRow>
     }
 }

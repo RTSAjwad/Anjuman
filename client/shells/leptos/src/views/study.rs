@@ -3,7 +3,7 @@ use shared::app::{StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Badge, BadgeColor, Button, ButtonAppearance, UiDialog, UiInput, UiSelect,
+    Badge, BadgeColor, Button, ButtonAppearance, UiDialog, Input, UiSelect,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -141,7 +141,7 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
         <UiDialog open=reschedule_open.into()>
             <h3 class="text-lg font-bold">"Reschedule"</h3>
             <p class="py-4">"How many days from now?"</p>
-            <UiInput value=days input_type="number" placeholder="days" />
+            <Input value=days input_type="number" placeholder="days" />
             <div class="mt-6 flex justify-end gap-2">
                 <Button appearance=ButtonAppearance::Subtle on_click=move |_| reschedule_open.set(false)>"Cancel"</Button>
                 <Button appearance=ButtonAppearance::Primary on_click=reschedule>"Reschedule"</Button>

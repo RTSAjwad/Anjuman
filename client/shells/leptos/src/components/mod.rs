@@ -27,7 +27,7 @@ pub use breadcrumbs::UiBreadcrumbs;
 pub use button::{Button, ButtonAppearance};
 pub use card::Card;
 pub use dialog::UiDialog;
-pub use input::UiInput;
+pub use input::Input;
 pub use pagination::UiPagination;
 pub use select::UiSelect;
 pub use submit_button::UiSubmitButton;

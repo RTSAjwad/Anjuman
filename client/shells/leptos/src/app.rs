@@ -13,7 +13,7 @@ use shared::app::{CurrentRoute, DeckView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Button, ButtonAppearance, Tabs, TabsList, TabsTrigger, UiBreadcrumbs, UiInput,
+    Button, ButtonAppearance, Tabs, TabsList, TabsTrigger, UiBreadcrumbs, Input,
 };
 use crate::core_link;
 use crate::router;
@@ -483,8 +483,8 @@ pub fn RootComponent() -> impl IntoView {
                         <main class="app-login">
                             <h1>"Anjuman"</h1>
                             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
-                                <UiInput value=email placeholder="Email" />
-                                <UiInput value=password placeholder="Password" input_type="password" />
+                                <Input value=email placeholder="Email" />
+                                <Input value=password placeholder="Password" input_type="password" />
                                 <Button
                                     appearance=ButtonAppearance::Primary
                                     on_click=submit
