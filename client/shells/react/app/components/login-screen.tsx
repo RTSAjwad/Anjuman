@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { eventLoginSubmit } from "shared_types/app";
+import type { Event } from "shared_types/app";
 import { useCore } from "../lib/core-provider.client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Label } from "./ui/label";
@@ -59,9 +60,39 @@ export function LoginScreen() {
             <Button type="submit" disabled={busy}>
               {busy ? "Signing in…" : "Sign in"}
             </Button>
+            <div className="flex flex-col gap-2 border-t pt-4">
+              <p className="text-xs text-muted-foreground">Quick login (dev seed):</p>
+              <div className="grid grid-cols-3 gap-2">
+                <QuickLogin label="Teacher" email="teacher@school1.com" password="teach123" update={update} />
+                <QuickLogin label="Admin" email="admin@school1.com" password="admin123" update={update} />
+                <QuickLogin label="Student" email="student@school1.com" password="stud123" update={update} />
+              </div>
+            </div>
           </form>
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function QuickLogin({
+  label,
+  email,
+  password,
+  update,
+}: {
+  label: string;
+  email: string;
+  password: string;
+  update: (event: Event) => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => update(eventLoginSubmit(email, password))}
+    >
+      {label}
+    </Button>
   );
 }

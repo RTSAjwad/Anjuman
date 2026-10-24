@@ -18,7 +18,6 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-  SidebarHeader,
 } from "./ui/sidebar";
 import {
   Breadcrumb,
@@ -132,7 +131,6 @@ function AppSidebar({
 }) {
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="px-3 py-3 font-semibold">Anjuman</SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
