@@ -50,13 +50,13 @@ pub(crate) fn deck_list(vm: Signal<ViewModel>, on_navigate: Callback<(i64, DeckV
     let open_items = RwSignal::new(HashSet::new());
     view! {
         <Card>
-            <div class="thaw-deck-header" role="row">
-                <span class="thaw-deck-col">"Deck"</span>
-                <span class="thaw-deck-col">"New"</span>
-                <span class="thaw-deck-col">"Learn"</span>
-                <span class="thaw-deck-col">"Due"</span>
+            <div class="deck-header" role="row" data-name="DeckHeader">
+                <span class="deck-col">"Deck"</span>
+                <span class="deck-col">"New"</span>
+                <span class="deck-col">"Learn"</span>
+                <span class="deck-col">"Due"</span>
             </div>
-            <div class="thaw-deck-tree" role="tree">
+            <div class="deck-tree" role="tree" data-name="DeckTree">
                 {deck_subtree(decks, 0, open_items, on_navigate)}
             </div>
         </Card>
@@ -120,16 +120,17 @@ fn deck_item(
 
     view! {
         <div
-            class="thaw-deck-row"
-            class:thaw-deck-row--disabled=move || !studyable
+            class="deck-row"
+            class:deck-row--disabled=move || !studyable
             role="treeitem"
+            data-name="DeckItem"
         >
-            <div class="thaw-deck-row__title" style=indent>
+            <div class="deck-row__title" style=indent>
                 {if has_children {
                     let open_items = open_items;
                     view! {
                         <button
-                            class="thaw-deck-row__expander"
+                            class="deck-row__expander"
                             aria-label="toggle subdecks"
                             on:click=move |_| {
                                 open_items.update(|set| {
@@ -142,7 +143,7 @@ fn deck_item(
                             }
                         >
                             <span
-                                class="thaw-deck-row__chevron"
+                                class="deck-row__chevron"
                                 style=move || {
                                     if open_items.get().contains(&id) {
                                         "transform: rotate(90deg)".to_string()
@@ -161,7 +162,7 @@ fn deck_item(
                     // lines up with a sibling branch's label (hierarchy shows as
                     // a consistent gap between parent and child, not title drift).
                     view! {
-                        <span class="thaw-deck-row__expander" aria-hidden="true"></span>
+                        <span class="deck-row__expander" aria-hidden="true"></span>
                     }
                     .into_any()
                 }}
@@ -169,7 +170,7 @@ fn deck_item(
                     let on_navigate = on_navigate;
                     view! {
                         <button
-                            class="thaw-deck-row__label thaw-deck-row__label--study"
+                            class="deck-row__label deck-row__label--study"
                             on:click=move |_| on_navigate.run((id, DeckView::Study))
                         >
                             {deck.title}
@@ -181,7 +182,7 @@ fn deck_item(
                     // not studyable. Greyed out and non-interactive with a hint.
                     view! {
                         <span
-                            class="thaw-deck-row__label thaw-deck-row__label--disabled"
+                            class="deck-row__label deck-row__label--disabled"
                             title="Shared for context only"
                         >
                             {deck.title}
@@ -199,12 +200,12 @@ fn deck_item(
             <Badge variant=deck_badge_color(deck.review_count, BadgeVariant::Success)>
                 {deck.review_count.to_string()}
             </Badge>
-            <div class="thaw-deck-row__actions">
+            <div class="deck-row__actions">
                 {if studyable {
                     let on_navigate = on_navigate;
                     view! {
                         <button
-                            class="thaw-deck-row__gear"
+                            class="deck-row__gear"
                             aria-label="Deck options"
                             title="Deck options"
                             on:click=move |_| on_navigate.run((id, DeckView::Options))

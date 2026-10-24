@@ -66,7 +66,7 @@ pub(crate) fn study_screen(
 /// The due-count badges shown in the header, next to the breadcrumb.
 pub(crate) fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
     view! {
-        <div class="thaw-study-counts">
+        <div class="study-counts">
             <Badge variant=BadgeVariant::Default>
                 {counts.new_count.to_string()}
             </Badge>
@@ -206,7 +206,7 @@ fn study_card_view(
                 {move || {
                     if revealed.get() {
                         view! {
-                            <div class="thaw-study-answers">
+                            <div class="study-answers">
                                 {answer_button(rating.clone(), interval_for.clone(), 1, "Again")}
                                 {answer_button(rating.clone(), interval_for.clone(), 2, "Hard")}
                                 {answer_button(rating.clone(), interval_for.clone(), 3, "Good")}
@@ -260,11 +260,11 @@ where
     };
 
     view! {
-        <div class="thaw-study-answer">
+        <div class="study-answer">
             <Button variant=variant on_click=move |_| rating(n)>
                 {label}
             </Button>
-            <span class="thaw-study-answer__interval">{interval}</span>
+            <span class="study-answer__interval">{interval}</span>
         </div>
     }
 }
