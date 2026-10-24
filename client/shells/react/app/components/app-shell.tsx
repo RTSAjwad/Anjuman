@@ -34,6 +34,7 @@ import {
   DeckOptionsScreen,
   BrowserScreen,
 } from "./screens";
+import { LoginScreen } from "./login-screen";
 
 export function AppShell() {
   return (
@@ -64,11 +65,7 @@ function Layout() {
   });
 
   if (!authenticated) {
-    return (
-      <div className="flex h-svh items-center justify-center text-sm text-muted-foreground">
-        Not signed in.
-      </div>
-    );
+    return <LoginScreen />;
   }
 
   return (
