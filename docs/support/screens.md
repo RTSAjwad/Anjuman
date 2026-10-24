@@ -112,3 +112,24 @@ These were persisted server-side (or descoped) with a "behaviour client-side
 - Collection-wide scoping questions (stage 7): `new_cards_ignore_review_limit`,
   `limits_start_from_top`, desired-retention per-deck, custom scheduling (JS).
 - FSRS optimizer (US-2.18b) — deferred past stage 4 and stage 6.
+
+## Deck-list enhancements (deferred — future stories)
+
+Captured from the React-shell 3.1 work (2026-10-24), not yet scoped as stories:
+
+- **Row options → dropdown menu.** The current per-row gear button (opens the
+  deck's *options/preset* screen) should become a `DropdownMenu` that leads with
+  "Options" and later gains row actions — **rename** and **delete**. Rename/delete
+  are management affordances (teacher/admin, gated on `can_manage_decks`), need
+  new core `Event`s + server endpoints (`PATCH/PUT /decks/{id}`, `DELETE
+  /decks/{id}`), so they are a **core carve-out**, not a shell-only change.
+- **Drag-and-drop with a handle.** Reordering/nesting decks (moving a deck under
+  a new parent) is a future management capability. Plan to do it with
+  `@dnd-kit` (framework-agnostic, active) — *not* a third-party Radix-based tree
+  table (we are on Base UI). It will layer onto the existing recursive
+  `DeckTree`/`DeckRow` (written to be swappable) once the reorder endpoint
+  exists. This is a **core carve-out** (new `Event` + server reorder endpoint +
+  wire DTO) and a management screen, not deck-list-only surface.
+
+Both touch `can_manage_decks` gating and are management-scope, so they belong to
+stage 6 (organization/collaboration) rather than the current stage-4 client work.
