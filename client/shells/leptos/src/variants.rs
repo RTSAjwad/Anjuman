@@ -3,6 +3,15 @@
 //! `$crate::paste` / `$crate::tw_merge` paths resolve via the `pub use`
 //! re-exports at the crate root (`main.rs`), and `::leptos::*` is already fully
 //! qualified. See `docs/client/STYLING_MIGRATION.md` §9.
+//!
+//! **Divergence from upstream (recorded):** rust-ui's `support_aria_current`
+//! component arm renders an `<a>` whose `aria-current` is derived from
+//! `leptos_router::hooks::use_location`. We deliberately do **not** depend on
+//! `leptos_router` (the application route is core-owned — see
+//! `docs/client/SHELLS.md` §3 and `router.rs`) — so that arm is **removed**. We
+//! keep the plain `support_href` arm (a bare `<a>`, no routing state) and the
+//! remaining structural arms. If a future component needs `aria-current`, derive
+//! it from the core `CurrentRoute` (a controlled signal), not from a router.
 
 /// Ultra-sophisticated variants macro for standardized Tailwind CSS component patterns
 ///
@@ -150,103 +159,6 @@ macro_rules! variants {
                     <$element class=computed_class data-name=data_name>
                         {children()}
                     </$element>
-                }
-            }
-        }
-    };
-
-    // Component with support_href + support_aria_current
-    (
-        $component:ident {
-            base: $base_class:literal,
-            variants: {
-                variant: {
-                    $first_variant:ident: $first_variant_class:literal
-                    $(, $variant_key:ident: $variant_class:literal)* $(,)?
-                },
-                size: {
-                    $first_size:ident: $first_size_class:literal
-                    $(, $size_key:ident: $size_class:literal)* $(,)?
-                }
-            },
-            component: {
-                element: $element:ident,
-                support_href: true,
-                support_aria_current: true
-            }
-        }
-    ) => {
-        $crate::paste::paste! {
-            #[allow(unused_imports)]
-            use $crate::tw_merge::*;
-
-            #[derive(TwClass, Clone, Copy)]
-            #[tw(class = $base_class)]
-            pub struct [<$component Class>] {
-                pub variant: [<$component Variant>],
-                pub size: [<$component Size>],
-            }
-
-            #[derive(TwVariant)]
-            pub enum [<$component Variant>] {
-                #[tw(default, class = $first_variant_class)]
-                $first_variant,
-                $(#[tw(class = $variant_class)] $variant_key,)*
-            }
-
-            #[derive(TwVariant)]
-            pub enum [<$component Size>] {
-                #[tw(default, class = $first_size_class)]
-                $first_size,
-                $(#[tw(class = $size_class)] $size_key,)*
-            }
-
-            #[::leptos::component]
-            pub fn $component(
-                #[prop(into, optional)] variant: ::leptos::prelude::Signal<[<$component Variant>]>,
-                #[prop(into, optional)] size: ::leptos::prelude::Signal<[<$component Size>]>,
-                #[prop(into, optional)] class: ::leptos::prelude::Signal<String>,
-                #[prop(into, optional)] data_name: Option<String>,
-                #[prop(into, optional)] href: Option<String>,
-                children: ::leptos::prelude::Children,
-            ) -> impl ::leptos::prelude::IntoView {
-                use ::leptos::prelude::*;
-
-                let computed_class = move || {
-                    let variant = variant.try_get().unwrap_or_default();
-                    let size = size.try_get().unwrap_or_default();
-                    let component_class = [<$component Class>] { variant, size };
-                    component_class.with_class(class.try_get().unwrap_or_default())
-                };
-
-                let data_name = data_name.unwrap_or_else(|| stringify!($component).to_string());
-
-                if href.is_some() {
-                    use ::leptos_router::hooks::use_location;
-
-                    let location = use_location();
-                    let href_clone = href.clone();
-                    let is_active = move || {
-                        href_clone.as_ref().map_or(false, |h| {
-                            let path = location.pathname.try_get().unwrap_or_default();
-                            path == *h || path.starts_with(&format!("{}/", h))
-                        })
-                    };
-                    let aria_current = move || if is_active() { "page" } else { "false" };
-
-                    view! {
-                        <a class=computed_class href=href.unwrap() aria-current=aria_current data-name=data_name>
-                            {children()}
-                        </a>
-                    }
-                    .into_any()
-                } else {
-                    view! {
-                        <$element class=computed_class data-name=data_name>
-                            {children()}
-                        </$element>
-                    }
-                    .into_any()
                 }
             }
         }
