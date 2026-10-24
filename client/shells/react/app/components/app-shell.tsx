@@ -1,5 +1,6 @@
 import { useCore } from "../lib/core-provider.client";
 import { useHashRouter } from "../lib/use-hash-router";
+import type { DeckSummary } from "shared_types/app";
 import {
   eventLogout,
   eventShowDeckList,
@@ -19,11 +20,13 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "./ui/sidebar";
+import { Fragment } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
+  BreadcrumbSeparator,
 } from "./ui/breadcrumb";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Avatar, AvatarFallback } from "./ui/avatar";
@@ -43,6 +46,7 @@ import {
   DeckOptionsScreen,
   BrowserScreen,
 } from "./screens";
+import { StudyCountBadges, StudyControls } from "./study";
 import { LoginScreen } from "./login-screen";
 
 export function AppShell() {
@@ -105,17 +109,26 @@ function Layout() {
               onShowCards={() => update(eventShowCards())}
               onShowNotes={() => update(eventShowNotes())}
             />
+          ) : route === "Study" ? (
+            <>
+              <DeckBreadcrumb
+                decks={view.decks}
+                selectedDeckId={view.selected_deck?.id ?? null}
+                subview="Study"
+                onBack={() => update(eventShowDeckList())}
+              />
+              <StudyCountBadges counts={view.counts} />
+              {view.current_card ? (
+                <StudyControls card={view.current_card} update={update} />
+              ) : null}
+            </>
           ) : (
-            // Study / DeckOptions — placeholder breadcrumb (full in Phase 3).
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage>
-                    {route === "Study" ? "Study" : "Options"}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            <DeckBreadcrumb
+              decks={view.decks}
+              selectedDeckId={view.selected_deck?.id ?? null}
+              subview="Options"
+              onBack={() => update(eventShowDeckList())}
+            />
           )}
         </header>
 
@@ -272,4 +285,72 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+// Walk the deck tree to compute the ancestor title chain (root → target, incl.
+// the target) for breadcrumbs. Mirrors the Leptos `deck_ancestor_titles`.
+function deckAncestorTitles(decks: DeckSummary[], deckId: bigint): string[] {
+  function walk(ds: DeckSummary[], path: string[]): string[] | null {
+    for (const d of ds) {
+      path.push(d.title);
+      if (d.id === deckId) return path;
+      const found = walk(d.children, path);
+      if (found) return found;
+      path.pop();
+    }
+    return null;
+  }
+  return walk(decks, []) ?? [];
+}
+
+function DeckBreadcrumb({
+  decks,
+  selectedDeckId,
+  subview,
+  onBack,
+}: {
+  decks: DeckSummary[];
+  selectedDeckId: bigint | null;
+  subview: "Study" | "Options";
+  onBack: () => void;
+}) {
+  const titles = selectedDeckId === null ? [] : deckAncestorTitles(decks, selectedDeckId);
+  const ownTitle = titles[titles.length - 1];
+  const ancestors = titles.slice(0, -1);
+
+  return (
+    <Breadcrumb className="flex-1">
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Decks
+          </button>
+        </BreadcrumbItem>
+        {ancestors.map((t) => (
+          <Fragment key={t}>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <span className="text-muted-foreground">{t}</span>
+            </BreadcrumbItem>
+          </Fragment>
+        ))}
+        {ownTitle ? (
+          <>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <span className="text-muted-foreground">{ownTitle}</span>
+            </BreadcrumbItem>
+          </>
+        ) : null}
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbPage>{subview}</BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
+  );
 }

@@ -4,6 +4,7 @@
 import { useCore } from "../lib/core-provider.client";
 import { eventOpenDeck, eventOpenDeckOptions } from "shared_types/app";
 import { DeckTree } from "./deck-tree";
+import { StudyScreen as StudyScreenView } from "./study";
 
 export function DeckListScreen() {
   const { view, update } = useCore();
@@ -21,10 +22,18 @@ export function DeckListScreen() {
 }
 
 export function StudyScreen() {
+  const { view, update } = useCore();
+  if (view === null) return null;
+
   return (
-    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      Study — coming in Phase 3.
-    </div>
+    <StudyScreenView
+      card={view.current_card}
+      counts={view.counts}
+      busy={view.busy}
+      studyError={view.study_error}
+      actionError={view.card_action_error}
+      update={update}
+    />
   );
 }
 
