@@ -215,13 +215,20 @@ between the core agent and the shell agent.
 
 Add a section here for each shell as it is implemented.
 
-## 9. CSS scoping & self-containment (Leptos + Tailwind/daisyUI)
+## 9. CSS scoping & self-containment (Leptos + Tailwind)
 
-The Leptos shell styles with **Tailwind utilities + daisyUI component classes**,
-plus a small shell-local stylesheet (`index.html`). This section records how to
-make reusable components render *consistently* regardless of where they are
-mounted — the failure mode that produced the "identical markup, different
-rendering" bug.
+The Leptos shell styles with **Tailwind utilities + shadcn convention theme
+tokens**, plus two scoping mechanisms that make reusable components render
+*consistently* regardless of where they are mounted — the failure mode that
+produced the "identical markup, different rendering" bug.
+
+- **Page/layout CSS** lives in `input.css` under `@layer components` (moved out
+  of the former unlayered `index.html` `<style>` block). This places it between
+  Tailwind's `base` and `utilities` layers, so it can no longer silently out-rank
+  preflight and leak into component internals.
+- **Component-owned CSS** lives in the component itself via `styles::scoped_style`
+  (see §9.6): each floating/interior-bearing primitive injects a one-time,
+  class-scoped `<style>` so its internals are immune to ancestor reach-in.
 
 ### 9.1 Two distinct CSS mechanisms (don't conflate them)
 
@@ -316,17 +323,20 @@ daisyUI has been removed — see `STYLING_MIGRATION.md`. The styling contract is
 now:
 
 - **No component library.** Every reusable visual unit is an owned Leptos
-  primitive in `ui.rs` (`UiButton`, `UiBadge`, `UiTable`, `UiToggle`,
+  primitive in `src/components/` (`UiButton`, `UiBadge`, `UiTable`, `UiToggle`,
   `UiTabs`/`UiTab`, `UiInput`, `UiSelect`, `UiCard`, `UiBreadcrumbs`,
-  `UiSubmitButton`, `UiPagination`, `UiDialog`, plus `FlagDropdown` in `app.rs`).
-- **Tailwind utilities + theme tokens** (shadcn convention) do the styling
+  `UiSubmitButton`, `UiPagination`, `UiDialog`).
+- **Tailwind utilities + theme tokens** (shadcn convention) do the visual styling
   (`bg-primary`, `text-primary-foreground`, `border-input`, `bg-muted`, …). The
   tokens live in `input.css` (`:root`/`.dark` → `@theme inline`).
 - **`tw_merge!`** composes the primitive's base classes with a caller's `class`,
   resolving conflicts (later wins) instead of string concat.
 - **Own behavior/state/structure.** Primitives own `<button type>`, `disabled`,
-  ARIA, events, and any structural invariant (`position`, flex, `z-index`) — per
-  §9.3. No styling depends on a third-party cascade layer or `:where()` zeroing.
+  ARIA, events, and any structural invariant (`position`, flex, `z-index`).
+- **Page/layout CSS** (`thaw-*`, `card-browser__*`, `study-*`, `deck-options*`)
+  lives in `input.css` under `@layer components`, not as unlayered author CSS.
+- **Component internals that must not leak** (interior `ul`/`li`/`button` resets
+  in a popover select) use `styles::scoped_style` (§9.6).
 - **App shell is utility-styled in place** (a signal-driven collapsible `<aside>`
   sidebar + a utility navbar), not a self-contained primitive — it sits once in
   `RootComponent`.
@@ -334,3 +344,34 @@ now:
 The §9.1–§9.3 guidance (inheritance vs. selector reach-in, why semantic bundles
 caused drift, and the self-containment contract) still applies and is the
 rationale for this model.
+
+### 9.6 Scoped component styles (`styles::scoped_style`)
+
+Styling a component's **visual skin** with Tailwind utilities (which are layered,
+so ancestor rules can't out-rank them) is enough for leaf primitives like a
+button or badge. But a primitive with **interior interactive/floating children**
+(a popover `<select>`, a dropdown `<ul><li><button>`) needs a guarantee that an
+ancestor's `ol/ul`, `li`, or `button` reset won't reach in and change its
+spacing/margins/list-markers.
+
+`styles::scoped_style(tag, css)` provides that:
+
+- **Deterministic class.** Returns a stable class (`anj-<tag>`) derived from a
+  code-literal `tag` — never user input — so the same component always gets the
+  same class and can reference it inside its own `css`.
+- **Inject once.** The first call per tag appends a `<style data-anjuman-scoped>`
+  to `<head>`; subsequent mounts reuse it.
+- **Class-scoped rules.** The `css` you pass is written scoped under the class
+  (e.g. `.anj-ui-select ul { list-style:none; margin:0; padding:0 }`), so it only
+  matches that component's subtree and ancestors cannot leak in.
+
+Usage: call `let scope = scoped_style("ui-select", SELECT_CSS);` in the component
+body and put `class=scope` on the root element. Keep the CSS *minimal* — only the
+reset/invariants the component must own; the visual skin stays in Tailwind
+utilities.
+
+**Why not a third-party library?** rust-ui/leptos-ui is a monorepo of `path`
+dependencies (the `leptos_ui` crates.io package is only the `variants!`/`TwClass`
+macro machinery, not components), and its components are global-utility based —
+they do not ship CSS scoping. So "component owns its styling" is achieved here
+with a small first-party helper rather than a dependency that wouldn't deliver it.

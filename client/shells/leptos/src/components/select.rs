@@ -12,6 +12,14 @@ use tw_merge::tw_merge;
 
 use lepticons::{Icon, LucideGlyph};
 
+use crate::styles::scoped_style;
+
+/// Scoped rules that make the select's interior immune to ancestor leakage
+/// (list markers/margins/padding from unlayered author CSS or preflight). These
+/// are injected once and scoped under the returned class, so the select renders
+/// identically no matter where it is mounted.
+const SELECT_CSS: &str = ".anj-ui-select ul{list-style:none;margin:0;padding:0}.anj-ui-select li{margin:0}.anj-ui-select button{margin:0;font:inherit;color:inherit}";
+
 /// Owned, unidirectional select. `value` is the raw string form of the selected
 /// option (e.g. `"1"`, `"normal"`); `options` are `(value, label)` pairs. The
 /// trigger shows the selected label + a chevron; clicking opens a popover list
@@ -23,6 +31,8 @@ pub fn UiSelect(
     options: &'static [(&'static str, &'static str)],
     on_change: Option<Callback<String>>,
 ) -> impl IntoView {
+    let scope = scoped_style("ui-select", SELECT_CSS);
+
     let class = tw_merge!(
         "flex h-9 w-full items-center justify-between gap-2 whitespace-nowrap rounded-md \
          border border-input bg-transparent px-3 py-1 text-sm shadow-sm \
@@ -54,7 +64,7 @@ pub fn UiSelect(
     let menu_style = "position: fixed; position-anchor: --ui-select-anchor; position-area: block-end span-inline-start;";
 
     view! {
-        <div>
+        <div class=scope>
             <button
                 type="button"
                 class=class
