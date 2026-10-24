@@ -3,7 +3,7 @@ use shared::app::{StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Badge, BadgeColor, Button, ButtonAppearance, Dialog, Input, Select,
+    Badge, BadgeColor, Button, ButtonAppearance, Dialog, FloatingLayer, Input, Select,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -105,28 +105,48 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
     let suspended = card.suspended;
     let flag = card.flag;
 
-    let open = RwSignal::new(false);
-    let toggle = move |_| open.update(|o| *o = !*o);
-    let close = move || open.set(false);
-
-    let menu_style = "position: fixed; position-anchor: --study-actions-anchor; position-area: block-end span-inline-start;";
-    // rust-ui DropdownMenuItem class.
+    // The "⋮" study-actions dropdown. Built on `FloatingLayer` (click-outside/Esc/
+    // scroll-lock + unique CSS anchor), styled with rust-ui's `DropdownMenuItem`
+    // class. Each action closes the menu then emits the core `Event`.
     let item_class = "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors duration-200 text-popover-foreground hover:bg-accent hover:text-accent-foreground";
+
+    let trigger = Box::new(move |_open: Signal<bool>, _toggle: Callback<leptos::ev::MouseEvent>| {
+        view! {
+            <div
+                tabindex="0"
+                role="button"
+                class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent"
+                aria-label="Card actions"
+            >
+                <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
+            </div>
+        }
+        .into_any()
+    });
+
+    let content = {
+        Box::new(move |_open: Signal<bool>, close: Callback<()>| {
+            let item = item_class;
+            view! {
+                <ul class="m-0 w-44 list-none rounded-md border bg-card p-1 shadow-md">
+                    <li><button class=item on:click={ let close = close.clone(); move |_| { close.run(()); set_event.set(if buried { Event::UnburyCard } else { Event::BuryCard }); } }>{if buried { "Unbury" } else { "Bury" }}</button></li>
+                    <li><button class=item on:click={ let close = close.clone(); move |_| { close.run(()); set_event.set(Event::BuryNote); } }>"Bury note"</button></li>
+                    <li><button class=item on:click={ let close = close.clone(); move |_| { close.run(()); set_event.set(if suspended { Event::UnsuspendCard } else { Event::SuspendCard }); } }>{if suspended { "Unsuspend" } else { "Suspend" }}</button></li>
+                    <li><button class=item on:click={ let close = close.clone(); move |_| { close.run(()); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
+                    <li><button class=item on:click={ let close = close.clone(); move |_| { close.run(()); reschedule_open.set(true); } }>"Reschedule"</button></li>
+                </ul>
+            }
+            .into_any()
+        })
+    };
 
     view! {
         <div class="flex items-center gap-1">
-            <div>
-                <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Card actions" style="anchor-name:--study-actions-anchor" on:click=toggle>
-                    <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
-                </div>
-                <ul class="z-50 w-44 rounded-md border bg-card p-1 shadow-md fixed transition-all duration-200 data-[state=closed]:pointer-events-none data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100" style=menu_style data-state=move || if open.get() { "open" } else { "closed" }>
-                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(if buried { Event::UnburyCard } else { Event::BuryCard }); } }>{if buried { "Unbury" } else { "Bury" }}</button></li>
-                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryNote); } }>"Bury note"</button></li>
-                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(if suspended { Event::UnsuspendCard } else { Event::SuspendCard }); } }>{if suspended { "Unsuspend" } else { "Suspend" }}</button></li>
-                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
-                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); reschedule_open.set(true); } }>"Reschedule"</button></li>
-                </ul>
-            </div>
+            <FloatingLayer
+                content_class="rounded-md border bg-card shadow-md"
+                trigger=trigger
+                content=content
+            />
 
             <Select
                 value=Signal::derive(move || flag.to_string())
