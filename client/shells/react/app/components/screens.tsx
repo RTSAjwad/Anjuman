@@ -6,6 +6,7 @@ import { eventOpenDeck, eventOpenDeckOptions } from "shared_types/app";
 import { DeckTree } from "./deck-tree";
 import { StudyScreen as StudyScreenView } from "./study";
 import { DeckOptionsScreen as DeckOptionsView } from "./deck-options";
+import { BrowserScreen as BrowserView } from "./browser";
 
 export function DeckListScreen() {
   const { view, update } = useCore();
@@ -56,9 +57,30 @@ export function DeckOptionsScreen() {
 }
 
 export function BrowserScreen() {
+  const { view, update } = useCore();
+  if (view === null) return null;
+
+  const route = view.route.kind === "Notes" ? "Notes" : "Cards";
+
   return (
-    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      Browser — coming in Phase 3.
-    </div>
+    <BrowserView
+      route={route}
+      decks={view.decks}
+      cards={view.browser_cards}
+      cardPage={view.browser_page}
+      cardPerPage={view.browser_per_page}
+      cardTotal={view.browser_total}
+      cardSelected={view.browser_selected}
+      cardError={view.browser_error}
+      notes={view.notes}
+      notePage={view.notes_page}
+      notePerPage={view.notes_per_page}
+      noteTotal={view.notes_total}
+      noteSelected={view.notes_selected}
+      noteError={view.notes_error}
+      noteTypes={view.note_types}
+      canManageNotes={view.permissions.can_manage_notes}
+      update={update}
+    />
   );
 }
