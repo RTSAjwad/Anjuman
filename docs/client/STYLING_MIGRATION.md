@@ -304,21 +304,22 @@ portal, no `window.ScrollLock`.
 ### 10.4 Not satisfiable by rust-ui (record for later idiomatization)
 
 These are Anjuman-specific and have **no** rust-ui equivalent; they remain ours.
-Recorded so we can later shape them to match rust-ui's conventions (data-*
-attributes, `clx!`-style one-component-per-file, `variants!` where a matrix
-exists):
+**Idiomatized** (shaped to rust-ui conventions — `data-name`, one-component-per-
+file, `tw_merge!` utility styling, structural CSS folded out of `input.css`):
 
-1. **Study card surface** — sandboxed-iframe card + reveal/answer buttons.
-2. **Deck tree** — tabular deck list with aligned New/Learn/Due count columns
-   (rust-ui has `Collapsible` but no aligned-count tree).
-3. **Filter sidebar tree** — the Cards/Notes browser filter tree where a parent
-   deck is *also* a selectable filter, with flag-colour swatch leaves.
-4. **Card/Note inspector** — the right-hand action/details pane (a `Card` +
-   `dl` composition we own).
-5. **`flag_swatch`** — the coloured-dot + label Anki-flag swatch.
-6. **Collapsible sidebar app shell** — our icon-rail ↔ width-collapse `<aside>`;
-   rust-ui's `Drawer`/`Sheet`/`SideNav` are overlay/route nav, not width-animated
-   rails.
+1. **Study card surface** → `components/study_card.rs` (`StudyCard` component +
+   `format_interval` helper).
+2. **Deck tree** → still the hand-rolled aligned-count grid (no rust-ui
+   equivalent); `thaw-deck-*` namespace renamed to owned `deck-*` + `data-name`.
+3. **Filter sidebar tree** → `components/filter_menu.rs` (`filter_branch`/
+   `filter_leaf`/`deck_filter_tree`), including the "parent is also a filter"
+   `this deck only` divergence.
+4. **Card/Note inspector** → `components/inspector.rs` (`Inspector`/
+   `InspectorFields`/`InspectorRow`/`LabeledSwitch`).
+5. **`flag_swatch`** → `components/flag.rs` (`FlagSwatch`).
+6. **Collapsible sidebar app shell** → the `<aside>` rail stays in `app.rs`
+   (composition root); the repeated nav button is `components/sidebar.rs`
+   (`SidebarItem`).
 
 ### 10.5 One necessary divergence: controlled vs. internal state
 
