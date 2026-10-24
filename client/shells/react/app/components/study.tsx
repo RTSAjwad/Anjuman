@@ -28,7 +28,9 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { EllipsisVertical, Flag } from "lucide-react";
@@ -237,19 +239,22 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
           <EllipsisVertical />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-44">
-          <DropdownMenuItem onClick={() => update(card.buried ? eventUnburyCard() : eventBuryCard())}>
-            {card.buried ? "Unbury" : "Bury"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => update(eventBuryNote())}>Bury note</DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => update(card.suspended ? eventUnsuspendCard() : eventSuspendCard())}
-          >
-            {card.suspended ? "Unsuspend" : "Suspend"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => update(eventSuspendNote())}>
-            Suspend note
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setRescheduleOpen(true)}>Reschedule</DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>More Actions</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => update(card.buried ? eventUnburyCard() : eventBuryCard())}>
+              {card.buried ? "Unbury" : "Bury"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => update(eventBuryNote())}>Bury note</DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => update(card.suspended ? eventUnsuspendCard() : eventSuspendCard())}
+            >
+              {card.suspended ? "Unsuspend" : "Suspend"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => update(eventSuspendNote())}>
+              Suspend note
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setRescheduleOpen(true)}>Reschedule</DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
 
