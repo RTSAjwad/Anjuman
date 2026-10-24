@@ -1,4 +1,9 @@
 //! Pagination — an owned pager.
+//!
+//! Deferred from rust-ui verbatim adoption (docs §10.1): rust-ui's `Pagination`
+//! is `leptos_router`-based (`use_navigate`), which conflicts with our Crux hash
+//! router. Ours stays a controlled pager (page state lives in the shell, refetch
+//! via the core) and is *named* `Pagination`. Flagged for a routing decision.
 
 use leptos::prelude::*;
 
@@ -7,7 +12,7 @@ use leptos::prelude::*;
 /// (`prev`/`next`/`goto`); mutating `page` is observed by the caller (via an
 /// `Effect`) and triggers a refetch.
 #[component]
-pub fn UiPagination(page: RwSignal<usize>, page_count: Signal<usize>) -> impl IntoView {
+pub fn Pagination(page: RwSignal<usize>, page_count: Signal<usize>) -> impl IntoView {
     let count = page_count;
     let current = page;
 

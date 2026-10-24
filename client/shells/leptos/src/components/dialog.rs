@@ -1,4 +1,9 @@
 //! Dialog — an owned shadcn-style modal dialog.
+//!
+//! Deferred from rust-ui verbatim adoption (docs §10.3): rust-ui's `Dialog` uses
+//! a JS portal + `use_lock_body_scroll`; ours stays on the native `<dialog>`
+//! approach and is *named* `Dialog` so the call site reads the same. When the JS
+//! floating layer is adopted, this is replaced whole — call sites don't change.
 
 use leptos::prelude::*;
 
@@ -7,7 +12,7 @@ use leptos::prelude::*;
 /// `open` signal). The `::backdrop` dim and the box are styled with utilities,
 /// so there is no dependence on a component library's layered open-state.
 #[component]
-pub fn UiDialog(open: Signal<bool>, children: Children) -> impl IntoView {
+pub fn Dialog(open: Signal<bool>, children: Children) -> impl IntoView {
     let dialog_ref = NodeRef::<leptos::html::Dialog>::new();
 
     // Drive the native modal state from `open`: `showModal()` on true, `close()`

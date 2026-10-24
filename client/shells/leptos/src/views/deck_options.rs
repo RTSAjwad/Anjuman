@@ -3,7 +3,7 @@ use shared::app::{DeckOptionsEdit, DeckOptionsView, PresetSummary};
 use shared::Event;
 
 use crate::components::{
-    Button, ButtonAppearance, Input, UiSelect,
+    Button, ButtonAppearance, Input, Select,
 };
 use crate::views::study::format_interval;
 
@@ -430,7 +430,7 @@ fn select_field(
 ) -> impl IntoView {
     view! {
         <FieldRow label=label>
-            <UiSelect
+            <Select
                 value=Signal::derive(move || value.get())
                 options=options
                 on_change=Some(Callback::new(move |v: String| value.set(v)))
@@ -450,7 +450,7 @@ fn easy_days_field(days: [RwSignal<String>; 7]) -> impl IntoView {
                 view! {
                     <div class="deck-options-easy-day">
                         <span class="deck-options-easy-day__label">{*name}</span>
-                        <UiSelect
+                        <Select
                             value=Signal::derive(move || d.get())
                             options=EASY_DAY_OPTIONS
                             on_change=Some(Callback::new(move |v: String| d.set(v)))

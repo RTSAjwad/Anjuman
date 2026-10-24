@@ -3,7 +3,7 @@ use shared::app::{StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Badge, BadgeColor, Button, ButtonAppearance, UiDialog, Input, UiSelect,
+    Badge, BadgeColor, Button, ButtonAppearance, Dialog, Input, Select,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -84,7 +84,7 @@ pub(crate) fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
 /// Suspend (card + note), and Reschedule (set due date), collected into a single
 /// "⋮" dropdown menu, plus a flag `<select>` next to it. Each action forwards a
 /// core `Event` using the current card; the core owns the HTTP + state.
-/// Reschedule is a normal menu item that opens a `UiDialog` for the day offset.
+/// Reschedule is a normal menu item that opens a `Dialog` for the day offset.
 /// The dropdown follows the rust-ui/leptos-ui `DropdownMenu` styling (content +
 /// item classes) but is positioned via CSS anchor so it isn't clipped by the
 /// header's layout.
@@ -128,7 +128,7 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
                 </ul>
             </div>
 
-            <UiSelect
+            <Select
                 value=Signal::derive(move || flag.to_string())
                 options=FLAG_OPTIONS
                 on_change=Some(Callback::new(move |f: String| {
@@ -138,7 +138,7 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
             />
         </div>
 
-        <UiDialog open=reschedule_open.into()>
+        <Dialog open=reschedule_open.into()>
             <h3 class="text-lg font-bold">"Reschedule"</h3>
             <p class="py-4">"How many days from now?"</p>
             <Input value=days input_type="number" placeholder="days" />
@@ -146,7 +146,7 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
                 <Button appearance=ButtonAppearance::Subtle on_click=move |_| reschedule_open.set(false)>"Cancel"</Button>
                 <Button appearance=ButtonAppearance::Primary on_click=reschedule>"Reschedule"</Button>
             </div>
-        </UiDialog>
+        </Dialog>
     }
 }
 

@@ -1,11 +1,16 @@
 //! Select — an owned, unidirectional select (rust-ui `Select` style).
 //!
+//! Deferred from rust-ui verbatim adoption (docs §10.3): rust-ui's `Select`
+//! popover uses a JS portal layer; ours stays on the CSS-anchor approach and is
+//! *named* `Select` so the call site reads the same. When the JS floating layer
+//! is adopted, this implementation is replaced whole — call sites don't change.
+//!
 //! Unlike a native `<select>`, this is a popover-based control: a trigger button
 //! showing the currently-selected label plus a `ChevronDown`, which opens a
-//! CSS-anchor popover of selectable items. It matches `UiToggle`/`UiTab` in
-//! being unidirectional — it reads the selected value from a reactive `value`
-//! signal and forwards a `String` via `on_change` (read from the view, emit an
-//! event, let the core re-render). Options are `(value, label)` pairs.
+//! CSS-anchor popover of selectable items. It is unidirectional — it reads the
+//! selected value from a reactive `value` signal and forwards a `String` via
+//! `on_change` (read from the view, emit an event, let the core re-render).
+//! Options are `(value, label)` pairs.
 //!
 //! Styled purely with Tailwind utilities (rust-ui/shadcn convention: no scoping,
 //! no `<style>` injection). Every element carries its own explicit reset
@@ -19,7 +24,7 @@ use tw_merge::tw_merge;
 
 use lepticons::{Icon, LucideGlyph};
 
-/// A process-wide counter so each mounted `UiSelect` gets a unique CSS-anchor
+/// A process-wide counter so each mounted `Select` gets a unique CSS-anchor
 /// name (CSS `anchor-name` must be unique per page; two selects sharing one name
 /// would resolve each other's anchor and drift).
 static NEXT_ANCHOR: AtomicU64 = AtomicU64::new(0);
@@ -30,7 +35,7 @@ static NEXT_ANCHOR: AtomicU64 = AtomicU64::new(0);
 /// (CSS-anchor positioned below the trigger, left-aligned, top-layer so it isn't
 /// clipped). Choosing an item forwards `on_change` and closes the popover.
 #[component]
-pub fn UiSelect(
+pub fn Select(
     value: Signal<String>,
     options: &'static [(&'static str, &'static str)],
     on_change: Option<Callback<String>>,

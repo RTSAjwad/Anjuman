@@ -7,7 +7,7 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    Button, ButtonAppearance, Input, Switch, UiPagination, UiSelect,
+    Button, ButtonAppearance, Input, Switch, Pagination, Select,
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };
 use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
@@ -581,7 +581,7 @@ pub(crate) fn browser(
 
                             <div class="card-browser__pagination">
                                 <span>{move || vm_sig.get().browser_total.to_string()}{" cards"}</span>
-                                <UiPagination page=page page_count=browser_page_count />
+                                <Pagination page=page page_count=browser_page_count />
                             </div>
                         </div>
 
@@ -630,7 +630,7 @@ pub(crate) fn browser(
 
                             <div class="card-browser__pagination">
                                 <span>{move || vm_sig.get().notes_total.to_string()}{" notes"}</span>
-                                <UiPagination page=note_page page_count=notes_page_count />
+                                <Pagination page=note_page page_count=notes_page_count />
                             </div>
                         </div>
 
@@ -724,7 +724,7 @@ fn CardInspector(
                         <div class="card-browser__inspector-row">
                             <dt>"Flag"</dt>
                             <dd>
-                                <UiSelect
+                                <Select
                                     value=Signal::derive(move || flag.get())
                                     options=FLAG_OPTIONS
                                     on_change=Some(Callback::new(move |f: String| {
