@@ -17,6 +17,7 @@ mod dialog;
 mod flag;
 mod floating_layer;
 mod input;
+mod inspector;
 mod pagination;
 mod select;
 mod switch;
@@ -31,9 +32,9 @@ pub use dialog::Dialog;
 pub use flag::FlagSwatch;
 pub use floating_layer::FloatingLayer;
 pub use input::Input;
+pub use inspector::{Inspector, InspectorFields, InspectorRow, LabeledSwitch};
 pub use pagination::Pagination;
 pub use select::Select;
-pub use switch::Switch;
 pub use table::{
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };
