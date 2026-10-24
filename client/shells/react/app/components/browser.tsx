@@ -60,7 +60,8 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
-import { ChevronRight, Flag } from "lucide-react";
+import { ButtonGroup } from "~/components/ui/button-group";
+import { ChevronRight, Flag, Search } from "lucide-react";
 
 const CARD_SORT_OPTIONS = [
   ["created_at", "Created"],
@@ -204,17 +205,18 @@ export function BrowserScreen(props: BrowserScreenProps) {
             e.preventDefault();
             apply(1);
           }}
-          className="flex w-full gap-1"
+          className="w-full"
         >
-          <Input
-            value={filter.query}
-            onChange={(e) => set("query", e.target.value)}
-            placeholder="Search…"
-            className="flex-1 rounded-r-none"
-          />
-          <Button type="submit" variant="outline" size="icon" className="rounded-l-none" aria-label="Search">
-            <ChevronRight className="size-4" />
-          </Button>
+          <ButtonGroup className="w-full">
+            <Input
+              value={filter.query}
+              onChange={(e) => set("query", e.target.value)}
+              placeholder="Search…"
+            />
+            <Button type="submit" variant="outline" size="icon" aria-label="Search">
+              <Search />
+            </Button>
+          </ButtonGroup>
         </form>
 
         <FilterBranch title="Decks">
