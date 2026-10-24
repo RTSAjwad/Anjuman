@@ -30,6 +30,7 @@ import { Avatar, AvatarFallback } from "./ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -196,21 +197,23 @@ function AppSidebar({
                 }
               />
               <DropdownMenuContent align="start" className="w-[--aria-trigger-width] min-w-56 rounded-lg">
-                <DropdownMenuLabel className="p-0 font-normal">
-                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                    <Avatar className="size-8 rounded-lg">
-                      <AvatarFallback className="rounded-lg">
-                        {initials(displayName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{displayName}</span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {email}
-                      </span>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="p-0 font-normal">
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                      <Avatar className="size-8 rounded-lg">
+                        <AvatarFallback className="rounded-lg">
+                          {initials(displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="grid flex-1 text-left text-sm leading-tight">
+                        <span className="truncate font-semibold">{displayName}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {email}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </DropdownMenuLabel>
+                  </DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onLogout} variant="destructive">
                   <LogOutIcon />
