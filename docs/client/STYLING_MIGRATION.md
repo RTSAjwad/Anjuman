@@ -328,9 +328,26 @@ whole shell.
 | `Tabs` | rust-ui owns selection internally (`TabsCtx`); ours is controlled (`active: Signal<bool>` + `on_click`). | Cardinal — keep (§10.5). |
 | `Button` | rust-ui variant names (`Default`/`Ghost`/`Secondary`/…) vs our `Primary`/`Subtle`/`Danger`/`Neutral`/`NeutralSoft`. | Rename our call sites to rust-ui's vocabulary (or accept a permanent thin `ButtonAppearance` alias). |
 | `Badge` | rust-ui variant names vs our `Brand`/`Danger`/`Success`/`Informative`. | Same — reconcile names. |
+| `TableRow` | rust-ui's is presentational-only; ours adds controlled `selected`/`on_click` (selectable browser rows). | Cardinal shell interactivity — keep; class strings are verbatim (`data-state` drives the selection class). |
+| `Card` / `Badge` / `Button` | `Size`/`Variant` matrix entries unused by callers. | Remove the module `#![allow(dead_code)]` as callers adopt the full matrix. |
 
 The `Button`/`Badge` class **strings** are rust-ui's verbatim already; only the
-call-site enum names are a naming gap. Both `button.rs` and `badge.rs` carry a
-module-level `#![allow(dead_code)]` because the verbatim variant/size matrix
+call-site enum names are a naming gap. Both `button.rs` and `badge.rs` (and `card.rs`)
+carry a module-level `#![allow(dead_code)]` because the verbatim variant/size matrix
 includes entries our callers don't use yet. Remove that allow as callers adopt
 the full matrix.
+
+### 10.7 Status (verbatim adoption, in progress)
+
+`Ui` prefixes dropped; leaf components adopted verbatim (class strings only) or
+renamed plain pending the JS-layer decision:
+
+| Component | Status |
+|---|---|
+| `Button`, `Badge` | ✅ verbatim `variants!` (naming gap §10.6) |
+| `Switch`, `Tabs`/`TabsList`/`TabsTrigger` | ✅ verbatim, controlled (§10.5) |
+| `Card`, `Input`, `Breadcrumb`, `Table` family | ✅ verbatim class strings (`TableRow` controlled, §10.6) |
+| `Select`, `Dialog`, `Pagination` | ⚠️ renamed plain, **not** verbatim — rust-ui's are JS-portal (§10.3) / `leptos_router` (§10.1) |
+| `CardHeader`/`Title`/`Content`/… , `BreadcrumbSeparator`/`Page`/… | not yet — nothing consumes them; add verbatim when needed (breadcrumb separator pulls `icons`) |
+
+`UiSubmitButton` was folded into `Button` (`type="submit"`), per §4.

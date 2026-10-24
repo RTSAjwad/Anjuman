@@ -315,9 +315,9 @@ self-contained yet.
 
 ### 9.4 Reference
 
-The canonical example is the owned primitives in `client/shells/leptos/src/ui.rs`
-(`UiButton` with `tw_merge!`, `UiDialog` with signal-driven `showModal()`/`close()`,
-`UiToggle` with `prop:checked`), plus `FlagDropdown` in
+The canonical example is the owned primitives in `client/shells/leptos/src/components/`
+(`Button` with `tw_merge!`, `Dialog` with signal-driven `showModal()`/`close()`,
+`Switch` with controlled `checked`), plus `FlagDropdown` in
 `client/shells/leptos/src/app.rs` (`position: relative` wrapper + `RwSignal<bool>`
 open state + `position: absolute` menu). They own their structural invariants and
 style via Tailwind utilities + theme tokens — the pattern to follow for any new
@@ -329,9 +329,8 @@ daisyUI has been removed — see `STYLING_MIGRATION.md`. The styling contract is
 now:
 
 - **No component library.** Every reusable visual unit is an owned Leptos
-  primitive in `src/components/` (`UiButton`, `UiBadge`, `UiTable`, `UiToggle`,
-  `UiTabs`/`UiTab`, `UiInput`, `UiSelect`, `UiCard`, `UiBreadcrumbs`,
-  `UiSubmitButton`, `UiPagination`, `UiDialog`).
+  primitive in `src/components/` (`Button`, `Badge`, `Table`, `Switch`, `Tabs`/
+  `TabsTrigger`, `Input`, `Select`, `Card`, `Breadcrumb`, `Pagination`, `Dialog`).
 - **Tailwind utilities + theme tokens** (shadcn convention) do the visual styling
   (`bg-primary`, `text-primary-foreground`, `border-input`, `bg-muted`, …). The
   tokens live in `input.css` (`:root`/`.dark` → `@theme inline`).
