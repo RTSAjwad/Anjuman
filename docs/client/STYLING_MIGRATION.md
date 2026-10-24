@@ -283,8 +283,23 @@ separate later decision.
 
 rust-ui's `Select` popover, `Dialog`, `DropdownMenu` don't use CSS anchor —
 they use a `Goggles` portal + `ScrollLock`/`use_lock_body_scroll` + a `<script>`
-fragment shipped in `public/app_components/*.js`. That is out of scope for this
-phase.
+fragment shipped in `public/app_components/*.js`.
+
+**Resolved: rejected.** Adopting that layer would reintroduce two-source-of-truth
+state (the inline `<script>` mutates `data-state`/`pointer-events` behind
+Leptos's back) and add a global `window.ScrollLock` + per-instance DOM-id
+bookkeeping. Instead we keep the standards-based approach and close the real
+behavior gaps with a single shared `FloatingLayer` primitive
+(`src/components/floating_layer.rs`):
+
+- **click-outside** and **Esc** to dismiss (via `window_event_listener` + `on_cleanup`);
+- **body scroll-lock** (a signal-driven `effect_lock_body_scroll` — no global JS object);
+- a **unique CSS anchor name** per instance.
+
+`Select` and the study `DropdownMenu` are rebased onto `FloatingLayer`; `Dialog`
+stays on the native `<dialog>` (which already gives top-layer/backdrop/Esc/focus
+for free) plus `effect_lock_body_scroll`. This is the permanent answer — no JS
+portal, no `window.ScrollLock`.
 
 ### 10.4 Not satisfiable by rust-ui (record for later idiomatization)
 
@@ -348,6 +363,7 @@ renamed plain pending the JS-layer decision:
 | `Switch`, `Tabs`/`TabsList`/`TabsTrigger` | ✅ verbatim, controlled (§10.5) |
 | `Card`, `Input`, `Breadcrumb`, `Table` family | ✅ verbatim class strings (`TableRow` controlled, §10.6) |
 | `Select`, `Dialog`, `Pagination` | ⚠️ renamed plain, **not** verbatim — rust-ui's are JS-portal (§10.3) / `leptos_router` (§10.1) |
+| `FloatingLayer` (new) | ✅ shared click-outside/Esc/scroll-lock primitive (§10.3); `Select` + study `DropdownMenu` + `Dialog` use it |
 | `CardHeader`/`Title`/`Content`/… , `BreadcrumbSeparator`/`Page`/… | not yet — nothing consumes them; add verbatim when needed (breadcrumb separator pulls `icons`) |
 
 `UiSubmitButton` was folded into `Button` (`type="submit"`), per §4.
