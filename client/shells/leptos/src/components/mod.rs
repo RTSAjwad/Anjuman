@@ -22,6 +22,7 @@ mod inspector;
 mod pagination;
 mod select;
 mod sidebar;
+mod study_card;
 mod switch;
 mod table;
 mod tabs;
@@ -39,6 +40,7 @@ pub use inspector::{Inspector, InspectorFields, InspectorRow, LabeledSwitch};
 pub use pagination::Pagination;
 pub use select::Select;
 pub use sidebar::SidebarItem;
+pub use study_card::{format_interval, StudyCard};
 pub use table::{
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 };

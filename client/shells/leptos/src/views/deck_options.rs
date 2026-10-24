@@ -3,9 +3,8 @@ use shared::app::{DeckOptionsEdit, DeckOptionsView, PresetSummary};
 use shared::Event;
 
 use crate::components::{
-    Button, ButtonVariant, Input, Select,
+    Button, ButtonVariant, Input, Select, format_interval,
 };
-use crate::views::study::format_interval;
 
 /// Editable deck-options form (US-4.10): renders the selected deck's preset as
 /// controls (number/text inputs, bool switches, enum selectors), applies local
