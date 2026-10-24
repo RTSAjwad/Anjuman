@@ -257,13 +257,13 @@ function BrowserTabs({
       value={route}
       onValueChange={(v) => {
         if (v === null) return;
-        if (v === "notes") onShowNotes();
+        if (v === "Notes") onShowNotes();
         else onShowCards();
       }}
     >
       <TabsList>
-        <TabsTrigger value="cards">Cards</TabsTrigger>
-        {canManageNotes ? <TabsTrigger value="notes">Notes</TabsTrigger> : null}
+        <TabsTrigger value="Cards">Cards</TabsTrigger>
+        {canManageNotes ? <TabsTrigger value="Notes">Notes</TabsTrigger> : null}
       </TabsList>
     </Tabs>
   );
