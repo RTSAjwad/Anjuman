@@ -23,7 +23,7 @@ mod table;
 mod tabs;
 
 pub use badge::{Badge, BadgeColor};
-pub use breadcrumbs::UiBreadcrumbs;
+pub use breadcrumbs::Breadcrumb;
 pub use button::{Button, ButtonAppearance};
 pub use card::Card;
 pub use dialog::UiDialog;

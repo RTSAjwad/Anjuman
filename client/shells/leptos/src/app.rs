@@ -13,7 +13,7 @@ use shared::app::{CurrentRoute, DeckView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    Button, ButtonAppearance, Tabs, TabsList, TabsTrigger, UiBreadcrumbs, Input,
+    Button, ButtonAppearance, Tabs, TabsList, TabsTrigger, Breadcrumb, Input,
 };
 use crate::core_link;
 use crate::router;
@@ -348,9 +348,9 @@ pub fn RootComponent() -> impl IntoView {
 
                                     {match route {
                                         CurrentRoute::DeckList => view! {
-                                            <UiBreadcrumbs>
+                                            <Breadcrumb>
                                                 <li><span aria-current="page">"Decks"</span></li>
-                                            </UiBreadcrumbs>
+                                            </Breadcrumb>
                                         }
                                         .into_any(),
                                         CurrentRoute::Cards | CurrentRoute::Notes => view! {
@@ -389,13 +389,13 @@ pub fn RootComponent() -> impl IntoView {
                                                 .map(|d| deck_ancestor_titles(&vm.decks, d.id))
                                                 .unwrap_or_default();
                                             view! {
-                                                <UiBreadcrumbs class="flex-1">
+                                                <Breadcrumb class="flex-1">
                                                     <li><button on:click=move |_| close_deck()>"Decks"</button></li>
                                                     {deck_breadcrumb.into_iter().map(|title| view! {
                                                         <li>{title}</li>
                                                     }).collect_view()}
                                                     <li><span aria-current="page">"Study"</span></li>
-                                                </UiBreadcrumbs>
+                                                </Breadcrumb>
                                                 {study_count_badges(counts)}
                                                 {if let Some(card) = current_card {
                                                     view! {
@@ -416,13 +416,13 @@ pub fn RootComponent() -> impl IntoView {
                                                 .map(|d| deck_ancestor_titles(&vm.decks, d.id))
                                                 .unwrap_or_default();
                                             view! {
-                                                <UiBreadcrumbs class="flex-1">
+                                                <Breadcrumb class="flex-1">
                                                     <li><button on:click=move |_| close_deck()>"Decks"</button></li>
                                                     {deck_breadcrumb.into_iter().map(|title| view! {
                                                         <li>{title}</li>
                                                     }).collect_view()}
                                                     <li><span aria-current="page">"Options"</span></li>
-                                                </UiBreadcrumbs>
+                                                </Breadcrumb>
                                             }
                                             .into_any()
                                         }
