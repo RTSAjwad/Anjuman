@@ -26,6 +26,15 @@ import {
   BreadcrumbPage,
 } from "./ui/breadcrumb";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
+import { Avatar, AvatarFallback } from "./ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { LibraryIcon, TableIcon, LogOutIcon } from "lucide-react";
 import {
   DeckListScreen,
@@ -71,6 +80,7 @@ function Layout() {
     <div className="flex h-svh w-full">
       <AppSidebar
         displayName={view.display_name}
+        email={view.email}
         route={route}
         onShowDeckList={() => update(eventShowDeckList())}
         onShowCards={() => update(eventShowCards())}
@@ -118,12 +128,14 @@ function Layout() {
 
 function AppSidebar({
   displayName,
+  email,
   route,
   onShowDeckList,
   onShowCards,
   onLogout,
 }: {
   displayName: string;
+  email: string;
   route: string;
   onShowDeckList: () => void;
   onShowCards: () => void;
@@ -162,15 +174,52 @@ function AppSidebar({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={onLogout} tooltip="Log out">
-              <LogOutIcon />
-              <span>Log out</span>
-            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  >
+                    <Avatar className="size-8 rounded-lg">
+                      <AvatarFallback className="rounded-lg">
+                        {initials(displayName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{displayName}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {email}
+                      </span>
+                    </div>
+                  </SidebarMenuButton>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-[--aria-trigger-width] min-w-56 rounded-lg">
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                    <Avatar className="size-8 rounded-lg">
+                      <AvatarFallback className="rounded-lg">
+                        {initials(displayName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{displayName}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {email}
+                      </span>
+                    </div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onLogout} variant="destructive">
+                  <LogOutIcon />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="truncate px-2 pb-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-          {displayName}
-        </div>
       </SidebarFooter>
     </Sidebar>
   );
@@ -211,4 +260,13 @@ function Screen({ route }: { route: string }) {
     default:
       return <DeckListScreen />;
   }
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }
