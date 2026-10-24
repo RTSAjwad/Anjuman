@@ -18,8 +18,8 @@ use crate::components::{
 use crate::core_link;
 use crate::router;
 use crate::views::{
-    deck_ancestor_titles, study_count_badges, Browser, DeckList, DeckOptionsPanel, FlagDropdown,
-    StudyControls, StudyScreen,
+    deck_ancestor_titles, study_count_badges, Browser, DeckList, DeckOptionsPanel, StudyControls,
+    StudyScreen,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -396,18 +396,8 @@ pub fn RootComponent() -> impl IntoView {
                                                 </UiBreadcrumbs>
                                                 {study_count_badges(counts)}
                                                 {if let Some(card) = current_card {
-                                                    let flag_signal = Signal::derive(move || {
-                                                        view.get().current_card.as_ref().map(|c| c.flag).unwrap_or(0)
-                                                    });
                                                     view! {
                                                         <StudyControls card=card set_event=set_event />
-                                                        <FlagDropdown
-                                                            id="study-flag"
-                                                            flag=flag_signal
-                                                            on_select=move |f| {
-                                                                set_event.set(Event::FlagCard { flag: f as i32 });
-                                                            }
-                                                        />
                                                     }
                                                     .into_any()
                                                 } else {

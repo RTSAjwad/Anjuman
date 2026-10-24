@@ -7,10 +7,10 @@ use shared::{Event, ViewModel};
 
 use crate::app::BrowserState;
 use crate::components::{
-    UiButton, UiButtonAppearance, UiInput, UiPagination, UiSubmitButton, UiTable,
+    UiButton, UiButtonAppearance, UiFlagSelect, UiInput, UiPagination, UiSubmitButton, UiTable,
     UiTableBody, UiTableCell, UiTableHead, UiTableHeader, UiTableRow, UiToggle,
 };
-use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch, FlagDropdown};
+use crate::views::flag_dropdown::{flag_color, flag_label, flag_swatch};
 use lepticons::{Icon, LucideGlyph};
 
 /// The card browser (US-4.12): a management-oriented card table with
@@ -708,12 +708,11 @@ fn CardInspector(
                         <div class="card-browser__inspector-row">
                             <dt>"Flag"</dt>
                             <dd>
-                                <FlagDropdown
-                                    id="browser-flag"
-                                    flag=Signal::derive(move || flag.get().parse::<i64>().unwrap_or(0))
-                                    on_select=move |f| {
+                                <UiFlagSelect
+                                    value=Signal::derive(move || flag.get().parse::<i64>().unwrap_or(0))
+                                    on_change=Callback::new(move |f| {
                                         set_event.set(Event::BrowserFlagCard { card_id, flag: f as i32 });
-                                    }
+                                    })
                                 />
                             </dd>
                         </div>

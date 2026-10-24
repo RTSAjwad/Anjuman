@@ -3,7 +3,7 @@ use shared::app::{StudyCardView, StudyCountsView};
 use shared::{Event, ViewModel};
 
 use crate::components::{
-    UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiDialog, UiInput,
+    UiBadge, UiBadgeColor, UiButton, UiButtonAppearance, UiDialog, UiFlagSelect, UiInput,
 };
 use lepticons::{Icon, LucideGlyph};
 
@@ -70,11 +70,12 @@ pub(crate) fn study_count_badges(counts: StudyCountsView) -> impl IntoView {
 
 /// Study-card actions shown in the top bar while a card is in hand: Bury,
 /// Suspend (card + note), and Reschedule (set due date), collected into a single
-/// "⋮" dropdown menu (the flag picker is a separate `FlagDropdown` next to it).
-/// Each action forwards a core `Event` using the current card; the core owns the
-/// HTTP + state. Reschedule is a normal menu item that opens a `UiDialog` for the
-/// day offset. The menu uses the same top-layer `position: fixed` + anchor
-/// mechanism as `FlagDropdown` so it isn't clipped by the header's layout.
+/// "⋮" dropdown menu, plus a flag `<select>` next to it. Each action forwards a
+/// core `Event` using the current card; the core owns the HTTP + state.
+/// Reschedule is a normal menu item that opens a `UiDialog` for the day offset.
+/// The dropdown follows the rust-ui/leptos-ui `DropdownMenu` styling (content +
+/// item classes) but is positioned via CSS anchor so it isn't clipped by the
+/// header's layout.
 #[component]
 pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) -> impl IntoView {
     // Reschedule: a day offset the user types, then confirms.
@@ -90,48 +91,35 @@ pub(crate) fn StudyControls(card: StudyCardView, set_event: WriteSignal<Event>) 
 
     let buried = card.buried;
     let suspended = card.suspended;
+    let flag = card.flag;
 
     let open = RwSignal::new(false);
     let toggle = move |_| open.update(|o| *o = !*o);
     let close = move || open.set(false);
 
     let menu_style = "position: fixed; position-anchor: --study-actions-anchor; position-area: block-end span-inline-start;";
+    // rust-ui DropdownMenuItem class.
+    let item_class = "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors duration-200 text-popover-foreground hover:bg-accent hover:text-accent-foreground";
 
     view! {
-        <div>
-            <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Card actions" style="anchor-name:--study-actions-anchor" on:click=toggle>
-                <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
+        <div class="flex items-center gap-1">
+            <div>
+                <div tabindex="0" role="button" class="inline-flex size-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Card actions" style="anchor-name:--study-actions-anchor" on:click=toggle>
+                    <Icon glyph=LucideGlyph::EllipsisVertical size="20" />
+                </div>
+                <ul class="z-50 w-44 rounded-md border bg-card p-1 shadow-md fixed transition-all duration-200 data-[state=closed]:pointer-events-none data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100" style=menu_style data-state=move || if open.get() { "open" } else { "closed" }>
+                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(if buried { Event::UnburyCard } else { Event::BuryCard }); } }>{if buried { "Unbury" } else { "Bury" }}</button></li>
+                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryNote); } }>"Bury note"</button></li>
+                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(if suspended { Event::UnsuspendCard } else { Event::SuspendCard }); } }>{if suspended { "Unsuspend" } else { "Suspend" }}</button></li>
+                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
+                    <li><button class=item_class on:click={ let close = close.clone(); move |_| { close(); reschedule_open.set(true); } }>"Reschedule"</button></li>
+                </ul>
             </div>
-            <ul
-                class="z-50 flex w-52 flex-col gap-0 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md transition-all duration-200 data-[state=closed]:pointer-events-none data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100"
-                style=menu_style
-                data-state=move || if open.get() { "open" } else { "closed" }
-            >
-                {if buried {
-                    view! {
-                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnburyCard); } }>"Unbury"</button></li>
-                    }.into_any()
-                } else {
-                    view! {
-                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryCard); } }>"Bury"</button></li>
-                    }.into_any()
-                }}
-                <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::BuryNote); } }>"Bury note"</button></li>
-                {if suspended {
-                    view! {
-                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::UnsuspendCard); } }>"Unsuspend"</button></li>
-                    }.into_any()
-                } else {
-                    view! {
-                        <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendCard); } }>"Suspend"</button></li>
-                    }.into_any()
-                }}
-                <li><button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); set_event.set(Event::SuspendNote); } }>"Suspend note"</button></li>
 
-                <li>
-                    <button class="flex w-full rounded-sm px-3 py-1.5 text-sm hover:bg-accent" on:click={ let close = close.clone(); move |_| { close(); reschedule_open.set(true); } }>"Reschedule"</button>
-                </li>
-            </ul>
+            <UiFlagSelect
+                value=Signal::derive(move || flag)
+                on_change=Callback::new(move |f| set_event.set(Event::FlagCard { flag: f as i32 }))
+            />
         </div>
 
         <UiDialog open=reschedule_open.into()>

@@ -13,10 +13,9 @@ pub mod study;
 
 // Re-export the items `RootComponent` (and other views) reference. Leptos view
 // names are derived by capitalizing the lower-case `fn` here, so `DeckList`,
-// `Browser`, `StudyScreen`, `DeckOptionsPanel`, `StudyControls`, and
-// `FlagDropdown` all resolve in `app.rs`'s `view!`.
+// `Browser`, `StudyScreen`, `DeckOptionsPanel`, and `StudyControls` all resolve
+// in `app.rs`'s `view!`.
 pub(crate) use deck::{deck_ancestor_titles, DeckList};
 pub(crate) use browser::Browser;
 pub(crate) use study::{study_count_badges, StudyControls, StudyScreen};
-pub(crate) use flag_dropdown::FlagDropdown;
 pub(crate) use deck_options::DeckOptionsPanel;
