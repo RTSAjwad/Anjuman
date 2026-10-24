@@ -168,7 +168,9 @@ function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="px-2 pb-2 text-xs text-muted-foreground">{displayName}</div>
+        <div className="truncate px-2 pb-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+          {displayName}
+        </div>
       </SidebarFooter>
     </Sidebar>
   );
