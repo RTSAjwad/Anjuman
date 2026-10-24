@@ -1,11 +1,21 @@
-// Placeholder screen components for Phase 1. These render the chrome skeleton
-// and a "not yet implemented" stub; Phase 3 fills in the real deck list, study
-// loop, deck options, and browser (cards/notes) content.
+// Screen components. The deck list is real (Phase 3); study, deck options, and
+// the browser are still placeholders pending their port.
+
+import { useCore } from "../lib/core-provider.client";
+import { eventOpenDeck, eventOpenDeckOptions } from "shared_types/app";
+import { DeckTree } from "./deck-tree";
 
 export function DeckListScreen() {
+  const { view, update } = useCore();
+
   return (
-    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      Deck list — coming in Phase 3.
+    <div className="h-full overflow-y-auto p-4">
+      <DeckTree
+        decks={view?.decks ?? []}
+        error={view?.decks_error ?? null}
+        onOpenDeck={(id) => update(eventOpenDeck(id))}
+        onOpenOptions={(id) => update(eventOpenDeckOptions(id))}
+      />
     </div>
   );
 }
