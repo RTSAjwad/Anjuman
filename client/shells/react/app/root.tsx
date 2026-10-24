@@ -9,6 +9,7 @@ import {
 
 import type { Route } from "./+types/root";
 import { CoreProvider } from "./lib/core-provider.client";
+import { TooltipProvider } from "./components/ui/tooltip";
 import "./app.css";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -40,7 +41,9 @@ export function HydrateFallback() {
 export default function App() {
   return (
     <CoreProvider>
-      <Outlet />
+      <TooltipProvider>
+        <Outlet />
+      </TooltipProvider>
     </CoreProvider>
   );
 }
