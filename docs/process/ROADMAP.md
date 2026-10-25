@@ -1858,6 +1858,75 @@ fields, no tests.
 - Card *edit* (fields/templates) — that's the notes browser (US-4.13); move-to-
   another-deck is a follow-up.
 
+#### US-4.12b — Browser scheduling actions (Grade Now / Reset / Reposition)
+
+**As** a signed-in user in the card browser,
+**I want** to grade, reset, and reposition a card directly,
+**so that** the browser matches Anki's per-card scheduling tools without going
+through the study loop.
+
+**Background / Anki grounding**
+
+Three Anki browser card actions, mapped onto what Anjuman already has vs. what
+is missing:
+
+1. **Grade Now** — answer the card *right now* with a rating (1-4: Again/Hard/
+   Good/Easy), applying FSRS to schedule its next review. This is **not** a stock
+   Anki *desktop* browser menu item (Anki grades only in the reviewer), so it is a
+   deliberate Anjuman convenience. Server already has the mechanism: `POST
+   /reviews` (`apply_review(student_id, card_id, rating, response_time_ms)`).
+   **Open decision to settle before implementing:** whether "Grade Now" should (a)
+   require the card be *currently due*, or (b) allow regrading any card (selected
+   state overridden). Recommend (b) — always regrade the card, regardless of due
+   state — to match the "act on any card" spirit of the browser.
+
+2. **Reset** (Anki: "Forget"/Ctrl+Alt+R) — reset a card's scheduling: delete its
+   `student_card_states` row (and reviews history) so it returns to the **new**
+   queue, as if never studied. **No server endpoint exists yet** — needs a new
+   `POST /cards/{id}/reset` (or `DELETE /cards/{id}/schedule`) that removes the
+   per-student state row (and optionally its `reviews` rows) and re-assigns a new
+   `cards.position`.
+
+3. **Reposition** (Anki: "Reposition") — place a **new** card at a chosen position
+   in the new-card queue (Anki's reposition window; front/end/at-index). Maps to
+   setting `cards.position` (per-deck monotonic sequence — see migrations
+   `0005`/`0018`). **No server endpoint exists yet** — needs a new
+   `PATCH /cards/{id}/position` (or reuse a broader reposition body) that writes
+   `cards.position`. Distinct from `reschedule` (absolute due date), which already
+   exists.
+
+**Scope: server → core → shell.** These are *new* server endpoints + contracts DTOs
++ the core event/sync plumbing, in that order — not a shell-only glyph.
+
+**Acceptance criteria (server first, then core)**
+
+- [ ] Server: `reset` clears the card's `student_card_states` row (card is "new"
+      on next `GET /cards`); `reposition` sets `cards.position` and survives a
+      re-fetch; `grade now` routes through `apply_review` and updates scheduling.
+      Each has a `server/tests/card_browser.rs` (or `card_mod.rs`) test named after
+      it.
+- [ ] Contracts: request/response DTOs for reset/reposition (and any grade-now
+      body) derive `Serialize`/`Deserialize` appropriately; OpenAPI regenerates.
+- [ ] Core: `Event::BrowserGradeCard { card_id, rating }` (→ `POST /reviews`),
+      `Event::BrowserResetCard { card_id }` (→ `POST /cards/{id}/reset`), and
+      `Event::BrowserRepositionCard { card_id, position }` (→  reposition endpoint);
+      each completion re-fetches the browser via `refresh_browser` (so due/state/
+      position reflect immediately).
+- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+
+**Shell contract**
+
+- [ ] Add the three actions to the per-row action menu: Grade Now (rating selector
+      or the four buttons), Reset Card, Reposition Card (position input/"front/
+      end" affordance), forwarding the events above. Grade Now and Reset are gated
+      on `vm.permissions.*` (study/notes as appropriate); Reposition is new-card-only
+      (disabled for review/learning/relearning rows, matching Anki).
+
+**Out of scope**
+
+- "Set due date" (absolute `reschedule`) already shipped in US-4.12; this story
+  does not change it. Move-to-another-deck remains a separate follow-up.
+
 ---
 
 ### US-4.13 — Notes browser (list/edit notes, note-type CRUD)
