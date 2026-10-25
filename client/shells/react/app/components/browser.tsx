@@ -36,7 +36,7 @@ import {
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
-import { Switch } from "~/components/ui/switch";
+import { Toggle } from "~/components/ui/toggle";
 import { Label } from "~/components/ui/label";
 
 import {
@@ -500,22 +500,26 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
   return (
     <div className="flex items-center gap-4">
       <div className="flex items-center gap-2">
-        <Label className="text-sm text-muted-foreground">Suspended</Label>
-        <Switch
-          checked={card.suspended}
-          onCheckedChange={(v) =>
+        <Toggle
+          variant="outline"
+          pressed={card.suspended}
+          onPressedChange={(v) =>
             update(v ? eventBrowserSuspendCard(card.card_id) : eventBrowserUnsuspendCard(card.card_id))
           }
-        />
+        >
+          Suspended
+        </Toggle>
       </div>
       <div className="flex items-center gap-2">
-        <Label className="text-sm text-muted-foreground">Buried</Label>
-        <Switch
-          checked={card.buried}
-          onCheckedChange={(v) =>
+        <Toggle
+          variant="outline"
+          pressed={card.buried}
+          onPressedChange={(v) =>
             update(v ? eventBrowserBuryCard(card.card_id) : eventBrowserUnburyCard(card.card_id))
           }
-        />
+        >
+          Buried
+        </Toggle>
       </div>
       <div className="flex items-center gap-2">
         <Label className="text-sm text-muted-foreground">Flag</Label>
