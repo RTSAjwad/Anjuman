@@ -18,7 +18,7 @@ use sqlx::types::Json as SqlxJson;
 
 use anjuman_contracts::cards::{CardBrowserPage, CardBrowserQuery, CardBrowserResponse};
 
-use crate::{auth::AuthUser, note_types, state::AppState};
+use crate::{auth::AuthUser, note_types, state::AppState, tags};
 
 async fn rows_to_responses(
     db: &sqlx::PgPool,
@@ -54,6 +54,9 @@ async fn rows_to_responses(
             .find(|t| t.id == r.template_id)
             .map(|t| t.name.clone())
             .unwrap_or_else(|| format!("Card {}", r.template_id));
+        let tags = tags::tags_for_note(db, r.note_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         cards.push(CardBrowserResponse {
             card_id: r.card_id,
             note_id: r.note_id,
@@ -66,6 +69,7 @@ async fn rows_to_responses(
             note_type_id: r.note_type_id,
             template_name,
             fields,
+            tags,
             state: r.state,
             due_at: r.due_at,
             stability: r.stability,

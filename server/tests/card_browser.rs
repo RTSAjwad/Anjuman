@@ -72,3 +72,48 @@ async fn deck_filter_narrows_results() {
     assert_eq!(json["total"], 1, "body: {json}");
     assert_eq!(json["cards"][0]["card_id"], card, "body: {json}");
 }
+
+/// `GET /cards` returns each card's note tags (joined from `note_tags`, ordered
+/// by name) — additive field for the shared note-details panel (US-4.14).
+#[tokio::test]
+async fn cards_return_note_tags_ordered_by_name() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+
+    // Attach tags (inserted out of order to prove the ORDER BY name in
+    // `tags_for_note`); both belong to the card's note.
+    let note_id: i64 = sqlx::query_scalar!("SELECT note_id FROM cards WHERE id = $1", card)
+        .fetch_one(&app.db)
+        .await
+        .expect("note id");
+    for name in ["biology", "cells"] {
+        let tag_id: i64 = sqlx::query_scalar!(
+            "INSERT INTO tags (name) VALUES ($1) RETURNING id",
+            name
+        )
+        .fetch_one(&app.db)
+        .await
+        .expect("tag id");
+        sqlx::query!(
+            "INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)",
+            note_id,
+            tag_id
+        )
+        .execute(&app.db)
+        .await
+        .expect("note tag");
+    }
+
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+
+    let tags = json["cards"][0]["tags"]
+        .as_array()
+        .expect("tags array")
+        .iter()
+        .map(|t| t["name"].as_str().expect("tag name").to_string())
+        .collect::<Vec<String>>();
+    assert_eq!(tags, vec!["biology".to_string(), "cells".to_string()], "body: {json}");
+}

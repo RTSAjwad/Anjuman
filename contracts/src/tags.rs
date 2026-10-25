@@ -25,7 +25,7 @@ pub struct TagNode {
 /// Expected JSON body for adding tags to a note. Tags are submitted by name
 /// (matching Anki's "type tags separated by spaces"); names are normalised
 /// (trimmed) by the server and deduplicated.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AddTags {
     /// Tags to add, by name. May include `::` hierarchy.
@@ -33,7 +33,7 @@ pub struct AddTags {
 }
 
 /// Expected JSON body for removing tags from a note (by name).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RemoveTags {
     pub tags: Vec<String>,

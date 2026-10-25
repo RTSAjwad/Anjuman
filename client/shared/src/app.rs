@@ -29,7 +29,7 @@ use anjuman_contracts::notes::{
 use anjuman_contracts::reviews::{FlagResponse, SetFlag};
 use anjuman_contracts::MessageResponse;
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
-use anjuman_contracts::tags::{Tag, TagNode};
+use anjuman_contracts::tags::{AddTags, RemoveTags, Tag, TagNode};
 
 /// The base URL of the Anjuman server.
 ///
@@ -239,6 +239,16 @@ pub enum Event {
     NoteDelete {
         note_id: i64,
     },
+    /// Add tags to a note (free-form names; the server normalises + dedups).
+    NoteAddTags {
+        note_id: i64,
+        tags: Vec<String>,
+    },
+    /// Remove tags from a note (by name).
+    NoteRemoveTags {
+        note_id: i64,
+        tags: Vec<String>,
+    },
     /// Answer the current card with a rating (1-4: Again/Hard/Good/Easy).
     Answer {
         rating: i32,
@@ -408,6 +418,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     NoteDeleted(#[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteTagsChanged(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<Tag>>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -669,6 +683,9 @@ pub struct CardBrowserView {
     /// The note's fields, flattened to string values (mirrors `NoteView.fields`,
     /// so the shared note-details panel can edit a card's note directly).
     pub fields: HashMap<String, String>,
+    /// The note's tags as flattened names (mirrors `NoteView.tags`; ordered by
+    /// name from the server), for the shared note-details panel's tag editor.
+    pub tags: Vec<String>,
 }
 
 impl From<&CardBrowserResponse> for CardBrowserView {
@@ -684,6 +701,7 @@ impl From<&CardBrowserResponse> for CardBrowserView {
                 (k.clone(), s)
             })
             .collect();
+        let tags = c.tags.iter().map(|t| t.name.clone()).collect();
         CardBrowserView {
             card_id: c.card_id,
             note_id: c.note_id,
@@ -698,6 +716,7 @@ impl From<&CardBrowserResponse> for CardBrowserView {
             suspended: c.suspended.unwrap_or(false),
             buried: c.buried_at.is_some(),
             fields,
+            tags,
         }
     }
 }
@@ -1807,6 +1826,51 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::NoteAddTags { note_id, tags } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.notes_error = None;
+                let body = AddTags { tags };
+                Http::post(format!("{API_URL}/notes/{note_id}/tags"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize add tags")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTagsChanged)
+            }
+
+            Event::NoteRemoveTags { note_id, tags } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.notes_error = None;
+                let body = RemoveTags { tags };
+                Http::delete(format!("{API_URL}/notes/{note_id}/tags"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize remove tags")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTagsChanged)
+            }
+
+            // Tag changes are note-level and re-sync both browser lists (card +
+            // note), because the shared note-details panel may be in either mode;
+            // each refresh re-runs the existing resync_* selection hooks.
+            Event::NoteTagsChanged(Ok(_)) => {
+                model.notes_error = None;
+                refresh_notes(model).and(refresh_browser(model))
+            }
+
+            Event::NoteTagsChanged(Err(e)) => {
+                model.notes_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::StartStudy => {
                 // Requires a selected deck (and a token); otherwise a no-op.
                 let Some(deck) = &model.selected_deck else {
@@ -2728,6 +2792,7 @@ mod tests {
             ]
             .into_iter()
             .collect(),
+            tags: vec![Tag { id: 1, name: "spanish".to_string() }],
             state: Some("review".to_string()),
             due_at: None,
             stability: None,
@@ -4289,10 +4354,11 @@ mod tests {
     }
 
     /// `CardBrowserView::from(&CardBrowserResponse)` carries the card's note
-    /// `fields` (flattened to strings) and `note_type_id`, so the shared
-    /// note-details panel can edit a selected card's note directly.
+    /// `fields` (flattened to strings), `note_type_id`, and `tags` (flattened to
+    /// names), so the shared note-details panel can edit a selected card's note
+    /// (and its tags) directly.
     #[test]
-    fn card_browser_view_carries_fields_and_note_type_id() {
+    fn card_browser_view_carries_fields_note_type_id_and_tags() {
         let c = browser_card(11);
         let v = CardBrowserView::from(&c);
 
@@ -4305,6 +4371,7 @@ mod tests {
             v.fields.get("Back").map(|s| s.as_str()),
             Some("hello")
         );
+        assert_eq!(v.tags, vec!["spanish".to_string()]);
     }
 
     /// `BrowserSelectCard` records the selected card; an unknown id clears it.
@@ -4753,6 +4820,61 @@ mod tests {
             [Effect::Http(req)] => {
                 assert_eq!(req.operation.method.as_str(), "DELETE");
                 assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/notes/7");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteAddTags` emits `POST /notes/{id}/tags` with an `AddTags` body.
+    #[test]
+    fn note_add_tags_emits_post_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteAddTags {
+                note_id: 7,
+                tags: vec!["biology".to_string(), "cells".to_string()],
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/tags"
+                );
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteRemoveTags` emits `DELETE /notes/{id}/tags` with a `RemoveTags` body.
+    #[test]
+    fn note_remove_tags_emits_delete_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteRemoveTags {
+                note_id: 7,
+                tags: vec!["biology".to_string()],
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "DELETE");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/tags"
+                );
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }

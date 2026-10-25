@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use super::tags::Tag;
+
 /// Request body for rescheduling a card.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -118,6 +120,8 @@ pub struct CardBrowserResponse {
     pub note_type_id: i64,
     pub template_name: String,
     pub fields: Map<String, Value>,
+    /// The note's tags (shared note taxonomy), ordered by name.
+    pub tags: Vec<Tag>,
     pub state: Option<String>,
     pub due_at: Option<DateTime<Utc>>,
     pub stability: Option<f64>,
