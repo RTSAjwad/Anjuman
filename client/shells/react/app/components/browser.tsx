@@ -395,24 +395,16 @@ function DeckFilterNode({ deck, selected, onSelect, depth }: { deck: DeckSummary
 }
 
 const cardColumns: ColumnDef<BrowserTableFeatures, CardBrowserView>[] = [
-  {
-    accessorKey: "front",
-    header: "Card",
-    cell: ({ getValue, row }) => (
-      <span>
-        {getValue() as string}
-        {row.original.suspended ? " (suspended)" : ""}
-        {row.original.buried ? " (buried)" : ""}
-      </span>
-    ),
-  },
-  { accessorKey: "deck_title", header: "Deck" },
+  { accessorKey: "sort_field", header: "Sort field", cell: ({ getValue }) => (getValue() as string | null) ?? "" },
+  { accessorKey: "template_name", header: "Card type" },
+  { accessorKey: "due_at", header: "Due date", cell: ({ getValue }) => (getValue() as string | null) ?? "" },
   { accessorKey: "state", header: "State" },
   {
     id: "flag",
     header: "Flag",
     cell: ({ row }) => <FlagSwatch flag={row.original.flag} />,
   },
+  { accessorKey: "deck_path", header: "Deck" },
 ];
 
 const noteColumns: ColumnDef<BrowserTableFeatures, NoteView>[] = [
