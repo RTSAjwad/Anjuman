@@ -2,10 +2,10 @@
 
 A shell is the thin layer that turns the shared core's `ViewModel`, `Event`, and
 `Effect` into a visible, interactive app. This document is the **authoritative
-reference for building a shell** — any of the five targets (Leptos, SwiftUI,
-WinUI, Jetpack Compose, Libadwaita). It records the shared *pattern*; per-shell
-toolchain gotchas live in each shell's own directory when they genuinely diverge
-(see [`CLIENT.md`](./CLIENT.md) for the shared version pinnings).
+reference for building a shell** — the React web shell plus the planned native
+targets (SwiftUI, WinUI, Jetpack Compose, Libadwaita). It records the shared
+*pattern*; per-shell toolchain gotchas live in each shell's own directory when
+they genuinely diverge (see [`CLIENT.md`](./CLIENT.md) for the shared version pinnings).
 
 Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the *why* (core-first,
 boundaries) and [`CLIENT.md`](./CLIENT.md) for the version-pinned *how*.
@@ -15,10 +15,10 @@ This guide is the *what a shell must do*.
 
 | Shell kind | Examples | How it drives the core |
 |---|---|---|
-| **Rust** | Leptos, Libadwaita | The typed `Core<Anjuman>` API in-process: `core.process_event(event)` → effects → `core.view()`. **No serialization.** |
-| **Non-Rust** | SwiftUI, WinUI, Compose | The serialized FFI `Bridge` (`shared/src/ffi.rs`, `CoreFfi`) via `BoltFFI`-generated bindings + `Facet` typegen. |
+| **Rust** | Libadwaita (future) | The typed `Core<Anjuman>` API in-process: `core.process_event(event)` → effects → `core.view()`. **No serialization.** |
+| **Non-Rust** | React, SwiftUI, WinUI, Compose | The serialized FFI `Bridge` (`shared/src/ffi.rs`, `CoreFfi`) via `BoltFFI`-generated bindings + `Facet` typegen. |
 
-Rust shells must **not** serialize through the FFI `Bridge`; they hold `Rc<Core<Anjuman>>` and call the typed API directly (see the Leptos `core_link.rs`).
+Rust shells must **not** serialize through the FFI `Bridge`; they hold `Rc<Core<Anjuman>>` and call the typed API directly.
 
 ## 2. The shell's three responsibilities
 
@@ -71,9 +71,11 @@ forwards the same `Event`s. The concrete rule:
   field needs it, it may be shell-local; anything that affects *what the user
   can do* (which screen, which deck) is core-owned (i.e. `route`).
 
-This is the Crux-idiomatic answer to routing: URLs/`leptos_router` are web-only
-and would duplicate core state. The five shells share one routing model carried
-by the `ViewModel` + `Event`s, not per-shell URL frameworks.
+This is the Crux-idiomatic answer to routing: URLs are web-only and would
+duplicate core state. All shells share one routing model carried by the
+`ViewModel` + `Event`s, not per-shell URL frameworks. (The React shell is the
+sole web target now; it maps `ViewModel.route` ↔ a hash-based URL projection —
+see its `router.ts`/`use-hash-router.ts` — but still renders from `route`.)
 
 ## 4. Feature gating (permissions)
 
@@ -115,9 +117,10 @@ must merely mirror it so the two never drift.
 
 ## 5. The effect loop (canonical shape)
 
-Every shell implements this loop. The Leptos example below is the reference
-implementation; translate the `task::spawn_local` + `async` to each platform's
-concurrency idiom (Swift `Task`, Kotlin `viewModelScope` + `suspend`, C# `async`).
+Every shell implements this loop. The Rust example below is illustrative of the
+typed in-process path; translate `task::spawn_local` + `async` to each platform's
+concurrency idiom (Swift `Task`, Kotlin `viewModelScope` + `suspend`, C# `async`,
+or the React shell's `core.ts` effect loop).
 
 ```rust
 fn process_effect(core: &AppCore, effect: Effect, render: WriteSignal<ViewModel>) {
@@ -165,9 +168,8 @@ Key points:
 ### HTTP (`crux_http`)
 
 The shell performs the fetch and returns a `crux_http::Result<HttpResponse>`
-(`HttpResponse::status(status).body(bytes).build()`). Reference:
-`client/shells/leptos/src/http.rs` (uses `gloo-net` — `Request::get/post(url)`,
-`.header(name, value)`, `.send()`, `response.binary()`, `response.status()`).
+(`HttpResponse::status(status).body(bytes).build()`). Reference: the React
+shell's `core.client.ts` (`fetch` — method/headers/body → `HttpResponse`).
 
 - The core sends a `crux_http::protocol::HttpRequest` (plain `method`/`url`/
   `headers`/`body` as `String`/`Vec<u8>`). Validate nothing — pass through to the
@@ -178,8 +180,8 @@ The shell performs the fetch and returns a `crux_http::Result<HttpResponse>`
 ### Key-value (`crux_kv`)
 
 The shell persists bytes and returns a `crux_kv::KeyValueResult` (`Ok { response:
-KeyValueResponse::Get/Set/Delete { .. } }`). Reference:
-`client/shells/leptos/src/kv.rs` (uses `gloo_storage::LocalStorage`).
+KeyValueResponse::Get/Set/Delete { .. } }`). Reference: the React shell's
+`core.client.ts` (`localStorage` via `getItem`/`setItem`/`removeItem`).
 
 - `Get { key }` → `KeyValueResponse::Get { value: Value::Bytes(v) | Value::None }`.
 - `Set { key, value }` → store, return `KeyValueResponse::Set { previous }`.
@@ -208,8 +210,6 @@ between the core agent and the shell agent.
 
 ## 8. Per-shell gotchas (live here, not in the shared docs)
 
-- **Leptos** — CSR-only single binary (no `lib` target). Uses Tailwind + daisyUI
-  (see §9 for the styling contract) with `gloo-net` + `gloo-storage`.
 - **SwiftUI / WinUI / Compose** — FFI shells; see [`CLIENT.md`](./CLIENT.md) §BoltFFI for
   the binding + typegen flow (`boltffi generate <lang>`).
 - **React** (`client/shells/react/`) — the primary web shell as of stage 4. React
@@ -240,140 +240,9 @@ between the core agent and the shell agent.
 
 Add a section here for each shell as it is implemented.
 
-## 9. CSS scoping & self-containment (Leptos + Tailwind)
+## 9. Styling & self-containment
 
-The Leptos shell styles with **Tailwind utilities + shadcn convention theme
-tokens** — the same global-utility model rust-ui/leptos-ui (and shadcn, which it
-ports) uses by default: components are unstyled-scope-free class strings resolved
-against a global design system. Consistency comes from **`@layer` discipline**,
-not from scoped styles:
-
-- **Page/layout CSS** lives in `input.css` under `@layer components` (moved out
-  of the former unlayered `index.html` `<style>` block). This places it between
-  Tailwind's `base` and `utilities` layers, so it can no longer silently out-rank
-  preflight and leak into component internals.
-- **Components own their styling via explicit utility classes.** Every element a
-  component renders carries its own reset (`list-none m-0` on a popover list,
-  `p-*` on items, …) so ancestor reach-in cannot change its spacing — the
-  component is self-contained *by construction*, with no `<style>` injection and
-  no scoping (rust-ui/shadcn assume this).
-
-This is the shadcn model exactly: global utilities for skin, `@layer` for
-structure, and no CSS-in-Rust scoping of any kind.
-
-### 9.1 Two distinct CSS mechanisms (don't conflate them)
-
-1. **Inheritance.** Certain properties inherit *through the DOM tree*: `color`,
-   `font-*`, `text-align`, `visibility`, and **all CSS custom properties**
-   (`--foo`). This is real inheritance and it is a *feature*: it is why a
-   component picks up the active daisyUI theme tokens (`--color-base-content`,
-   etc.) with no effort. Layout/box properties (`display`, `position`, `margin`,
-   `padding`, `width`, `overflow`, `z-index`, flex settings) **do not inherit**.
-
-2. **Selector reach-in.** Leptos components compile to plain DOM elements with
-   **no DOM isolation**. A CSS selector matches ancestors/descendants across
-   component boundaries, so a global reset (`button { … }`) or a descendant rule
-   (`nav li { … }`) reaches *into* a component only when that component is
-   mounted inside the matching ancestor. This — not inheritance — is what made
-   identical markup render differently in the study navbar vs. the card
-   inspector.
-
-### 9.2 Why daisyUI semantic classes cause drift
-
-DaisyUI's "semantic" components (`btn`, `menu`, `dropdown`, `navbar`, …) are
-pre-built class bundles that fight idiomatic Leptos/Tailwind in concrete ways:
-
-- **Mega-selectors with descendant combinators** (`menu :where(li > button)`,
-  `dropdown :focus-within .dropdown-content`). They reach into components and are
-  coupled to internal DOM structure; a one-level nesting drift silently kills
-  the styling.
-- **`:where()` zero specificity + `@layer` ordering.** DaisyUI zeroes its
-  specificity so *you* can override it, but that also means Tailwind **preflight**
-  (bare `button`/`ul`/`li`/`summary` resets — normal type-selector specificity,
-  unlayered) beats DaisyUI's `:where(...)`-zeroed rules. Example: preflight's
-  `summary { display: list-item }` clobbers daisyUI's `summary { display: grid }`.
-- **Semantic classes encode layout, not just look.** `dropdown` sets
-  `display: inline-block`, `menu` sets `display: flex`, `navbar` sets
-  `display: flex` + `min-height`. Two classes on one element collide over the
-  same `display` property, and the layout *invariant* is coupled to the skin.
-- **State as CSS pseudo-classes.** Dropdown/menu open state is driven by
-  `:focus-within`, `details[open]`, or `.dropdown-open` — CSS state, not app
-  state. This fights Leptos's model where a `RwSignal<bool>` is the single source
-  of truth (and is exactly why the native `popover`/`popovertarget` open/close
-  went stale).
-- **Stringly-typed variants.** `btn btn-ghost btn-square` is a string of
-  modifier tokens; a typo silently no-ops.
-
-What daisyUI does **idiomatically**: token-driven theming
-(`--color-base-content`, `--color-neutral`, …) and composable visual utilities.
-Keep those.
-
-### 9.3 The self-containment contract (the rule going forward)
-
-For any **reusable `#[component]`**, hold these invariants so it renders
-identically in any screen:
-
-1. **Namespace the root.** Give the component a single prefix class (e.g.
-   `.flag-dropdown`) and style its *structural* properties behind that class.
-2. **Own the structural spine.** Re-assert `position`, `display`, flex, sizing,
-   and `z-index` **unlayered and non-`:where()`** (specificity `> 0`) in the shell
-   stylesheet. Unlayered and non-`:where()` beats daisyUI's layered/`:where()`
-   rules *and* global resets.
-3. **Never style bare global elements inside a component.** If the component
-   renders a `<button>`, style `.flag-dropdown__item`, not `button`. This makes
-   it immune to `sanitize.css`/preflight and to other screens' element rules.
-4. **Drives open/close (and any state) from a Leptos signal**, not from CSS
-   pseudo-classes (`:focus-within`) or the native `popover` toggle. Bind
-   visibility via `style:display` (or `class:` on a namespaced modifier).
-5. **Floating UI owns its positioned ancestor.** A dropdown/menu/tooltip must
-   (a) be anchored to its own `position: relative` wrapper that carries that
-   invariant explicitly (see the `.flag-dropdown` wrapper), or (b) live in the
-   top layer. Never rely on a daisyUI wrapper to supply `position: relative`.
-6. **Use Tailwind utilities for values, namespaced classes for structure.**
-   `p-2`, `rounded-box`, `flex` are fine as utilities; the *structural
-   invariants* a component must never lose live only in its namespaced class.
-
-**Litmus test:** *"If I drop this markup into an unrelated screen that has
-`sanitize.css` + Tailwind preflight + a flex row + `overflow: hidden`, does its
-layout still hold?"* If the answer depends on the answer, the component is not
-self-contained yet.
-
-### 9.4 Reference
-
-The canonical example is the owned primitives in `client/shells/leptos/src/components/`
-(`Button` with `tw_merge!`, `Dialog` with signal-driven `showModal()`/`close()`,
-`Switch` with controlled `checked`), plus `FlagDropdown` in
-`client/shells/leptos/src/app.rs` (`position: relative` wrapper + `RwSignal<bool>`
-open state + `position: absolute` menu). They own their structural invariants and
-style via Tailwind utilities + theme tokens — the pattern to follow for any new
-floating or layout-sensitive component.
-
-### 9.5 Primitive ownership (post-daisyUI)
-
-daisyUI has been removed — see `STYLING_MIGRATION.md`. The styling contract is
-now:
-
-- **No component library.** Every reusable visual unit is an owned Leptos
-  primitive in `src/components/` (`Button`, `Badge`, `Table`, `Switch`, `Tabs`/
-  `TabsTrigger`, `Input`, `Select`, `Card`, `Breadcrumb`, `Pagination`, `Dialog`).
-- **Tailwind utilities + theme tokens** (shadcn convention) do the visual styling
-  (`bg-primary`, `text-primary-foreground`, `border-input`, `bg-muted`, …). The
-  tokens live in `input.css` (`:root`/`.dark` → `@theme inline`).
-- **`tw_merge!`** composes the primitive's base classes with a caller's `class`,
-  resolving conflicts (later wins) instead of string concat.
-- **Own behavior/state/structure.** Primitives own `<button type>`, `disabled`,
-  ARIA, events, and any structural invariant (`position`, flex, `z-index`).
-- **Page/layout CSS** (`thaw-*`, `card-browser__*`, `study-*`, `deck-options*`)
-  lives in `input.css` under `@layer components`, not as unlayered author CSS.
-- **Components own their styling via explicit utility classes.** No scoped
-  `<style>`, no CSS-in-Rust — matching rust-ui/shadcn. A component that renders a
-  popover `ul`/`li`/`button` resets those elements itself with utilities
-  (`list-none m-0`, item `p-*`, …) so ancestor reach-in cannot drift it.
-- **App shell is utility-styled in place** (a signal-driven collapsible `<aside>`
-  sidebar + a utility navbar), not a self-contained primitive — it sits once in
-  `RootComponent`.
-
-The §9.1–§9.3 guidance (inheritance vs. selector reach-in, why semantic bundles
-caused drift, and the self-containment contract) still applies: the contract is
-now *enforced by explicit utilities + `@layer`* rather than by a scoped
-stylesheet.
+The Leptos shell (and its daisyUI/Tailwind styling contract) has been removed; the
+React shell is the sole web target. Its styling contract — shadcn/ui over Base UI
++ Tailwind v4, components owning their styling, no scoped CSS — is recorded in
+§8 (React bullet) and [`REACT_SHELL_PLAN.md`](./REACT_SHELL_PLAN.md) §2.

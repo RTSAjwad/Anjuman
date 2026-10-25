@@ -94,16 +94,16 @@ flowchart LR
 
 | Shell | Language / framework | Style |
 |---|---|---|
-| `shells/leptos` | Rust + Leptos (`trunk`) | Native Rust shell (WASM) |
+| `shells/react` | TypeScript + React (React Router) | FFI shell (WASM + `bincode`) |
 | `shells/swiftui` | Swift + SwiftUI | FFI shell (generated bindings + types) |
 | `shells/winui` | C# + WinUI | FFI shell |
 | `shells/jetpack-compose` | Kotlin + Jetpack Compose | FFI shell |
 | `shells/libadwaita` | Rust + GTK4 / libadwaita (`gtk4-rs`) | Native Rust shell |
 
-The **FFI shells** (SwiftUI, WinUI, Jetpack Compose) are driven through the
+The **FFI shells** (React, SwiftUI, WinUI, Jetpack Compose) are driven through the
 `Bridge` via generated bindings — they must, because their languages live outside
-Rust and can only exchange bytes with the core. The **Rust shells** (Leptos,
-Libadwaita) are *not* bound by that constraint: they drive the typed
+Rust and can only exchange bytes with the core. The **Rust shells** (Libadwaita,
+when built) are *not* bound by that constraint: they drive the typed
 `Core<Anjuman>` API directly (`process_event` / `view`), with no serialization,
 no `Bridge`, and the real `Event`/`Effect`/`ViewModel` types. See §4 for the
 boundary model and why these two paths differ.

@@ -10,25 +10,21 @@ This file is the *how* and *where to look*. For building a shell (Leptos now,
 SwiftUI/WinUI/Compose/Libadwaita later), see [`SHELLS.md`](./SHELLS.md) — the
 shared capability-implementation and effect-resolve patterns every shell follows.
 
-The Leptos shell is mid-migration off daisyUI onto owned Tailwind components — see
-[`STYLING_MIGRATION.md`](./STYLING_MIGRATION.md) for the plan and status. **The React
-shell is now the primary web front-end** (`client/shells/react/`); Leptos is
-back-burnered but not removed. See [`SHELLS.md`](./SHELLS.md) §8 and
-[`REACT_SHELL_PLAN.md`](./REACT_SHELL_PLAN.md) for the React shell's plan and status.
+**The React shell is the web front-end** (`client/shells/react/`). See
+[`SHELLS.md`](./SHELLS.md) §8 and [`REACT_SHELL_PLAN.md`](./REACT_SHELL_PLAN.md) for its
+plan and status.
 
 ---
 
 ## 1. What this repo is
 
 A Crux-based cross-platform application: a shared Rust **core** (`shared/`) plus
-thin **shells** (`shells/`). Two web shells are implemented (Leptos and React);
-the **React** shell is primary and the Leptos shell is back-burnered. Native
-shells (SwiftUI/WinUI/Compose/Libadwaita) are still planned.
+thin **shells** (`shells/`). The React shell is the implemented web front-end;
+native shells (SwiftUI/WinUI/Compose/Libadwaita) are still planned.
 
 - `shared/` — the Crux core. `Model`/`Event`/`ViewModel`/`Effect` in
   `src/app.rs`, FFI in `src/ffi.rs`, typegen binary in `src/bin/codegen.rs`.
-- `shells/leptos/` — the back-burnered web front-end (CSR-only, `trunk`).
-- `shells/react/` — the primary web front-end (React Router + Base UI + shadcn).
+- `shells/react/` — the web front-end (React Router + Base UI + shadcn).
 - `SCREENS_SUPPORT.md` — the client feature matrix (screens + deferred
   client-side behaviours) that stage-4 stories derive from. Lives in
   [`docs/support/screens.md`](../support/screens.md).
