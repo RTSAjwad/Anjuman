@@ -122,6 +122,12 @@ pub struct CardBrowserResponse {
     pub fields: Map<String, Value>,
     /// The note's tags (shared note taxonomy), ordered by name.
     pub tags: Vec<Tag>,
+    /// The resolved sort-field value (Anki's "Sort Field"): the note type's
+    /// `sort_field` (fallback: first field) resolved against the note's fields.
+    pub sort_field: Option<String>,
+    /// The card's deck's full ancestor path, top-down, joined with `::` (e.g.
+    /// `Biology 101::Cell Biology`). For a root deck this equals `deck_title`.
+    pub deck_path: String,
     pub state: Option<String>,
     pub due_at: Option<DateTime<Utc>>,
     pub stability: Option<f64>,

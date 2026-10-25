@@ -24,6 +24,7 @@ async fn rows_to_responses(
     db: &sqlx::PgPool,
     rows: Vec<CardBrowserRow>,
     new_card_offset: i64,
+    deck_map: &std::collections::HashMap<i64, (String, Option<i64>)>,
 ) -> Result<Vec<CardBrowserResponse>, StatusCode> {
     let mut cards = Vec::new();
     let mut new_pos = new_card_offset;
@@ -57,6 +58,13 @@ async fn rows_to_responses(
         let tags = tags::tags_for_note(db, r.note_id)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        // Resolve the note type's sort field (Anki's "Sort Field"): fall back to
+        // the first field when `sort_field` is empty, and `None` only when that
+        // field's value is genuinely absent (mirrors notes.rs::fetch_note_with_cards).
+        let sort_field = fields
+            .get(nt.effective_sort_field())
+            .map(value_to_string);
+        let deck_path = deck_path(&r.deck_title, r.deck_id, deck_map);
         cards.push(CardBrowserResponse {
             card_id: r.card_id,
             note_id: r.note_id,
@@ -70,6 +78,8 @@ async fn rows_to_responses(
             template_name,
             fields,
             tags,
+            sort_field,
+            deck_path,
             state: r.state,
             due_at: r.due_at,
             stability: r.stability,
@@ -85,6 +95,46 @@ async fn rows_to_responses(
         });
     }
     Ok(cards)
+}
+
+/// Coerce a field `Value` to a string for display (strings pass through, other
+/// scalars use their JSON representation). Mirrors `notes.rs::value_to_string`.
+fn value_to_string(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Build the `::`-joined ancestor path for a deck, top-down (e.g.
+/// `Biology 101::Cell Biology`), walking `parent_id` via the preloaded deck map.
+fn deck_path(
+    title: &str,
+    deck_id: i64,
+    deck_map: &std::collections::HashMap<i64, (String, Option<i64>)>,
+) -> String {
+    let mut segments = vec![title.to_string()];
+    let mut parent = deck_map
+        .get(&deck_id)
+        .and_then(|(_, p)| *p);
+    // Guard against cycles / missing parents with a bounded walk.
+    let mut seen = std::collections::HashSet::new();
+    seen.insert(deck_id);
+    while let Some(pid) = parent {
+        if !seen.insert(pid) {
+            break; // cycle guard
+        }
+        match deck_map.get(&pid) {
+            Some((ptitle, pparent)) => {
+                segments.push(ptitle.clone());
+                parent = *pparent;
+            }
+            None => break,
+        }
+    }
+    // `segments` was built bottom-up → reverse for top-down order.
+    segments.reverse();
+    segments.join("::")
 }
 
 /// Build a comma-separated integer list into an `IN (...)` clause.
@@ -208,7 +258,21 @@ pub async fn browse_cards(
         0i64
     };
 
-    let cards = rows_to_responses(&state.db, rows, new_card_offset)
+    // Preload the school's deck titles + parents once (single query), so the
+    // ancestor walk for `deck_path` does not incur an N+1 of parent lookups.
+    let deck_rows = sqlx::query!(
+        "SELECT id, title, parent_id FROM decks WHERE school_id = $1",
+        claims.school_id
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    let deck_map: std::collections::HashMap<i64, (String, Option<i64>)> = deck_rows
+        .into_iter()
+        .map(|r| (r.id, (r.title, r.parent_id)))
+        .collect();
+
+    let cards = rows_to_responses(&state.db, rows, new_card_offset, &deck_map)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 

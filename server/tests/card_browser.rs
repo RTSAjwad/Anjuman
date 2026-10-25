@@ -117,3 +117,90 @@ async fn cards_return_note_tags_ordered_by_name() {
         .collect::<Vec<String>>();
     assert_eq!(tags, vec!["biology".to_string(), "cells".to_string()], "body: {json}");
 }
+
+/// `GET /cards` resolves each card's `sort_field` (note type's sort field),
+/// `deck_path` (full `::`-joined ancestor chain), and `due_at` (the scheduled due
+/// timestamp) for the browser-table columns.
+#[tokio::test]
+async fn cards_return_sort_field_deck_path_and_due_at() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    // Nested deck structure: parent -> child.
+    let parent_id = sqlx::query!(
+        "INSERT INTO decks (school_id, title, created_by) VALUES (1, 'Biology 101', $1) RETURNING id",
+        teacher_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("parent deck")
+    .id;
+    let child_id = sqlx::query!(
+        "INSERT INTO decks (school_id, title, parent_id, created_by) VALUES (1, 'Cell Biology', $1, $2) RETURNING id",
+        parent_id,
+        teacher_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("child deck")
+    .id;
+
+    // Note type with an explicit sort field, a note, a card in the child deck,
+    // and a scheduled due date.
+    let note_type_id = sqlx::query!(
+        "INSERT INTO note_types (school_id, name, field_names, sort_field) VALUES (1, $1, '[\"Front\",\"Back\"]', 'Front') RETURNING id",
+        uuid::Uuid::new_v4().to_string()
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("note type")
+    .id;
+    let template_id = sqlx::query!(
+        "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES ($1, 0, 'Card 1', '{{Front}}', '{{Back}}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("template")
+    .id;
+    let note_id = sqlx::query!(
+        "INSERT INTO notes (note_type_id, fields_json) VALUES ($1, '{\"Front\":\"hola\",\"Back\":\"hello\"}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("note")
+    .id;
+    let card_id = sqlx::query!(
+        "INSERT INTO cards (note_id, deck_id, template_id) VALUES ($1, $2, $3) RETURNING id",
+        note_id,
+        child_id,
+        template_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("card")
+    .id;
+    sqlx::query!(
+        "INSERT INTO student_card_states (student_id, card_id, state, due_at, stability, difficulty, reps, lapses, step_index) VALUES ($1, $2, 'review', $3, 0.0, 0.0, 1, 0, 0)",
+        teacher_id,
+        card_id,
+        chrono::Utc::now()
+    )
+    .execute(&app.db)
+    .await
+    .expect("student state");
+
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+
+    let card = &json["cards"][0];
+    assert_eq!(card["sort_field"], "hola", "body: {json}");
+    assert_eq!(
+        card["deck_path"],
+        "Biology 101::Cell Biology",
+        "body: {json}"
+    );
+    assert!(card["due_at"].is_string(), "due_at should be present, body: {json}");
+}

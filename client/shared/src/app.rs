@@ -686,6 +686,15 @@ pub struct CardBrowserView {
     /// The note's tags as flattened names (mirrors `NoteView.tags`; ordered by
     /// name from the server), for the shared note-details panel's tag editor.
     pub tags: Vec<String>,
+    /// The card type's template name (the browser's "Card Type" column).
+    pub template_name: String,
+    /// The resolved sort-field value (Anki's "Sort Field" column).
+    pub sort_field: Option<String>,
+    /// Due date as a pre-formatted `%Y-%m-%d %H:%M` (UTC) string, or `None` when
+    /// not scheduled (the shell renders it verbatim — no client-side date math).
+    pub due_at: Option<String>,
+    /// The card's deck's full ancestor path, top-down, `::`-joined.
+    pub deck_path: String,
 }
 
 impl From<&CardBrowserResponse> for CardBrowserView {
@@ -702,6 +711,7 @@ impl From<&CardBrowserResponse> for CardBrowserView {
             })
             .collect();
         let tags = c.tags.iter().map(|t| t.name.clone()).collect();
+        let due_at = c.due_at.map(|dt| dt.format("%Y-%m-%d %H:%M").to_string());
         CardBrowserView {
             card_id: c.card_id,
             note_id: c.note_id,
@@ -717,6 +727,10 @@ impl From<&CardBrowserResponse> for CardBrowserView {
             buried: c.buried_at.is_some(),
             fields,
             tags,
+            template_name: c.template_name.clone(),
+            sort_field: c.sort_field.clone(),
+            due_at,
+            deck_path: c.deck_path.clone(),
         }
     }
 }
@@ -2793,6 +2807,8 @@ mod tests {
             .into_iter()
             .collect(),
             tags: vec![Tag { id: 1, name: "spanish".to_string() }],
+            sort_field: Some("hola".to_string()),
+            deck_path: "Spanish".to_string(),
             state: Some("review".to_string()),
             due_at: None,
             stability: None,
@@ -4372,6 +4388,25 @@ mod tests {
             Some("hello")
         );
         assert_eq!(v.tags, vec!["spanish".to_string()]);
+    }
+
+    /// `CardBrowserView::from(&CardBrowserResponse)` maps the browser-table column
+    /// fields — `template_name`, `sort_field`, `due_at` (formatted string), and
+    /// `deck_path` — through for the shell.
+    #[test]
+    fn card_browser_view_carries_column_fields() {
+        let mut c = browser_card(11);
+        c.template_name = "Card 1".to_string();
+        c.sort_field = Some("hola".to_string());
+        c.due_at = Some(chrono::Utc::now());
+        c.deck_path = "Biology 101::Cell Biology".to_string();
+
+        let v = CardBrowserView::from(&c);
+
+        assert_eq!(v.template_name, "Card 1");
+        assert_eq!(v.sort_field.as_deref(), Some("hola"));
+        assert!(v.due_at.is_some(), "due_at should be pre-formatted");
+        assert_eq!(v.deck_path, "Biology 101::Cell Biology");
     }
 
     /// `BrowserSelectCard` records the selected card; an unknown id clears it.
