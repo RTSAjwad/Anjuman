@@ -19,6 +19,7 @@ import {
   eventCardsRequested,
   eventNotesRequested,
   eventNoteTypesRequested,
+  eventTagsRequested,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
   eventBrowserSuspendCard,
@@ -28,6 +29,8 @@ import {
   eventBrowserRescheduleCard,
   eventBrowserFlagCard,
   eventNoteSave,
+  eventNoteAddTags,
+  eventNoteRemoveTags,
 } from "shared_types/app";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
@@ -61,6 +64,7 @@ import {
 } from "~/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { ButtonGroup } from "~/components/ui/button-group";
+import { ChipInput } from "~/components/ui/chip-input";
 import { ChevronRight, Flag, Search } from "lucide-react";
 
 const CARD_SORT_OPTIONS = [
@@ -120,6 +124,7 @@ type BrowserScreenProps = {
   noteSelected: NoteView | null;
   noteError: string | null;
   noteTypes: NoteTypeView[];
+  tagSuggestions: string[];
   canManageNotes: boolean;
   update: (event: Event) => void;
 };
@@ -171,6 +176,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
     if (initialized) return;
     setInitialized(true);
     update(eventNoteTypesRequested());
+    update(eventTagsRequested());
     apply(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized, route]);
@@ -325,6 +331,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
           cardSelected={props.cardSelected}
           noteSelected={props.noteSelected}
           noteTypes={props.noteTypes}
+          tagSuggestions={props.tagSuggestions}
           update={update}
         />
       </div>
@@ -538,17 +545,21 @@ function NoteDetailsPanel({
   cardSelected,
   noteSelected,
   noteTypes,
+  tagSuggestions,
   update,
 }: {
   route: "Cards" | "Notes";
   cardSelected: CardBrowserView | null;
   noteSelected: NoteView | null;
   noteTypes: NoteTypeView[];
+  tagSuggestions: string[];
   update: (e: Event) => void;
 }) {
   // Derive the note under selection for the active mode (cards select their
   // note, notes select it directly). Both are core-owned and re-synced, so this
   // stays read-only; the panel keeps *only* the in-progress field edits locally.
+  // Tags are note-level: notes mode carries them on the NoteView; cards mode has
+  // no tags yet (the pending core carve-out adds CardBrowserView.tags).
   const note =
     route === "Cards"
       ? cardSelected
@@ -557,6 +568,7 @@ function NoteDetailsPanel({
             note_type_id: cardSelected.note_type_id,
             note_type_name: cardSelected.note_type_name,
             fields: cardSelected.fields,
+            tags: [...cardSelected.tags],
           }
         : null
       : noteSelected
@@ -565,6 +577,7 @@ function NoteDetailsPanel({
             note_type_id: noteSelected.note_type_id,
             note_type_name: noteSelected.note_type_name,
             fields: noteSelected.fields,
+            tags: [...noteSelected.tags],
           }
         : null;
 
@@ -614,6 +627,16 @@ function NoteDetailsPanel({
     setCommitted(snapshot);
   }
 
+  // Tag add/remove are immediate (not part of the field Save) and map to the
+  // core's NoteAddTags/NoteRemoveTags; the core re-syncs the selected note/card
+  // tags after each, so the chip input updates reactively.
+  function addTag(tag: string) {
+    update(eventNoteAddTags(note!.id, [tag]));
+  }
+  function removeTag(tag: string) {
+    update(eventNoteRemoveTags(note!.id, [tag]));
+  }
+
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 border-l p-3">
       <h3 className="text-sm font-semibold">Note</h3>
@@ -628,6 +651,15 @@ function NoteDetailsPanel({
             />
           </div>
         ))}
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label className="text-xs text-muted-foreground">Tags</Label>
+        <ChipInput
+          tags={note.tags}
+          suggestions={tagSuggestions}
+          onAdd={addTag}
+          onRemove={removeTag}
+        />
       </div>
       <Button onClick={save} disabled={!dirty}>Save</Button>
     </aside>

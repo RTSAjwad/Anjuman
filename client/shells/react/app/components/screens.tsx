@@ -79,6 +79,7 @@ export function BrowserScreen() {
       noteSelected={view.notes_selected}
       noteError={view.notes_error}
       noteTypes={view.note_types}
+      tagSuggestions={view.tags.map((t) => t.name)}
       canManageNotes={view.permissions.can_manage_notes}
       update={update}
     />
