@@ -127,3 +127,28 @@ async fn note_response_sort_field_resolves_to_first_field_fallback() {
         "first-field fallback should resolve to the 'Front' value, body: {json}"
     );
 }
+
+/// A note's card `front`/`back` are wrapped in `.card` at render time (US-4.6.1),
+/// so the note type's styling (which targets `.card`) actually applies.
+#[tokio::test]
+async fn note_cards_wrap_front_and_back_in_card_wrapper() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let _note = seed_note(&app, teacher_id).await;
+
+    let (status, json) = get(&app, "/notes?sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+
+    let card = &json["notes"][0]["cards"][0];
+    assert_eq!(
+        card["front"],
+        "<div class=\"card\">hola</div>",
+        "front should be wrapped in a .card element, body: {json}"
+    );
+    assert_eq!(
+        card["back"],
+        "<div class=\"card\">hello</div>",
+        "back should be wrapped in a .card element, body: {json}"
+    );
+}

@@ -862,6 +862,13 @@ injected `HttpResponse`s, never a running server).
       predicate is US-4.7 (done) and teacher/admin study + real counts is
       US-4.8 (done). Cards browser is US-4.12; notes browser US-4.13; tagging UI
       US-4.14; classes/dashboard US-4.15; user admin US-4.16.
+- [ ] **Card styling parity (Anki-faithful)** — extends US-4.6, which delivered
+      the plumbing (note-type `styling` column + contracts + `StudyCard.styling`
+      + `StudyCardView` + seeded default `.card` rule) and recorded the dark-mode
+      inversion decision. Remaining fidelity per
+      <https://docs.ankiweb.net/manual/templates/styling>: US-4.6.1 (`.card`
+      wrappers so styling applies), US-4.6.2 (night-mode `.nightMode` rules), and
+      US-4.6.3 (arbitrary CSS/HTML + platform classes + RTL pass-through).
 - [ ] **Deferred client-side behaviours** — now in scope: on-screen timer + max
       answer seconds (US-4.17), audio/auto-advance/timebox/leech popup (US-4.18),
       preferences + theme/answer-keys (US-4.19). See [`docs/support/screens.md`](../support/screens.md).
@@ -1324,10 +1331,130 @@ Three decisions, recorded here so implementation is unambiguous:
       iframe, not the core/server. This story documents the *decision*; the shell
       work is a separate ⚪ cell, not a `shared` criterion.
 
-**Out of scope**
+**Out of scope** (for US-4.6 itself — superseded/covered by the styling-parity
+stories immediately below)
 
 - The shell's actual inversion implementation (the `Theme ⚪` cell), template
   editor UI for editing `styling`, and per-template CSS.
+
+**Status — delivery done; fidelity (parity) pending.** US-4.6 delivered the
+*plumbing* (the `styling` column, contracts, `StudyCard.styling`, the
+`StudyCardView` mapping, the seeded default `.card` rule) and *documented* the
+dark-mode decision. What remains is **Anki-faithful card styling behaviour**, per
+<https://docs.ankiweb.net/manual/templates/styling> — captured by the three
+stories below. The single most important gap: the renderer expands `{{Front}}`
+into bare field text with **no** wrapping `.card` element, so the seeded
+`.card { … }` rule is currently **dead CSS**. Anki resolves this by **injecting**
+a `<div class="card">` (and `class="cardN"` for the Nth card type) *around* the
+rendered template at render time — the template text stays bare (that is why the
+Anki template editor shows only `{{Front}}`). See US-4.6.1.
+
+#### US-4.6.1 — Inject the `.card` wrapper so note-type styling actually applies
+
+**As** a student reviewing a card,
+**I want** the card content wrapped in a `.card` element the way Anki does,
+**so that** the note type's styling (`.card`, `.card1`, …) actually applies to
+the card instead of being inert.
+
+**Why:** Anki's renderer wraps each rendered card in `<div class="card">` (and
+`<div class="cardN">` for the Nth card type of a multi-template note type),
+**injected at render time**, not present in the template text — which is why the
+template editor shows only `{{Front}}`. The wrapper is what makes both the
+seeded `.card` rule and author card-scoped rules (`.card`, `.card1`, …) bind.
+Without it, the seeded `.card { arial / 20px / centered / black-on-white }` rule
+matches nothing.
+
+**Acceptance criteria (core/server; the shell then consumes unchanged shapes)**
+
+- [x] `note_types::render_card`/`render_cards` wrap the rendered front/back in a
+      `.card` element, injected by the renderer (per Anki), so `StudyCard.front`
+      contains `<div class="card">…</div>`. **The seed `front_pattern`/
+      `back_pattern` stay bare** (`{{Front}}`, `{{Front}}<hr>{{Back}}`) — no seed
+      migration changes template text.
+- [x] The wrapper class reflects the card-type ordinal, matching Anki:
+      ordinal 0 → `class="card"`, ordinal 1 → `class="card1"` (the
+      `render_card`/`render_cards` callsites already pass `template_id`/the
+      template, so the renderer needs the template's ordinal to emit the right
+      suffix).
+- [x] The renderer does **not** strip or rewrite author HTML *inside* the
+      template — it still only expands `{{Field}}`; the `.card` wrapper is added
+      *around* the expanded result, never into the author's own markup.
+- [x] Tests named after the criteria:
+      `render_card_wraps_sides_in_card_element`,
+      `render_cards_suffixes_wrapper_class_by_ordinal`,
+      `render_card_preserves_author_html_in_template` (all in
+      `server/src/note_types.rs` unit tests) +
+      `note_cards_wrap_front_and_back_in_card_wrapper` (`server/tests/notes_browser.rs`,
+      the end-to-end "Basic" `.card` case). The multi-template `.card1` case is
+      covered by `render_cards_suffixes_wrapper_class_by_ordinal`.
+- [x] `cargo test` + OpenAPI generation pass; no new warnings.
+
+**Dependency:** none — pure server renderer + no wire-shape change (the shell
+keeps receiving `front`/`back`/`styling`; `front`/`back` now just carry the
+`.card` wrapper).
+
+**Divergence note (recorded):** Anki also applies the same `.card` wrapper in
+its *browser preview*, and injects the wrapper per-card (one wrapper per card =
+`front` and `back` are each individually wrapped, not the `.card` wrapping
+the front+back pair as one element). We match: each of `front` and `back` is
+wrapped independently in its own `.card`.
+
+#### US-4.6.2 — Night-mode rules (`.nightMode` / `.card.nightMode`)
+
+**As** a student reviewing in dark mode,
+**I want** the card to honour Anki's `.nightMode` author CSS (in addition to the
+coarse inversion already decided),
+**so that** note types that define explicit night-mode colours actually use them.
+
+**Why:** Anki's styling doc supports *both* (a) author-authored `.nightMode`
+selectors in the styling block and (b) a client-side inversion fallback. US-4.6
+documented (b); this story adds (a), i.e. the shell must *also* toggle a
+`nightMode` class on the card root when dark, so `.card.nightMode { … }` and
+`.nightMode .class { … }` rules bind.
+
+**Acceptance criteria (shell/core boundary — no server change expected)**
+
+- [ ] The shell injects a `nightMode` (or `night_mode`) class onto the card
+      `<body>`/root of the `<iframe>` `srcdoc` when the app is dark, alongside the
+      existing inversion stylesheet.
+- [ ] The `shared`/`StudyCardView` surface is unchanged; this is shell-side class
+      toggling (documented as such, mirroring the `Theme ⚪` cell per
+      [`docs/support/screens.md`](../support/screens.md)).
+- [ ] Any `server/tests/`/`shared` test is **not** required (client-only class
+      toggle); instead a `docs/client/SHELLS.md` (or `docs/support/screens.md`)
+      note records the `.nightMode` convention and that author CSS wins over the
+      inversion where both apply.
+
+#### US-4.6.3 — Arbitrary CSS/HTML, platform classes, and RTL pass-through
+
+**As** a note-type author,
+**I want** my arbitrary CSS/HTML (field-level `<div class=…>` styling,
+platform-specific selectors like `.android`/`.mobile`/`.iphone`, `direction: rtl`,
+image-resizing overrides, `@font-face`) to render faithfully,
+**so that** cards behave like they do in Anki rather than being stripped or
+re-themed.
+
+**Why:** most of the Anki styling manual is *already* satisfiable once (a) the
+`.card` wrapper exists (US-4.6.1) and (b) the styling CSS is injected verbatim
+(US-4.6). This story is the **fidelity gate** — it verifies we pass through
+arbitrary CSS/HTML unmodified and decides which platform/RTL classes are
+in-scope, rather than re-implementing them.
+
+**Acceptance criteria / decisions (record — explicit deferrals allowed)**
+
+- [ ] Confirm the renderer + shell do not sanitize or rewrite author CSS/HTML
+      (arbitrary tags/classes/`@font-face`/`<script>` pass through unmodified).
+      Record the decision in `docs/support/screens.md`.
+- [ ] Platform-specific classes (`.win`/`.mac`/`.linux`/`.android`/`.mobile`/
+      `.iphone`/`.ipad`): decide whether the shell sets a platform class on the
+      card root (recommended for the current single Leptos shell: `.linux`) or
+      defers to when multiple shells exist. **Deferred** — document, do not
+      implement now.
+- [ ] RTL `direction: rtl` and image-resizing (`img { max-width: none }`): these
+      are pure CSS and work once pass-through is confirmed — capture as a
+      regression note, not new code.
+- [ ] Audio replay-button styling (`.replay-button`) is out of scope until audio
+      is implemented (US-4.18); the class name is reserved in the doc only.
 
 ---
 

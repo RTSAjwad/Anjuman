@@ -146,18 +146,15 @@ pub fn validate_fields(field_names: &[String], fields: &NoteFields) -> Result<()
 }
 
 /// Render all cards for a note by applying each template to the fields.
+///
+/// Each rendered side is wrapped in a `.card` element (Anki's per-card wrapper,
+/// injected at render time — not part of the template text), with the card-type
+/// ordinal driving the class suffix: `.card` for the first template, `.card1`,
+/// `.card2`, … for later ones. See US-4.6.1.
 pub fn render_cards(templates: &[Template], fields: &NoteFields) -> Vec<RenderedCard> {
     templates
         .iter()
-        .map(|template| {
-            let front = render_template(&template.front_pattern, fields);
-            let back = render_template(&template.back_pattern, fields);
-            RenderedCard {
-                template_id: template.id,
-                front,
-                back,
-            }
-        })
+        .map(|template| render_one_card(template, fields))
         .collect()
 }
 
@@ -170,16 +167,46 @@ pub fn render_card(
     templates
         .iter()
         .find(|t| t.id == template_id)
-        .map(|template| RenderedCard {
-            template_id,
-            front: render_template(&template.front_pattern, fields),
-            back: render_template(&template.back_pattern, fields),
-        })
+        .map(|template| render_one_card(template, fields))
+}
+
+/// Render one template into a `RenderedCard`, wrapping each side in the `.card`
+/// element keyed by the template's ordinal.
+fn render_one_card(template: &Template, fields: &NoteFields) -> RenderedCard {
+    let front = wrap_card(&render_template(&template.front_pattern, fields), template.ord);
+    let back = wrap_card(&render_template(&template.back_pattern, fields), template.ord);
+    RenderedCard {
+        template_id: template.id,
+        front,
+        back,
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
+
+/// The `.card` class name for a template at the given 0-based ordinal, matching
+/// Anki: the first card type is `.card`, and every later one is `.cardN` (N =
+/// ordinal).
+fn card_wrapper_class(ord: i64) -> String {
+    if ord == 0 {
+        "card".to_string()
+    } else {
+        format!("card{ord}")
+    }
+}
+
+/// Wrap a rendered card side (front/back) in Anki's per-card `.card` wrapper.
+fn wrap_card(body: &str, ord: i64) -> String {
+    // `body` is the renderer's *own* output (template-expanded field text), so
+    // building this as a string is safe; we never parse/rewrite the author's
+    // HTML — only surround it.
+    format!(
+        "<div class=\"{}\">{body}</div>",
+        card_wrapper_class(ord)
+    )
+}
 
 /// Replace `{{FieldName}}` placeholders in a template string.
 fn render_template(template: &str, fields: &NoteFields) -> String {
@@ -215,4 +242,68 @@ fn render_template(template: &str, fields: &NoteFields) -> String {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fields() -> NoteFields {
+        [
+            ("Front".to_string(), serde_json::Value::String("hola".to_string())),
+            ("Back".to_string(), serde_json::Value::String("hello".to_string())),
+        ]
+        .into_iter()
+        .collect()
+    }
+
+    fn template(id: i64, ord: i64) -> Template {
+        Template {
+            id,
+            ord,
+            name: format!("Card {ord}"),
+            front_pattern: "{{Front}}".to_string(),
+            back_pattern: "{{Front}}<hr>{{Back}}".to_string(),
+        }
+    }
+
+    /// `render_card` wraps the rendered front/back in `.card` so the note type's
+    /// styling applies (US-4.6.1).
+    #[test]
+    fn render_card_wraps_sides_in_card_element() {
+        let templates = vec![template(10, 0)];
+        let rendered = render_card(&templates, 10, &fields()).expect("card rendered");
+
+        assert_eq!(rendered.front, "<div class=\"card\">hola</div>");
+        assert_eq!(rendered.back, "<div class=\"card\">hola<hr>hello</div>");
+    }
+
+    /// The wrapper class reflects the template's ordinal: `.card` for the first
+    /// template, `.card1` (etc.) for later ones, matching Anki's multi-card types.
+    #[test]
+    fn render_cards_suffixes_wrapper_class_by_ordinal() {
+        let templates = vec![template(10, 0), template(11, 1)];
+        let rendered = render_cards(&templates, &fields());
+
+        assert_eq!(rendered.len(), 2);
+        assert_eq!(rendered[0].template_id, 10);
+        assert!(rendered[0].front.starts_with("<div class=\"card\">"));
+        assert_eq!(rendered[1].template_id, 11);
+        assert!(rendered[1].front.starts_with("<div class=\"card1\">"));
+        assert!(rendered[1].back.starts_with("<div class=\"card1\">"));
+    }
+
+    /// The renderer keeps author HTML inside the template intact, only wrapping
+    /// around it (US-4.6.1 — no rewrite/strip).
+    #[test]
+    fn render_card_preserves_author_html_in_template() {
+        let mut t = template(10, 0);
+        t.front_pattern = "<div class='mine'>{{Front}}</div>".to_string();
+        let rendered = render_card(&[t], 10, &fields()).expect("card rendered");
+
+        assert_eq!(
+            rendered.front,
+            "<div class=\"card\"><div class='mine'>hola</div></div>"
+        );
+    }
 }
