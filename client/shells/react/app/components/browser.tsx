@@ -31,6 +31,7 @@ import {
   eventNoteSave,
   eventNoteAddTags,
   eventNoteRemoveTags,
+  eventNoteDelete,
 } from "shared_types/app";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
@@ -642,6 +643,7 @@ function NoteDetailsPanel({
   // button disables immediately after a save in both cards and notes modes.
   const [edits, setEdits] = useState<Map<string, string>>(new Map());
   const [committed, setCommitted] = useState<Map<string, string>>(new Map());
+  const [deleteOpen, setDeleteOpen] = useState(false);
   useEffect(() => {
     const seed = new Map(note ? note.fields : []);
     setEdits(seed);
@@ -684,6 +686,11 @@ function NoteDetailsPanel({
     update(eventNoteRemoveTags(note!.id, [tag]));
   }
 
+  function confirmDelete() {
+    update(eventNoteDelete(note!.id));
+    setDeleteOpen(false);
+  }
+
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 border-l p-3">
       <h3 className="text-sm font-semibold">Note</h3>
@@ -708,6 +715,22 @@ function NoteDetailsPanel({
         />
       </div>
       <Button onClick={save} disabled={!dirty}>Save</Button>
+      <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete note</Button>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete note</DialogTitle>
+            <DialogDescription>
+              This deletes the note and all of its cards. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
