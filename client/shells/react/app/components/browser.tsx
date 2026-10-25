@@ -28,6 +28,10 @@ import {
   eventBrowserRescheduleCard,
   eventBrowserFlagCard,
   eventBrowserMoveCard,
+  eventBrowserSuspendNote,
+  eventBrowserUnsuspendNote,
+  eventBrowserBuryNote,
+  eventBrowserUnburyNote,
   eventNoteSave,
   eventNoteAddTags,
   eventNoteRemoveTags,
@@ -554,8 +558,24 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
       <Separator orientation="vertical" />
       <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
       <ButtonGroup>
-        <Button variant="outline" disabled>Suspend Note</Button>
-        <Button variant="outline" disabled>Bury Note</Button>
+        <Toggle
+          variant="outline"
+          pressed={card.suspended}
+          onPressedChange={(v) =>
+            update(v ? eventBrowserSuspendNote(card.note_id) : eventBrowserUnsuspendNote(card.note_id))
+          }
+        >
+          Suspend Note
+        </Toggle>
+        <Toggle
+          variant="outline"
+          pressed={card.buried}
+          onPressedChange={(v) =>
+            update(v ? eventBrowserBuryNote(card.note_id) : eventBrowserUnburyNote(card.note_id))
+          }
+        >
+          Bury Note
+        </Toggle>
         <Button variant="destructive" onClick={() => setDeleteNoteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
       </ButtonGroup>
 
