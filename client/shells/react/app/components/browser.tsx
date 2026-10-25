@@ -499,7 +499,7 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
 
   return (
     <div className="flex items-center gap-4">
-      <div className="flex items-center gap-2">
+      <ButtonGroup>
         <Toggle
           variant="outline"
           pressed={card.suspended}
@@ -507,10 +507,8 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
             update(v ? eventBrowserSuspendCard(card.card_id) : eventBrowserUnsuspendCard(card.card_id))
           }
         >
-          Suspended
+          Suspend
         </Toggle>
-      </div>
-      <div className="flex items-center gap-2">
         <Toggle
           variant="outline"
           pressed={card.buried}
@@ -518,11 +516,10 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
             update(v ? eventBrowserBuryCard(card.card_id) : eventBrowserUnburyCard(card.card_id))
           }
         >
-          Buried
+          Bury
         </Toggle>
-      </div>
-      <div className="flex items-center gap-2">
-        <Label className="text-sm text-muted-foreground">Flag</Label>
+        <Button variant="outline" onClick={() => setRescheduleOpen(true)}>Reschedule</Button>
+        <Button variant="outline" onClick={() => setMoveOpen(true)}>Change deck</Button>
         <Select
           items={FLAG_OPTIONS}
           value={String(card.flag)}
@@ -543,9 +540,7 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
             </SelectGroup>
           </SelectContent>
         </Select>
-      </div>
-      <Button variant="outline" onClick={() => setRescheduleOpen(true)}>Reschedule</Button>
-      <Button variant="outline" onClick={() => setMoveOpen(true)}>Change deck</Button>
+      </ButtonGroup>
 
       <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
         <DialogContent>
