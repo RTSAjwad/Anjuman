@@ -198,7 +198,11 @@ export function BrowserScreen(props: BrowserScreenProps) {
   const error = route === "Cards" ? props.cardError : props.noteError;
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {route === "Cards" ? (
+        <CardActions card={props.cardSelected} update={update} />
+      ) : null}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       <aside className="w-56 shrink-0 overflow-y-auto border-r p-3">
         <form
           onSubmit={(e) => {
@@ -321,6 +325,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
           </div>
         </div>
         {route === "Cards" ? <CardInspector {...props} /> : <NoteInspector {...props} />}
+      </div>
       </div>
     </div>
   );
@@ -448,54 +453,52 @@ function FlagSwatch({ flag }: { flag: bigint }) {
   );
 }
 
-function CardInspector({ cardSelected, update }: Pick<BrowserScreenProps, "cardSelected" | "update">) {
+function CardActions({ card, update }: { card: CardBrowserView | null; update: (e: Event) => void }) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [days, setDays] = useState("");
 
-  if (!cardSelected) {
-    return <aside className="w-64 shrink-0 border-l" />;
+  if (!card) {
+    return <div className="flex h-11 shrink-0 items-center border-b px-3 text-sm text-muted-foreground" />;
   }
 
   function confirmReschedule() {
     const d = Number(days.trim());
     if (Number.isFinite(d)) {
-      update(eventBrowserRescheduleCard(cardSelected!.card_id, BigInt(d)));
+      update(eventBrowserRescheduleCard(card!.card_id, BigInt(d)));
       setDays("");
       setRescheduleOpen(false);
     }
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col gap-3 border-l p-3">
-      <h3 className="text-sm font-semibold">Card</h3>
-      <p className="text-sm">{cardSelected.front}</p>
-      <div className="flex items-center justify-between">
+    <div className="flex h-11 shrink-0 items-center gap-4 border-b px-3">
+      <div className="flex items-center gap-2">
         <Label className="text-sm text-muted-foreground">Suspended</Label>
         <Switch
-          checked={cardSelected.suspended}
+          checked={card.suspended}
           onCheckedChange={(v) =>
-            update(v ? eventBrowserSuspendCard(cardSelected.card_id) : eventBrowserUnsuspendCard(cardSelected.card_id))
+            update(v ? eventBrowserSuspendCard(card.card_id) : eventBrowserUnsuspendCard(card.card_id))
           }
         />
       </div>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <Label className="text-sm text-muted-foreground">Buried</Label>
         <Switch
-          checked={cardSelected.buried}
+          checked={card.buried}
           onCheckedChange={(v) =>
-            update(v ? eventBrowserBuryCard(cardSelected.card_id) : eventBrowserUnburyCard(cardSelected.card_id))
+            update(v ? eventBrowserBuryCard(card.card_id) : eventBrowserUnburyCard(card.card_id))
           }
         />
       </div>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <Label className="text-sm text-muted-foreground">Flag</Label>
         <Select
           items={FLAG_OPTIONS}
-          value={String(cardSelected.flag)}
-          onValueChange={(v) => { if (v !== null) update(eventBrowserFlagCard(cardSelected.card_id, Number(v))); }}
+          value={String(card.flag)}
+          onValueChange={(v) => { if (v !== null) update(eventBrowserFlagCard(card.card_id, Number(v))); }}
         >
           <SelectTrigger className="w-28">
-            <Flag className={cn("size-4", String(cardSelected.flag) !== "0" && flagColor(String(cardSelected.flag)), String(cardSelected.flag) !== "0" && "fill-current")} />
+            <Flag className={cn("size-4", String(card.flag) !== "0" && flagColor(String(card.flag)), String(card.flag) !== "0" && "fill-current")} />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -525,6 +528,19 @@ function CardInspector({ cardSelected, update }: Pick<BrowserScreenProps, "cardS
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function CardInspector({ cardSelected }: Pick<BrowserScreenProps, "cardSelected">) {
+  if (!cardSelected) {
+    return <aside className="w-64 shrink-0 border-l" />;
+  }
+
+  return (
+    <aside className="flex w-64 shrink-0 flex-col gap-3 border-l p-3">
+      <h3 className="text-sm font-semibold">Card</h3>
+      <p className="text-sm">{cardSelected.front}</p>
     </aside>
   );
 }
