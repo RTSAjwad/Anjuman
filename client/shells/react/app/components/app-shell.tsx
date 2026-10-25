@@ -121,7 +121,7 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
                 onShowNotes={() => update(eventShowNotes())}
               />
               {route === "Cards" ? (
-                <CardActions card={view.browser_selected} decks={view.decks} update={update} />
+                <CardActions card={view.browser_selected} decks={view.decks} canManageNotes={canManageNotes} update={update} />
               ) : null}
             </>
           ) : route === "Study" ? (

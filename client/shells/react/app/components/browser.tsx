@@ -66,6 +66,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { ButtonGroup } from "~/components/ui/button-group";
 import { ChipInput } from "~/components/ui/chip-input";
+import { Separator } from "~/components/ui/separator";
 import { ChevronRight, Flag, Search } from "lucide-react";
 
 const CARD_SORT_OPTIONS = [
@@ -470,11 +471,12 @@ function flatDeckOptions(decks: DeckSummary[]): { id: bigint; path: string }[] {
   return out;
 }
 
-export function CardActions({ card, decks, update }: { card: CardBrowserView | null; decks: DeckSummary[]; update: (e: Event) => void }) {
+export function CardActions({ card, decks, canManageNotes, update }: { card: CardBrowserView | null; decks: DeckSummary[]; canManageNotes: boolean; update: (e: Event) => void }) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [days, setDays] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);
   const [targetDeck, setTargetDeck] = useState("");
+  const [deleteNoteOpen, setDeleteNoteOpen] = useState(false);
 
   if (!card) {
     return null;
@@ -497,8 +499,15 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
     }
   }
 
+  function confirmDeleteNote() {
+    update(eventNoteDelete(card!.note_id));
+    setDeleteNoteOpen(false);
+  }
+
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-2">
+      <Separator orientation="vertical" />
+      <span className="text-sm font-medium text-muted-foreground">Card Actions</span>
       <ButtonGroup>
         <Toggle
           variant="outline"
@@ -541,6 +550,29 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
           </SelectContent>
         </Select>
       </ButtonGroup>
+
+      <Separator orientation="vertical" />
+      <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
+      <ButtonGroup>
+        <Button variant="outline" disabled>Suspend Note</Button>
+        <Button variant="outline" disabled>Bury Note</Button>
+        <Button variant="destructive" onClick={() => setDeleteNoteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
+      </ButtonGroup>
+
+      <Dialog open={deleteNoteOpen} onOpenChange={setDeleteNoteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete note</DialogTitle>
+            <DialogDescription>
+              This deletes the note and all of its cards. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteNoteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteNote}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
         <DialogContent>
@@ -645,7 +677,6 @@ function NoteDetailsPanel({
   // button disables immediately after a save in both cards and notes modes.
   const [edits, setEdits] = useState<Map<string, string>>(new Map());
   const [committed, setCommitted] = useState<Map<string, string>>(new Map());
-  const [deleteOpen, setDeleteOpen] = useState(false);
   useEffect(() => {
     const seed = new Map(note ? note.fields : []);
     setEdits(seed);
@@ -688,11 +719,6 @@ function NoteDetailsPanel({
     update(eventNoteRemoveTags(note!.id, [tag]));
   }
 
-  function confirmDelete() {
-    update(eventNoteDelete(note!.id));
-    setDeleteOpen(false);
-  }
-
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 border-l p-3">
       <h3 className="text-sm font-semibold">Note</h3>
@@ -719,22 +745,6 @@ function NoteDetailsPanel({
         />
       </div>
       <Button onClick={save} disabled={!dirty || !canManageNotes}>Save</Button>
-      <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete note</Button>
-
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete note</DialogTitle>
-            <DialogDescription>
-              This deletes the note and all of its cards. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </aside>
   );
 }
