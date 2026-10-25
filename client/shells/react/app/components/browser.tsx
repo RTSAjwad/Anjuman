@@ -27,11 +27,11 @@ import {
   eventBrowserUnburyCard,
   eventBrowserRescheduleCard,
   eventBrowserFlagCard,
+  eventNoteSave,
 } from "shared_types/app";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
-import { Badge } from "~/components/ui/badge";
 import { Switch } from "~/components/ui/switch";
 import { Label } from "~/components/ui/label";
 
@@ -320,7 +320,13 @@ export function BrowserScreen(props: BrowserScreenProps) {
             </Pagination>
           </div>
         </div>
-        {route === "Cards" ? <CardInspector {...props} /> : <NoteInspector {...props} />}
+        <NoteDetailsPanel
+          route={route}
+          cardSelected={props.cardSelected}
+          noteSelected={props.noteSelected}
+          noteTypes={props.noteTypes}
+          update={update}
+        />
       </div>
     </div>
   );
@@ -527,42 +533,95 @@ export function CardActions({ card, update }: { card: CardBrowserView | null; up
   );
 }
 
-function CardInspector({ cardSelected }: Pick<BrowserScreenProps, "cardSelected">) {
-  if (!cardSelected) {
-    return <aside className="w-64 shrink-0 border-l" />;
+function NoteDetailsPanel({
+  route,
+  cardSelected,
+  noteSelected,
+  noteTypes,
+  update,
+}: {
+  route: "Cards" | "Notes";
+  cardSelected: CardBrowserView | null;
+  noteSelected: NoteView | null;
+  noteTypes: NoteTypeView[];
+  update: (e: Event) => void;
+}) {
+  // Derive the note under selection for the active mode (cards select their
+  // note, notes select it directly). Both are core-owned and re-synced, so this
+  // stays read-only; the panel keeps *only* the in-progress field edits locally.
+  const note =
+    route === "Cards"
+      ? cardSelected
+        ? {
+            id: cardSelected.note_id,
+            note_type_id: cardSelected.note_type_id,
+            note_type_name: cardSelected.note_type_name,
+            fields: cardSelected.fields,
+          }
+        : null
+      : noteSelected
+        ? {
+            id: noteSelected.id,
+            note_type_id: noteSelected.note_type_id,
+            note_type_name: noteSelected.note_type_name,
+            fields: noteSelected.fields,
+          }
+        : null;
+
+  const fieldNames = (() => {
+    if (!note) return [];
+    const nt = noteTypes.find((t) => t.id === note.note_type_id);
+    if (nt && nt.field_names.length > 0) return [...nt.field_names];
+    // Fallback: iterate the note's own fields (order not guaranteed).
+    return Array.from(note.fields.keys());
+  })();
+
+  // In-progress edits, re-seeded whenever the selected note changes.
+  const [edits, setEdits] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    setEdits(new Map(note ? note.fields : []));
+  }, [note?.id]);
+
+  if (!note) {
+    return <aside className="w-72 shrink-0 border-l" />;
+  }
+
+  const dirty = (() => {
+    if (edits.size !== note.fields.size) return true;
+    for (const [k, v] of note.fields) {
+      if (edits.get(k) !== v) return true;
+    }
+    return false;
+  })();
+
+  function setField(name: string, value: string) {
+    setEdits((prev) => {
+      const next = new Map(prev);
+      next.set(name, value);
+      return next;
+    });
+  }
+
+  function save() {
+    update(eventNoteSave(note!.id, null, new Map(edits)));
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col gap-3 border-l p-3">
-      <h3 className="text-sm font-semibold">Card</h3>
-      <p className="text-sm">{cardSelected.front}</p>
-    </aside>
-  );
-}
-
-function NoteInspector({ noteSelected }: Pick<BrowserScreenProps, "noteSelected">) {
-  if (!noteSelected) {
-    return <aside className="w-64 shrink-0 border-l" />;
-  }
-  return (
-    <aside className="flex w-64 shrink-0 flex-col gap-2 border-l p-3">
+    <aside className="flex w-72 shrink-0 flex-col gap-3 border-l p-3">
       <h3 className="text-sm font-semibold">Note</h3>
-      <p className="text-xs text-muted-foreground">{noteSelected.note_type_name}</p>
-      <div className="flex flex-col gap-1">
-        {Array.from(noteSelected.fields.entries()).map(([k, v]) => (
-          <div key={k} className="text-sm">
-            <span className="text-muted-foreground">{k}: </span>
-            {v}
+      <p className="text-xs text-muted-foreground">{note.note_type_name}</p>
+      <div className="flex flex-col gap-2">
+        {fieldNames.map((name) => (
+          <div key={name} className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">{name}</Label>
+            <Input
+              value={edits.get(name) ?? ""}
+              onChange={(e) => setField(name, e.target.value)}
+            />
           </div>
         ))}
       </div>
-      {noteSelected.tags.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {noteSelected.tags.map((t) => (
-            <Badge key={t} variant="outline">{t}</Badge>
-          ))}
-        </div>
-      ) : null}
+      <Button onClick={save} disabled={!dirty}>Save</Button>
     </aside>
   );
 }
