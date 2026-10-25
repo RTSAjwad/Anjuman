@@ -332,6 +332,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
           cardSelected={props.cardSelected}
           noteSelected={props.noteSelected}
           noteTypes={props.noteTypes}
+          canManageNotes={props.canManageNotes}
           update={update}
         />
       </div>
@@ -595,12 +596,14 @@ function NoteDetailsPanel({
   cardSelected,
   noteSelected,
   noteTypes,
+  canManageNotes,
   update,
 }: {
   route: "Cards" | "Notes";
   cardSelected: CardBrowserView | null;
   noteSelected: NoteView | null;
   noteTypes: NoteTypeView[];
+  canManageNotes: boolean;
   update: (e: Event) => void;
 }) {
   // Derive the note under selection for the active mode (cards select their
@@ -702,6 +705,7 @@ function NoteDetailsPanel({
             <Input
               value={edits.get(name) ?? ""}
               onChange={(e) => setField(name, e.target.value)}
+              disabled={!canManageNotes}
             />
           </div>
         ))}
@@ -712,10 +716,11 @@ function NoteDetailsPanel({
           tags={note.tags}
           onAdd={addTag}
           onRemove={removeTag}
+          disabled={!canManageNotes}
         />
       </div>
-      <Button onClick={save} disabled={!dirty}>Save</Button>
-      <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete note</Button>
+      <Button onClick={save} disabled={!dirty || !canManageNotes}>Save</Button>
+      <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete note</Button>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
