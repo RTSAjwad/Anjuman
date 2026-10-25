@@ -507,7 +507,7 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
             update(v ? eventBrowserSuspendCard(card.card_id) : eventBrowserUnsuspendCard(card.card_id))
           }
         >
-          Suspend
+          Suspend Card
         </Toggle>
         <Toggle
           variant="outline"
@@ -516,7 +516,7 @@ export function CardActions({ card, decks, update }: { card: CardBrowserView | n
             update(v ? eventBrowserBuryCard(card.card_id) : eventBrowserUnburyCard(card.card_id))
           }
         >
-          Bury
+          Bury Card
         </Toggle>
         <Button variant="outline" onClick={() => setRescheduleOpen(true)}>Reschedule</Button>
         <Button variant="outline" onClick={() => setMoveOpen(true)}>Change deck</Button>
