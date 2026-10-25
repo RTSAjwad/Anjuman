@@ -19,7 +19,6 @@ import {
   eventCardsRequested,
   eventNotesRequested,
   eventNoteTypesRequested,
-  eventTagsRequested,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
   eventBrowserSuspendCard,
@@ -124,7 +123,6 @@ type BrowserScreenProps = {
   noteSelected: NoteView | null;
   noteError: string | null;
   noteTypes: NoteTypeView[];
-  tagSuggestions: string[];
   canManageNotes: boolean;
   update: (event: Event) => void;
 };
@@ -176,7 +174,6 @@ export function BrowserScreen(props: BrowserScreenProps) {
     if (initialized) return;
     setInitialized(true);
     update(eventNoteTypesRequested());
-    update(eventTagsRequested());
     apply(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized, route]);
@@ -331,7 +328,6 @@ export function BrowserScreen(props: BrowserScreenProps) {
           cardSelected={props.cardSelected}
           noteSelected={props.noteSelected}
           noteTypes={props.noteTypes}
-          tagSuggestions={props.tagSuggestions}
           update={update}
         />
       </div>
@@ -545,14 +541,12 @@ function NoteDetailsPanel({
   cardSelected,
   noteSelected,
   noteTypes,
-  tagSuggestions,
   update,
 }: {
   route: "Cards" | "Notes";
   cardSelected: CardBrowserView | null;
   noteSelected: NoteView | null;
   noteTypes: NoteTypeView[];
-  tagSuggestions: string[];
   update: (e: Event) => void;
 }) {
   // Derive the note under selection for the active mode (cards select their
@@ -656,7 +650,6 @@ function NoteDetailsPanel({
         <Label className="text-xs text-muted-foreground">Tags</Label>
         <ChipInput
           tags={note.tags}
-          suggestions={tagSuggestions}
           onAdd={addTag}
           onRemove={removeTag}
         />
