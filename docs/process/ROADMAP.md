@@ -842,8 +842,8 @@ every acceptance criterion maps to a `CruxCore::update` test in `client/shared`
 injected `HttpResponse`s, never a running server).
 
 > **Core vs. shell.** Acceptance criteria live in and test the **core**; the
-> Leptos shell is thin glue and generally not unit-tested. Criteria are phrased
-> as core behaviours, not UI prose.
+> shell is thin glue and generally not unit-tested. Criteria are phrased as core
+> behaviours, not UI prose.
 
 - [x] **US-4.1 — Client plumbing (contracts + capabilities + test harness).**
       Front-load the API surface before any feature (see story below). Done:
@@ -852,11 +852,11 @@ injected `HttpResponse`s, never a running server).
       HTTP idiom, 7 passing tests.
 - [x] **US-4.2 — Auth flow** (login → store JWT via `crux_kv` → `GET /me`).
       Everything downstream is authenticated, so this comes first (see story
-      below). Done: contracts derives + auth core + 7 tests + Leptos
+      below). Done: contracts derives + auth core + 7 tests + the shell's
       `crux_http`/`crux_kv` capabilities + login screen.
 - [ ] **Stable screens** — decks, notes, cards, study (one story per screen, in
       dependency order). Decks list is US-4.3 (done); study entry is US-4.4
-      (done) and the study loop core is US-4.5 (done; Leptos rendering pending
+      (done) and the study loop core is US-4.5 (done; shell rendering pending
       the shell agent); card styling (note-type CSS) is US-4.6 (done core+server;
       shell injection + dark-mode inversion pending); deck authorization
       predicate is US-4.7 (done) and teacher/admin study + real counts is
