@@ -1,6 +1,6 @@
 import { useCore } from "../lib/core-provider.client";
 import { useHashRouter } from "../lib/use-hash-router";
-import type { DeckSummary } from "shared_types/app";
+import type { DeckSummary, Event, ViewModel } from "shared_types/app";
 import {
   eventLogout,
   eventShowDeckList,
@@ -61,11 +61,16 @@ export function AppShell() {
 
 function Layout() {
   const { view, update } = useCore();
-  const [addNoteOpen, setAddNoteOpen] = useState(false);
 
   if (view === null) {
     return <p className="p-4">Loading…</p>;
   }
+
+  return <ShellView view={view} update={update} />;
+}
+
+function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => void }) {
+  const [addNoteOpen, setAddNoteOpen] = useState(false);
 
   const route = view.route.kind;
   const canManageNotes = view.permissions.can_manage_notes;
