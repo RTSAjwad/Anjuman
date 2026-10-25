@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "shared",
-    "shells/leptos",
 ]
 
 # Central version pinning. All crates reference these so versions never drift
@@ -30,38 +29,6 @@ shared = { path = "shared" }
 # The single source of truth for the wire DTOs consumed over HTTP (no `openapi`
 # feature client-side — that is server-only).
 anjuman_contracts = { path = "../contracts" }
-
-# --- Web (Leptos) shell ---
-leptos = "0.8"
-console_error_panic_hook = "0.1"
-# Lucide icons as Leptos components (category-gated for size). We enable only
-# the categories actually used in the shell to keep the WASM payload small.
-# These are the *`#[cfg(feature)]`* gates (NOT the `categories` strum
-# metadata) for each glyph:
-#   arrows      -> ChevronRight (deck expander), LogOut (logout)
-#   layout      -> PanelRightClose / PanelRightOpen (sidebar toggle)
-#   account     -> Settings (deck options gear)
-#   development -> Library (decks)
-#   text        -> Table (browser), Search (browser search)
-#   notifications -> Check (reschedule confirm)
-lepticons = { version = "0.13", default-features = false, features = [
-    "arrows",
-    "layout",
-    "account",
-    "development",
-    "text",
-    "notifications",
-] }
-# Tailwind class-merge + variant derives (leptos ecosystem). The `variant`
-# feature pulls in `tw_merge_variants` (the `TwClass`/`TwVariant` derives) used
-# by the rust-ui/leptos-ui `variants!` macro that the shell is adopting for its
-# `Ui*` primitives. See docs/client/STYLING_MIGRATION.md. Note: the crate name
-# is `tw_merge` (underscore) — the hyphenated `tw-merge` is a different,
-# abandoned crates.io package.
-tw_merge = { version = "0.1", features = ["variant"] }
-
-# `variants!` identifier pasting.
-paste = "1"
 
 [profile.release]
 opt-level = "s"

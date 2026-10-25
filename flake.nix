@@ -81,15 +81,10 @@
           # outside `mkShell`, so it must be listed explicitly.
           stdenv.cc
 
-          # Web (Leptos) shell tooling.
-          trunk
+          # Web (React) shell tooling. `wasm-bindgen-cli` is required by
+          # `boltffi pack wasm` (it generates the JS bindings glue for the
+          # wasm target); the other three former Leptos-only tools are gone.
           wasm-bindgen-cli
-          wasm-pack
-          binaryen
-
-          # Tailwind CSS (standalone Rust binary — no Node) drives the
-          # DaisyUI/utility styling for the Leptos shell.
-          tailwindcss_4
 
           # TypeScript type generation (facet) shells out to pnpm.
           pnpm

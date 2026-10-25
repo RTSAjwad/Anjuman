@@ -17,7 +17,7 @@ three independent Cargo workspaces, linked by path dependencies:
 |---|---|---|
 | `contracts/` | `anjuman_contracts` | The **single source of truth** for wire DTOs (request/response + shared enums like `UserRole`). Consumed by both the server and the client. |
 | `server/` | `anjuman_server` | The Axum backend (HTTP API, FSRS scheduling, Postgres). |
-| `client/` | (workspace) `shared` + `shells/*` | The Crux cross-platform app (Leptos shell implemented; SwiftUI/WinUI/Compose planned). |
+| `client/` | (workspace) `shared` + `shells/*` | The Crux cross-platform app (React shell implemented; SwiftUI/WinUI/Compose planned). |
 
 > Note: these are **separate Cargo workspaces**, not one top-level workspace.
 > This is deliberate — the client needs a WASM/size-optimized release profile,
@@ -36,7 +36,7 @@ boundary and is the one thing that must never be crossed.
 | Role | Owns (may edit) | Must never edit |
 |---|---|---|
 | **core** | `contracts/`, `server/`, `client/shared/`, workspace manifests, `docs/process/ROADMAP.md`, `docs/process/PLANNING.md`, `server/migrations/`, permissions, support matrices | `client/shells/*` |
-| **shell** | `client/shells/*` only (Leptos now; SwiftUI/WinUI/Compose/Libadwaita later) | `contracts/`, `server/`, `client/shared/` |
+| **shell** | `client/shells/*` only (React now; SwiftUI/WinUI/Compose/Libadwaita later) | `contracts/`, `server/`, `client/shared/` |
 | **coordinator** (you) | the roadmap, the story list, the routing decisions; the DoD gate | — (does not edit code) |
 
 Rules:
@@ -95,15 +95,16 @@ Everything goes through the root Nix dev shell (no global Rust on PATH).
 ### Running the stack
 
 `nix run .#anjuman` starts the **full dev stack** in one command (process-compose):
-Postgres, the Axum server (`127.0.0.1:3000`), and the Leptos shell
-(`127.0.0.1:8080`, trunk hot-reload). It also provisions both the `anjuman` and
-`anjuman_test` databases, so no manual `createdb` is needed. See `flake.nix`.
+Postgres, the Axum server (`127.0.0.1:3000`), and the React shell
+(`127.0.0.1:5173`, React Router dev server). It also provisions both the
+`anjuman` and `anjuman_test` databases, so no manual `createdb` is needed. See
+`flake.nix`.
 
 Single-process runners (for when you want just one of them):
 
 ```sh
 nix run .#server   # Axum backend only (Postgres must already be up)
-nix run .#client   # trunk serve the Leptos shell only
+nix run .#client   # serve the React shell only (127.0.0.1:5173)
 ```
 
 ### Dev shells
@@ -127,7 +128,7 @@ cargo test  --manifest-path server/Cargo.toml
 
 # client (inside its workspace)
 cd client && cargo build && cargo test
-cd client/shells/leptos && trunk serve
+cd client/shells/react && pnpm dev
 ```
 
 Server `cargo test` runs integration tests (`server/tests/`) against a real

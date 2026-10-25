@@ -5,8 +5,10 @@ edition = "2021"
 
 [lib]
 # `cdylib` + `staticlib` are the crate types BoltFFI requires for native
-# artifacts. `lib` (the rlib) is also kept so other Rust crates (the Leptos
-# shell) can depend on `shared` directly.
+# artifacts, and `cdylib` is what the WASM target compiles. `lib` (the rlib)
+# is kept so the in-package `codegen` binary (`src/bin/codegen.rs`, which does
+# `use shared::Anjuman`) and `cargo test` can link against the crate as a
+# library — internal `[[bin]]` targets require an `rlib`.
 crate-type = ["cdylib", "lib", "staticlib"]
 
 # Type-generation binary. Generates Swift/Kotlin/C#/TypeScript types from the

@@ -19,8 +19,8 @@ use crate::{
 };
 
 pub fn router(state: AppState) -> Router {
-    // CORS: permissive, for local development only. `trunk serve` hosts the
-    // Leptos shell on a different origin (127.0.0.1:8080) than the server
+    // CORS: permissive, for local development only. The React shell dev server
+    // hosts on a different origin (127.0.0.1:5173) than the server
     // (127.0.0.1:3000), so the browser's same-origin policy blocks every fetch
     // without these headers. Tighten the origin list before production.
     let cors = CorsLayer::new()
