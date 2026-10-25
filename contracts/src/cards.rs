@@ -17,7 +17,7 @@ pub struct RescheduleBody {
 }
 
 /// Request body for moving a card to another deck.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MoveCardBody {
     /// The target deck to move the card into.
@@ -25,7 +25,7 @@ pub struct MoveCardBody {
 }
 
 /// Response after moving a card.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MoveCardResponse {
     pub card_id: i64,

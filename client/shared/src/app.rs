@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, Permissions, UserResponse};
 use anjuman_contracts::cards::{
-    CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, NoteModResponse,
-    RescheduleBody,
+    CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, MoveCardBody,
+    MoveCardResponse, NoteModResponse, RescheduleBody,
 };
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
@@ -306,6 +306,11 @@ pub enum Event {
         card_id: i64,
         days: i64,
     },
+    /// Move a browser card (by id) to another deck.
+    BrowserMoveCard {
+        card_id: i64,
+        deck_id: i64,
+    },
     /// Set a browser card's flag by id (0-7).
     BrowserFlagCard {
         card_id: i64,
@@ -442,6 +447,12 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     BrowserFlagDone(#[facet(opaque)] crux_http::Result<crux_http::Response<FlagResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserMoveCardDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<MoveCardResponse>>,
+    ),
 }
 
 /// Side effects the core requests from the shell.
@@ -2304,6 +2315,22 @@ impl crux_core::App for Anjuman {
                     .then_send(Event::BrowserFlagDone)
             }
 
+            Event::BrowserMoveCard { card_id, deck_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                let body = MoveCardBody { deck_id };
+                Http::patch(format!("{API_URL}/cards/{card_id}/deck"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize move card body")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserMoveCardDone)
+            }
+
             // Browser action completions refresh the list using the last filter
             // (unlike the study actions, which advance to the next due card).
             Event::BrowserCardActionDone(Ok(_)) => {
@@ -2337,6 +2364,19 @@ impl crux_core::App for Anjuman {
             }
 
             Event::BrowserFlagDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserMoveCardDone(Ok(_)) => {
+                // Moving a card changes its deck, so re-fetch using the last
+                // filter; `refresh_browser` also re-syncs `browser_selected` so the
+                // selected card's deck_id/deck_title/deck_path update.
+                model.browser_error = None;
+                refresh_browser(model)
+            }
+
+            Event::BrowserMoveCardDone(Err(e)) => {
                 model.browser_error = Some(e.to_string());
                 render::render()
             }
@@ -4510,6 +4550,34 @@ mod tests {
                 let body: RescheduleBody =
                     serde_json::from_slice(&req.operation.body).expect("body JSON");
                 assert_eq!(body.days, Some(3));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserMoveCard` emits `PATCH /cards/{id}/deck` with a `MoveCardBody`.
+    #[test]
+    fn browser_move_card_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserMoveCard { card_id: 42, deck_id: 9 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/deck"
+                );
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+                let body: MoveCardBody =
+                    serde_json::from_slice(&req.operation.body).expect("body JSON");
+                assert_eq!(body.deck_id, 9);
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
