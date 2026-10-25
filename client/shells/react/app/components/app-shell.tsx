@@ -72,7 +72,7 @@ function Layout() {
   useHashRouter({
     route: view.route,
     authenticated,
-    decksLoaded: view.decks.length > 0,
+    decksLoaded: view.decks_loaded,
     selectedDeckId: view.selected_deck?.id ?? null,
     onEvent: update,
   });
