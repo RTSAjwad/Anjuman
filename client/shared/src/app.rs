@@ -316,6 +316,22 @@ pub enum Event {
         card_id: i64,
         flag: i32,
     },
+    /// Suspend a browser note (and its cards) by note id.
+    BrowserSuspendNote {
+        note_id: i64,
+    },
+    /// Unsuspend a browser note (and its cards) by note id.
+    BrowserUnsuspendNote {
+        note_id: i64,
+    },
+    /// Bury a browser note's cards until the next day-start, by note id.
+    BrowserBuryNote {
+        note_id: i64,
+    },
+    /// Unbury a browser note's cards, by note id.
+    BrowserUnburyNote {
+        note_id: i64,
+    },
     /// Leave the study screen and return to the deck list: clear the selection
     /// and reset in-flight study state (keeps auth + deck data intact).
     CloseDeck,
@@ -395,6 +411,12 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     NoteActionDone(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteModResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserNoteActionDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<NoteModResponse>>,
+    ),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -2377,6 +2399,70 @@ impl crux_core::App for Anjuman {
             }
 
             Event::BrowserMoveCardDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserSuspendNote { note_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/notes/{note_id}/suspend"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserNoteActionDone)
+            }
+
+            Event::BrowserUnsuspendNote { note_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/notes/{note_id}/unsuspend"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserNoteActionDone)
+            }
+
+            Event::BrowserBuryNote { note_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/notes/{note_id}/bury"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserNoteActionDone)
+            }
+
+            Event::BrowserUnburyNote { note_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/notes/{note_id}/unbury"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserNoteActionDone)
+            }
+
+            // Note-scoped browser actions (suspend/bury) re-sync both lists so the
+            // affected cards' suspended/buried columns and the selected note update.
+            Event::BrowserNoteActionDone(Ok(_)) => {
+                model.browser_error = None;
+                refresh_notes(model).and(refresh_browser(model))
+            }
+
+            Event::BrowserNoteActionDone(Err(e)) => {
                 model.browser_error = Some(e.to_string());
                 render::render()
             }
@@ -4532,6 +4618,101 @@ mod tests {
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
+    }
+
+    /// `BrowserSuspendNote` emits `POST /notes/{id}/suspend`.
+    #[test]
+    fn browser_suspend_note_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserSuspendNote { note_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/suspend"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserBuryNote` emits `POST /notes/{id}/bury`.
+    #[test]
+    fn browser_bury_note_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserBuryNote { note_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/bury"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserUnsuspendNote` emits `POST /notes/{id}/unsuspend`.
+    #[test]
+    fn browser_unsuspend_note_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserUnsuspendNote { note_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/unsuspend"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserUnburyNote` emits `POST /notes/{id}/unbury`.
+    #[test]
+    fn browser_unbury_note_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserUnburyNote { note_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7/unbury"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A browser note action completion re-fetches both the notes list and the
+    /// card browser (so suspended/buried state re-syncs without a toggle).
+    #[test]
+    fn browser_note_action_done_refreshes_both() {
+        let mut model = authenticated_model();
+        model.notes_filter = Some(NoteBrowserFilter::default());
+        model.browser_filter = Some(CardBrowserFilter::default());
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(note_mod_response()).build();
+        let mut command = app.update(Event::BrowserNoteActionDone(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::NotesRequested { .. })),
+            "should re-fetch notes, got {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| matches!(e, Event::CardsRequested { .. })),
+            "should re-fetch cards, got {events:?}"
+        );
     }
 
     /// `BrowserRescheduleCard` emits `PATCH /cards/{id}/reschedule` with a body.
