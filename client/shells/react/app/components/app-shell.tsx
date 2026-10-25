@@ -90,6 +90,7 @@ function Layout() {
         displayName={view.display_name}
         email={view.email}
         route={route}
+        canManageNotes={canManageNotes}
         onShowDeckList={() => update(eventShowDeckList())}
         onShowCards={() => update(eventShowCards())}
         onLogout={() => update(eventLogout())}
@@ -161,6 +162,7 @@ function AppSidebar({
   displayName,
   email,
   route,
+  canManageNotes,
   onShowDeckList,
   onShowCards,
   onLogout,
@@ -169,6 +171,7 @@ function AppSidebar({
   displayName: string;
   email: string;
   route: string;
+  canManageNotes: boolean;
   onShowDeckList: () => void;
   onShowCards: () => void;
   onLogout: () => void;
@@ -180,15 +183,17 @@ function AppSidebar({
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={onAddNote}
-                  tooltip="Add note"
-                >
-                  <PlusIcon />
-                  <span>Add note</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {canManageNotes ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={onAddNote}
+                    tooltip="Add note"
+                  >
+                    <PlusIcon />
+                    <span>Add note</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ) : null}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={onShowDeckList}
