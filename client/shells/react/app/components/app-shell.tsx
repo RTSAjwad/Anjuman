@@ -20,7 +20,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "./ui/sidebar";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -39,7 +39,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { LibraryIcon, TableIcon, LogOutIcon } from "lucide-react";
+import { LibraryIcon, TableIcon, LogOutIcon, PlusIcon } from "lucide-react";
 import {
   DeckListScreen,
   StudyScreen,
@@ -47,6 +47,7 @@ import {
   BrowserScreen,
 } from "./screens";
 import { CardActions } from "./browser";
+import { AddNoteDialog } from "./add-note-dialog";
 import { StudyCountBadges, StudyControls } from "./study";
 import { LoginScreen } from "./login-screen";
 
@@ -60,6 +61,7 @@ export function AppShell() {
 
 function Layout() {
   const { view, update } = useCore();
+  const [addNoteOpen, setAddNoteOpen] = useState(false);
 
   if (view === null) {
     return <p className="p-4">Loading…</p>;
@@ -91,6 +93,7 @@ function Layout() {
         onShowDeckList={() => update(eventShowDeckList())}
         onShowCards={() => update(eventShowCards())}
         onLogout={() => update(eventLogout())}
+        onAddNote={() => setAddNoteOpen(true)}
       />
       <SidebarInset className="min-w-0 flex-1">
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
@@ -142,6 +145,14 @@ function Layout() {
           <Screen route={route} />
         </main>
       </SidebarInset>
+
+      <AddNoteDialog
+        noteTypes={view.note_types}
+        decks={view.decks}
+        update={update}
+        open={addNoteOpen}
+        onOpenChange={setAddNoteOpen}
+      />
     </div>
   );
 }
@@ -153,6 +164,7 @@ function AppSidebar({
   onShowDeckList,
   onShowCards,
   onLogout,
+  onAddNote,
 }: {
   displayName: string;
   email: string;
@@ -160,6 +172,7 @@ function AppSidebar({
   onShowDeckList: () => void;
   onShowCards: () => void;
   onLogout: () => void;
+  onAddNote: () => void;
 }) {
   return (
     <Sidebar collapsible="icon">
@@ -167,6 +180,15 @@ function AppSidebar({
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={onAddNote}
+                  tooltip="Add note"
+                >
+                  <PlusIcon />
+                  <span>Add note</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={onShowDeckList}
