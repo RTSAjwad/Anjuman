@@ -4,8 +4,8 @@ An architecture overview for a Crux-based cross-platform application, written
 in Rust end to end, with first-class native shells on five platforms and a
 Rust web server.
 
-> **Status:** living document. The Crux core + Leptos shell are implemented (a
-> counter demo); the real domain (auth, decks, study) is stage-4 work. The
+> **Status:** living document. The Crux core + React shell are implemented; the
+> real domain (auth, decks, study) is stage-4 work. The
 > server and `anjuman_contracts` now live in this monorepo (sibling folders) as
 > separate Cargo workspaces linked by path dependencies.
 
@@ -16,7 +16,7 @@ Rust web server.
 - Share all business logic in a single Rust **core**, reused across every
   platform with zero duplication.
 - Ship thin, idiomatic UIs: **SwiftUI**, **WinUI**, **Jetpack Compose**,
-  **Libadwaita**, and a **Leptos** web shell for browsers.
+  **Libadwaita**, and a **React** web shell for browsers.
 - Back the client with a Rust **Axum** server that is currently the core's only
   consumer.
 - Optimize the network boundary for the Rust↔Rust case (single consumer, both
@@ -32,8 +32,8 @@ Rust web server.
   "how" (platform I/O) lives in the shell.
 - **Single source of truth for the contract.** Types shared between the core and
   the server live in exactly one crate.
-- **Rust-only where possible.** Because the only consumers today are Rust, we
-  do not carry protobuf/OpenAPI ceremony; we use a Rust-native wire format.
+- **Rust-only where possible.** We use a Rust-native wire format (serde JSON)
+  rather than protobuf/OpenAPI ceremony.
 - **Language-appropriate core access.** Rust shells drive the typed
   `Core<A>` API directly (no serialization); non-Rust shells cross the FFI
   boundary with generated `Bridge` + `BoltFFI` bindings.
@@ -44,7 +44,7 @@ Rust web server.
 flowchart LR
     subgraph client["Client monorepo"]
         subgraph shells["Shells"]
-            L["Leptos (web)"]
+            R["React (web)"]
             S["SwiftUI"]
             W["WinUI"]
             J["Jetpack Compose"]
@@ -72,11 +72,12 @@ flowchart LR
   such as HTTP, key-value, and time as needed).
 - **Two access paths**, used by different kinds of shell:
   - **Typed `Core<Anjuman>` API** — `process_event` / `view` / effect handling.
-    Used by *Rust* shells (Leptos, Libadwaita), which can call the core
+    Used by *Rust* shells (Libadwaita, when built; no currently-implemented
+    shell is Rust), which can call the core
     directly with the typed `Event`/`ViewModel` types (no serialization).
   - **FFI `Bridge` surface** (`update`/`resolve`/`view`) annotated with
-    `#[boltffi::export]`. Used by *non-Rust* shells (Swift/Kotlin/C#), where
-    every value must cross the boundary as serialized bytes (`bincode`).
+    `#[boltffi::export]`. Used by *non-Rust* shells (React/Swift/Kotlin/C#),
+    where every value must cross the boundary as serialized bytes (`bincode`).
 - Declares **capabilities** (the *specification* of a side effect). Each shell
   provides its own **implementation** of those capabilities in its native idiom.
 
@@ -146,9 +147,9 @@ governs each is central to the design.
 | **(c) network** | core ↔ Axum server | JSON over HTTP (see §5) |
 
 Boundary (a) and (a′) are the *same logical* boundary — a shell talking to the
-core — but the mechanism diverges by shell language. Non-Rust shells (Swift,
-Kotlin, C#) can only exchange bytes, so they use the serialized `Bridge` +
-`BoltFFI`. Rust shells (Leptos, Libadwaita) hold the core in-process and call
+core — but the mechanism diverges by shell language. Non-Rust shells (React,
+Swift, Kotlin, C#) can only exchange bytes, so they use the serialized `Bridge` +
+`BoltFFI`. Rust shells (Libadwaita, planned) hold the core in-process and call
 its typed API directly, which is both simpler and faster.
 
 ```mermaid
@@ -178,10 +179,10 @@ flowchart LR
 
 The HTTP request is *performed by the shell* (via `crux_http`), which treats the
 response body as opaque bytes and passes them to the core via `resolve()`. The
-core — not the shell — deserializes the body. This matters because only one of
-the five shells (Leptos) is Rust: the wire format must be one the *core* can
-decode regardless of whether the shell that fetched it is Rust, Swift, Kotlin,
-or C#.
+core — not the shell — deserializes the body. This matters because the current
+web shell (React, TypeScript) is non-Rust: the wire format must be one the *core*
+can decode regardless of whether the shell that fetched it is Rust, Swift,
+Kotlin, or C#.
 
 ### 5.1 Decisions
 
@@ -198,7 +199,8 @@ or C#.
   as its tested, documented path.
 - `rkyv`'s advantage — zero-copy, Rust-native — is predicated on *both ends of
   the wire being plain Rust processes*. In Crux, the client end of the HTTP wire
-  is the **shell**, which is only Rust for one of five targets (Leptos). The
+  is the **shell**, and the current web shell (React) is not Rust; a future
+  Libadwaita shell would be. The
   shell materializes the response into an owned buffer regardless, then the
   bytes re-cross a serialization boundary into the core; `rkyv`'s zero-copy
   mostly evaporates across that path.
@@ -251,7 +253,7 @@ client/                    # this workspace
 ├── shared/src/bin/codegen.rs  # Facet typegen → Swift/Kotlin/C#/TS
 │
 └── shells/
-    ├── leptos/             # Rust + Leptos (trunk)
+    ├── react/              # TypeScript + React (React Router)
     ├── swiftui/            # Xcode project (later)
     ├── winui/              # C# / WinUI project (later)
     ├── jetpack-compose/    # Kotlin / Android project (later)
@@ -274,17 +276,17 @@ remain **separate Cargo workspaces**, not one top-level workspace:
 - **Different dependency graphs / feature flags.** The client needs a WASM,
   size-optimized release profile and `facets`/`boltffi`; the server a standard
   throughput profile and a Postgres pool.
-- **Unrelated toolchains.** FFI/typegen, `trunk`, Xcode, and Kotlin tooling have
-  no place in a workspace that also builds a web server.
+- **Unrelated toolchains.** FFI/typegen, pnpm/Vite/React Router, Xcode, and
+  Kotlin tooling have no place in a workspace that also builds a web server.
 
 ## 8. Distribution of decisions — settled vs. open
 
 ### Settled
 
 - Crux core-first architecture with thin native shells (5 targets).
-- **Two access paths**: typed `Core<Anjuman>` API for Rust shells (Leptos,
-  Libadwaita); `Bridge` + `BoltFFI` bindings + `Facet` typegen for non-Rust
-  shells (Swift/Kotlin/C#). Rust shells do *not* serialize through the FFI.
+- **Two access paths**: typed `Core<Anjuman>` API for Rust shells (Libadwaita,
+  planned); `Bridge` + `BoltFFI` bindings + `Facet` typegen for non-Rust
+  shells (React/Swift/Kotlin/C#). Rust shells do *not* serialize through the FFI.
 - Server + contracts live in this git repo as **sibling folders**, but each is a
   **separate Cargo workspace** (see §7).
 - Single shared contract crate (`contracts/`) as the type source of truth.
@@ -303,9 +305,9 @@ remain **separate Cargo workspaces**, not one top-level workspace:
   state — `selected_deck` plus the core-local `DeckView::{Study, Options}` enum
   exposed as `selected_deck_view`; shells forward `Event::OpenDeck`/
   `Event::OpenDeckOptions`, and the core chains `StartStudy`/
-  `DeckOptionsRequested` and resets the route on `CloseDeck`. No `leptos_router`
-  or URL routing — web-only tooling that would duplicate state the core already
-  owns (and the four native shells can't share). See [`SHELLS.md`](./SHELLS.md) §3.
+  `DeckOptionsRequested` and resets the route on `CloseDeck`. No React Router
+  nested route or URL routing — web-only tooling that would duplicate state the
+  core already owns (and the four native shells can't share). See [`SHELLS.md`](./SHELLS.md) §3.
 - Client workspace layout (workspace + `shared` + `shells/`).
 
 ### Open questions
@@ -330,6 +332,5 @@ remain **separate Cargo workspaces**, not one top-level workspace:
 | `crux_http` | 0.20 | HTTP capability (the shell performs the request; `crux_http` describes it) |
 | `facet` / `facet_generate` | (transitive via `crux_core`) | FFI type generation |
 | `boltffi` / `boltffi_cli` | =0.30.1 | Native bindings generation (`#[boltffi::export]` + `boltffi.toml`) |
-| `leptos` | latest | Web shell (WASM) |
 | `gtk4` / `libadwaita` | latest | Linux shell (later) |
 | `axum` | latest | Server (separate repo) |

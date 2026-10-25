@@ -2,7 +2,7 @@
 
 A cross-platform application with a shared Rust **core** and first-class native
 shells on five platforms (SwiftUI, WinUI, Jetpack Compose, Libadwaita, and a
-Leptos web shell).
+React web shell).
 
 See [`ARCHITECTURE.md`](../docs/client/ARCHITECTURE.md) for the full architecture.
 
@@ -11,7 +11,7 @@ See [`ARCHITECTURE.md`](../docs/client/ARCHITECTURE.md) for the full architectur
 ```
 Cargo.toml          # [workspace] + [workspace.dependencies] (central version pinning)
 shared/             # The Crux core (Model / Event / ViewModel / Effect + FFI + typegen)
-shells/leptos/      # Leptos (WASM) web shell
+shells/react/       # React (TypeScript) web shell
 ```
 
 > Note: the Nix dev shell now lives in the **repository root** (`../flake.nix`),
@@ -37,8 +37,8 @@ nix develop .#client
 The dev shell provides:
 
 - Rust toolchain (`rustc` 1.98) with the `wasm32-unknown-unknown` target
-- `trunk`, `wasm-bindgen-cli` (Leptos web shell)
-- `pnpm` + `node` (TypeScript type generation)
+- `wasm-bindgen-cli` (used by `boltffi pack wasm` for the React shell's WASM bindings)
+- `pnpm` + `node` + `typescript` (React shell + TypeScript generation)
 - `gtk4` / `libadwaita` (future Libadwaita shell)
 
 ## Building
@@ -50,7 +50,7 @@ cargo test
 # Full workspace (native targets)
 cargo build
 
-# Leptos shell (WASM)
+# WASM core (for the React shell's boltffi pack wasm step)
 cargo build --target wasm32-unknown-unknown
 
 # Type generation — emits Swift/Kotlin/C#/TS types for each shell's
@@ -68,11 +68,13 @@ boltffi pack all           # build native artifacts + bindings for all targets
 ## Running the web shell
 
 ```sh
-cd shells/leptos
-trunk serve
+cd shells/react
+pnpm install   # first time only
+pnpm run dev
 ```
 
-Then open the URL trunk prints (default `http://localhost:8080`).
+Then open the URL Vite prints (default `http://127.0.0.1:5173`). Or from the
+repo root, `nix run .#client` does the same.
 
 ## How it works
 
@@ -84,9 +86,10 @@ sending serialized events and reading the serialized view model. BoltFFI
 call this surface, and the `codegen` binary (`shared/src/bin/codegen.rs`)
 generates the `Event`/`ViewModel`/effect payload types each shell needs.
 
-For the Leptos shell (the only implemented shell today), this is done in
-`shells/leptos/src/core_link.rs`, which drives the **typed `Core<Anjuman>` API
-directly** (`process_event` / `view`) — no serialization — and reads the resulting
-`ViewModel` into a Leptos signal. This is the Rust-shell path; the *non-Rust*
-shells (SwiftUI/Kotlin/C#) will instead cross the FFI `Bridge` (`CoreFfi`) via
-generated BoltFFI bindings — the same `shared` core, a different access path.
+For the React shell (the only implemented shell today), this is done in
+`shells/react`, which drives the **FFI `Bridge`** (`CoreFfi`) via generated
+BoltFFI bindings — `update`/`resolve`/`view` with `bincode` serialization — and
+reads the resulting `ViewModel` into React state. This is the non-Rust-shell
+path (same one SwiftUI/Kotlin/C# share). A future Rust shell (Libadwaita) would
+instead drive the **typed `Core<Anjuman>` API** directly (`process_event` /
+`view`) — no serialization — which is simpler and faster.

@@ -6,7 +6,7 @@ re-discovering version-specific APIs and gotchas — and from trusting "latest"
 docs where the exact version matters.
 
 For the *why* behind the design, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
-This file is the *how* and *where to look*. For building a shell (Leptos now,
+This file is the *how* and *where to look*. For building a shell (React now,
 SwiftUI/WinUI/Compose/Libadwaita later), see [`SHELLS.md`](./SHELLS.md) — the
 shared capability-implementation and effect-resolve patterns every shell follows.
 
@@ -29,8 +29,8 @@ native shells (SwiftUI/WinUI/Compose/Libadwaita) are still planned.
   client-side behaviours) that stage-4 stories derive from. Lives in
   [`docs/support/screens.md`](../support/screens.md).
 - `flake.nix` — Nix dev shell (in the **repo root**; provisions Rust 1.98 +
-  `wasm32` target, `trunk`, `boltffi_cli`, `pnpm`, `gtk4`/`libadwaita`, plus the
-  server's `sqlx-cli`/`sqlite`).
+  `wasm32` target, `wasm-bindgen-cli`, `boltffi_cli`, `pnpm`, `gtk4`/`libadwaita`,
+  plus the server's `sqlx-cli`).
 - `shared/boltffi.toml` — BoltFFI native-binding config (apple/android/wasm/csharp).
 
 The Axum server and the `anjuman_contracts` crate live in **sibling folders of
@@ -42,24 +42,24 @@ repos.
 Everything goes through the Nix dev shell (there is no global Rust on PATH).
 
 ```sh
-nix run .#anjuman   # full stack: Postgres + server (127.0.0.1:3000) + shell (127.0.0.1:8080)
-nix run .#client    # trunk serve the Leptos shell only (hot-reload on 127.0.0.1:8080)
-nix develop         # enter the dev shell (for shell-local cargo/trunk commands below)
+nix run .#anjuman   # full stack: Postgres + server (127.0.0.1:3000) + React shell (127.0.0.1:5173)
+nix run .#client    # serve the React shell only (127.0.0.1:5173)
+nix develop         # enter the dev shell (for shell-local cargo/pnpm commands below)
 
 cargo build                    # full workspace
 cargo test                     # core tests
 cargo build --features codegen -p shared          # typegen binary
 cargo run --features codegen -p shared --bin codegen -- --language swift --output-dir shells/swiftui/generated
 
-cd shells/leptos && trunk build   # web shell (wasm)
-cd shells/leptos && trunk serve   # dev server (CSR)
+cd shells/react && pnpm run dev   # React Router dev server (CSR)
 cd shared && boltffi generate swift   # native bindings (also: kotlin/csharp/typescript)
+cd shared && boltffi pack wasm    # build WASM + TS bindings for the React shell
 ```
 
 ## 3. Version-pinned authoritative references
 
 > Always use the **pinned** docs for the versions below; "latest" on docs.rs has
-> already bitten this project (e.g. thaw/leptos version skew).
+> already bitten this project (version skew across the crux ecosystem).
 
 ### Crux core
 
@@ -77,7 +77,8 @@ cd shared && boltffi generate swift   # native bindings (also: kotlin/csharp/typ
   - counter (our base): https://github.com/redbadger/crux/tree/master/examples/counter
   - counter-http (HTTP capability): https://github.com/redbadger/crux/tree/master/examples/counter-http
   - Key files: `shared/src/ffi.rs`, `shared/src/bin/codegen.rs`,
-    `shared/Cargo.toml`, `shared/boltffi.toml`, and the `web-leptos/` shell.
+    `shared/Cargo.toml`, `shared/boltffi.toml`, and the TypeScript web shell
+    (see the React Router walk-through).
 
 ### BoltFFI
 
@@ -91,25 +92,12 @@ cd shared && boltffi generate swift   # native bindings (also: kotlin/csharp/typ
 - `boltffi.toml` schema: authoritatively defined in `boltffi_cli`'s source,
   `src/config/mod.rs` and `src/config/targets/*.rs` (fetch from crates.io or GitHub).
 
-### Leptos
+### React web shell
 
-| Crate | Pinned | Docs |
-|---|---|---|
-| `leptos` | **0.8** (lock: 0.8.21) | https://docs.rs/leptos/0.8.21/leptos/ |
-
-- API moved in 0.7 → `reactive_graph`; import from `leptos::prelude::*`.
-- **Authoritative shell example:** https://github.com/redbadger/crux/tree/master/examples/counter/web-leptos
-
-### thaw (component library)
-
-| Crate | Pinned | Notes |
-|---|---|---|
-| `thaw` | **0.5.0-beta** | betas can churn |
-
-- **Compatibility matrix (critical):** 0.3→Leptos 0.6, 0.4→Leptos 0.7,
-  0.5-beta→Leptos 0.8. https://github.com/thaw-ui/thaw#readme
-- **Authoritative usage template:** https://github.com/thaw-ui/thaw-template
-  (see `start-trunk/` for the CSR pattern).
+- The React shell (`client/shells/react/`) is a non-Rust shell: it drives the
+  `CoreFfi` FFI bridge via generated BoltFFI bindings + `bincode`, per
+  [`REACT_SHELL_PLAN.md`](./REACT_SHELL_PLAN.md). Its own toolchain (React Router, Base UI,
+  shadcn, Tailwind, Vite) is pinned in its `package.json`, not in Cargo.
 
 ## 4. Version-specific gotchas (learned the hard way)
 
@@ -131,9 +119,10 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 - `AppTester` is **deprecated** (0.17+). Test `update` directly and inspect
   `Command::effects()`.
 - Event/ViewModel need `Clone` (and `Copy`/`PartialEq`/`Eq` are convenient) for
-  use in Leptos reactive signals.
+  crossing the FFI boundary and use in shell-reactive state.
 - `crate-type` must be `["cdylib", "lib", "staticlib"]` — `cdylib`+`staticlib`
-  for BoltFFI, `lib` so other Rust crates (the Leptos shell) can depend on it.
+  for BoltFFI, `lib` so the in-package `codegen` binary (and `cargo test`) can
+  link against the crate (bins require the rlib).
 - Typegen is a **`codegen` binary inside `shared`** (not a separate crate) —
   `shared/src/bin/codegen.rs`, gated by the `codegen` feature.
 
@@ -155,18 +144,14 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 - The counter tests in `shared/src/app.rs` are the canonical pattern; new
   stories add `#[cfg(test)] mod tests` next to their feature in `shared/`.
 
-### Leptos / shell
-- CSR-only: the shell is a **single binary target** (`src/main.rs` declares
-  `mod app; mod core_link;`). A separate `[lib]` with the same name causes a
-  Cargo artifact-name collision that `trunk` rejects.
-- Rust shells use **typed `Core` directly**, NOT the serialized FFI `Bridge`:
-  `core.process_event(event)` → effect loop → `core.view()`.
-- `#[component]` fns return `impl IntoView`; reactive signals need `Clone` data.
-
-### thaw
-- wrap the tree in **`<ConfigProvider>`** to apply the theme.
-- Prefer plain HTML `<div>` for layout (nesting thaw components that return
-  opaque `impl IntoView` inside `Space`/`Card` triggers an `IntoFragment` error).
+### Shell (React)
+- The React shell is a non-Rust shell: it drives the **serialized FFI `Bridge`**
+  (`CoreFfi.update`/`resolve`/`view` with `bincode`), **not** the typed `Core`
+  API. Its effect executors (`http`/`kv`) live in `shells/react`, mirroring the
+  Rust capability implementations.
+- The WASM core + generated TS types are built via `boltffi pack wasm` +
+  `codegen --language typescript`; the React shell consumes them from
+  `shells/react/generated/` (gitignored).
 
 ### Nix
 - `boltffi_cli` needs **edition 2024**, so it must be built with the rust-overlay
@@ -176,8 +161,9 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 
 ## 5. Settled architectural decisions (do not re-litigate)
 
-- **Rust shells** (Leptos, Libadwaita) call the typed `Core<A>` API in-process.
-  **Non-Rust shells** (Swift/Kotlin/C#) use the FFI `Bridge` + BoltFFI + Facet.
+- **Rust shells** (Libadwaita, planned) call the typed `Core<A>` API in-process.
+  **Non-Rust shells** (React/Swift/Kotlin/C#) use the FFI `Bridge` + BoltFFI +
+  Facet.
 - **JSON over the wire** for core↔server. Wire optimization is an explicit TODO.
 - FFI binding tool is **BoltFFI** (not uniffi).
 - The Axum server and `anjuman_contracts` live in this monorepo as sibling
@@ -196,16 +182,16 @@ See [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8 for the full settled-vs-open list
 ## 7. Working conventions
 
 - Centralize crate versions in the root `Cargo.toml` `[workspace.dependencies]`.
-- Generated code is gitignored (`shells/*/generated/`, `shells/leptos/dist/`).
+- Generated code is gitignored (`shells/*/generated/`).
 - No global `cargo`/`rustc` — always `nix develop` first.
 - **Commit scopes for this workspace:** use Conventional Commits scoped by layer
   — `feat(core): …`, `fix(server): …`, `docs(contracts): …`, `feat(db): …`, and
-  **`feat(shell/leptos): …`** (or `shell/swiftui`, …). See the root `AGENTS.md`
+  **`feat(shell/react): …`** (or `shell/swiftui`, …). See the root `AGENTS.md`
   §5 for the full convention.
 
 ### Stories target the core; shells are tracked, not duplicated
 
-This app will grow multiple native shells (Leptos now; SwiftUI/WinUI/Compose/
+This app will grow multiple native shells (React now; SwiftUI/WinUI/Compose/
 Libadwaita later). To avoid one story per shell (and the drift that would cause):
 
 - **Write the story once, against the core.** Acceptance criteria live in and
@@ -215,7 +201,7 @@ Libadwaita later). To avoid one story per shell (and the drift that would cause)
   must do to run the feature (render `ViewModel` field X, forward `Event` Y,
   execute `Effect` Z). This is a checklist, **not** a set of per-shell stories.
 - **Shells are columns in `SCREENS_SUPPORT.md`** ([`docs/support/screens.md`](../support/screens.md)), not stories. A screen/behaviour's
-  coverage per shell (`Leptos | SwiftUI | WinUI | Compose | Libadwaita`) is one
+  coverage per shell (`React | SwiftUI | WinUI | Compose | Libadwaita`) is one
   ✅/❌/⚪ cell. When a new shell lands, you check off its column against the
   existing shell contracts — you don't author parallel stories.
 - **Genuinely shell-specific behaviour** (form-factor: answer-key bindings,
