@@ -54,6 +54,10 @@ cargo run --features codegen -p shared --bin codegen -- --language swift --outpu
 cd shells/react && pnpm run dev   # React Router dev server (CSR)
 cd shared && boltffi generate swift   # native bindings (also: kotlin/csharp/typescript)
 cd shared && boltffi pack wasm    # build WASM + TS bindings for the React shell
+
+# NOTE: `nix run .#client` / `nix run .#anjuman` serve the React shell but do
+# NOT rebuild bindings — after a core change, run `pnpm run build` first (see §4
+# "Shell (React)" for the Vite cache gotcha).
 ```
 
 ## 3. Version-pinned authoritative references
@@ -152,6 +156,18 @@ These are facts the docs do **not** make obvious, and that cost real debugging:
 - The WASM core + generated TS types are built via `boltffi pack wasm` +
   `codegen --language typescript`; the React shell consumes them from
   `shells/react/generated/` (gitignored).
+- **`nix run .#client` (and the process-compose `frontend`) do *not* rebuild the
+  WASM/types — they only run `pnpm run dev`.** After any core (`shared/`) change
+  you must run `pnpm run build` (or `wasm:build` + `types:build`) first, then
+  restart the dev server, or the shell keeps serving the stale bindings. The
+  symptom is subtle (empty deck list, nav "not working") because the skew is a
+  WASM-ABI/bincode mismatch, not a compile error.
+- **When the generated bindings change, also clear Vite's dep cache** —
+  `node_modules/.vite` holds pre-optimized copies of `shared`/`shared_types/*`
+  that can outlive a rebuild. `rm -rf node_modules/.vite build .react-router`
+  before restarting is the safe move. (`build/` is the production output;
+  `.react-router/` is React Router's typegen cache — both are gitignored and
+  regenerated.)
 
 ### Nix
 - `boltffi_cli` needs **edition 2024**, so it must be built with the rust-overlay
