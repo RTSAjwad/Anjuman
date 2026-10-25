@@ -89,6 +89,11 @@ pub struct Model {
     pub decks: Vec<DeckResponse>,
     /// A human-readable error from the last decks fetch, if any.
     pub decks_error: Option<String>,
+    /// True once the decks fetch has *settled* (a `DecksResult` was applied,
+    /// success or error), regardless of how many decks resulted. Distinct from
+    /// `decks.is_empty()` — a user with zero decks is still "loaded". Reset to
+    /// false on `Logout` and while a fresh `DecksRequested` is in flight.
+    pub decks_loaded: bool,
     /// The deck the user has opened to study (null until one is selected).
     pub selected_deck: Option<DeckSummary>,
     /// Which sub-view of the selected deck is showing (Study or Options).
@@ -467,6 +472,9 @@ pub struct ViewModel {
     pub route: CurrentRoute,
     /// A human-readable error from the last decks fetch, if any.
     pub decks_error: Option<String>,
+    /// True once the decks fetch has *settled* (success or error), so the shell
+    /// can distinguish "still loading" from "loaded, but zero decks".
+    pub decks_loaded: bool,
     /// The card currently shown during study, or `None` when nothing is due
     /// (study not started, or the deck is finished).
     pub current_card: Option<StudyCardView>,
@@ -1354,6 +1362,7 @@ impl crux_core::App for Anjuman {
                 model.error = None;
                 model.decks.clear();
                 model.decks_error = None;
+                model.decks_loaded = false;
                 model.selected_deck = None;
                 model.selected_deck_view = DeckView::Study;
                 model.current_card = None;
@@ -2239,6 +2248,7 @@ impl crux_core::App for Anjuman {
 
             Event::DecksRequested => {
                 model.decks_error = None;
+                model.decks_loaded = false;
                 // Needs the current token; only reachable when authenticated.
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
@@ -2254,11 +2264,13 @@ impl crux_core::App for Anjuman {
             Event::DecksResult(Ok(mut response)) => {
                 model.decks = response.take_body().expect("decks response has a body");
                 model.decks_error = None;
+                model.decks_loaded = true;
                 render::render()
             }
 
             Event::DecksResult(Err(e)) => {
                 model.decks_error = Some(e.to_string());
+                model.decks_loaded = true;
                 render::render()
             }
 
@@ -2305,6 +2317,7 @@ impl crux_core::App for Anjuman {
                 selected_deck_view: model.selected_deck_view,
                 route: model.route,
                 decks_error: model.decks_error.clone(),
+                decks_loaded: model.decks_loaded,
                 current_card,
                 counts,
                 study_error: model.study_error.clone(),
@@ -2343,6 +2356,7 @@ impl crux_core::App for Anjuman {
                 selected_deck_view: DeckView::Study,
                 route: model.route,
                 decks_error: model.decks_error.clone(),
+                decks_loaded: model.decks_loaded,
                 current_card: None,
                 counts: StudyCountsView::default(),
                 study_error: None,
@@ -2794,6 +2808,34 @@ mod tests {
         assert_eq!(spanish.new_count, 3);
         assert_eq!(spanish.review_count, 5);
         assert_eq!(spanish.total_count, 9);
+    }
+
+    /// `decks_loaded` flips from `false` (in flight) to `true` once a
+    /// `DecksResult` settles — success **or** error — and is reset on `Logout`,
+    /// so the shell can distinguish "still loading" from "loaded, but zero decks".
+    #[test]
+    fn decks_loaded_flips_on_result_and_resets_on_logout() {
+        // Fresh request clears the flag (in flight).
+        let mut model = authenticated_model();
+        model.decks_loaded = true;
+        let _ = update(Event::DecksRequested, &mut model);
+        assert!(!model.decks_loaded, "in-flight request should clear decks_loaded");
+
+        // Ok result settles it true.
+        let ok = ResponseBuilder::ok().body(vec![deck(1, "Spanish")]).build();
+        let _ = update(Event::DecksResult(Ok(ok)), &mut model);
+        assert!(model.decks_loaded);
+        assert!(Anjuman.view(&model).decks_loaded);
+
+        // An error result *also* settles it true (a settled failure is not "loading").
+        let err = crux_http::testing::rejection::<Vec<DeckResponse>>(500, "boom").unwrap_err();
+        let _ = update(Event::DecksResult(Err(err)), &mut model);
+        assert!(model.decks_loaded);
+        assert!(Anjuman.view(&model).decks_loaded);
+
+        // Logout resets it.
+        let _ = update(Event::Logout, &mut model);
+        assert!(!model.decks_loaded);
     }
 
     /// Nested decks are exposed as a tree (children under their parent); an
