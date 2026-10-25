@@ -151,11 +151,11 @@
             meta.description = "Run the Anjuman Axum backend on 127.0.0.1:3000";
           };
 
-          # `nix run .#client` — serve the React shell. The WASM core + generated
-          # types are built separately (they only change when the core changes);
-          # run `pnpm run build` (or `pnpm run wasm:build`/`types:build`) first,
-          # then this dev server. Links node_modules if needed and starts the
-          # React Router dev server on http://127.0.0.1:5173.
+          # `nix run .#client` — serve the React shell. Installs deps, rebuilds
+          # the generated WASM + TS bindings (they change whenever the core's
+          # Event/ViewModel/Effect or a shell-facing `*View` changes), clears
+          # Vite's stale dep cache, then starts the React Router dev server on
+          # http://127.0.0.1:5173.
           client = {
             type = "app";
             program = let
@@ -167,6 +167,12 @@
                   if [ ! -d node_modules ]; then
                     pnpm install
                   fi
+                  # TODO: skip the wasm/types rebuild when the core hasn't
+                  # changed (stamp the shared/ source hash vs. a cached marker);
+                  # correctness over speed for now.
+                  pnpm run wasm:build
+                  pnpm run types:build
+                  rm -rf node_modules/.vite
                   exec pnpm run dev "$@"
                 '';
               };
@@ -258,9 +264,9 @@
               depends_on.pg.condition = "process_healthy";
             };
 
-            # Serve the React shell (links node_modules if needed, then React
-            # Router dev server on 127.0.0.1:5173). WASM + types are built
-            # separately via `pnpm run build`.
+            # Serve the React shell: install deps, rebuild the generated WASM +
+            # TS bindings, clear Vite's stale dep cache, then run the React
+            # Router dev server on 127.0.0.1:5173.
             frontend = {
               command = pkgs.writeShellApplication {
                 name = "anjuman-react";
@@ -269,6 +275,9 @@
                   if [ ! -d node_modules ]; then
                     pnpm install
                   fi
+                  pnpm run wasm:build
+                  pnpm run types:build
+                  rm -rf node_modules/.vite
                   exec pnpm run dev
                 '';
               };
