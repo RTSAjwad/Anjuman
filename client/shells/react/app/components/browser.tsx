@@ -576,10 +576,16 @@ function NoteDetailsPanel({
     return Array.from(note.fields.keys());
   })();
 
-  // In-progress edits, re-seeded whenever the selected note changes.
+  // In-progress edits + the last-saved snapshot, both re-seeded whenever the
+  // selected note changes. `committed` is the source of truth for dirty-ness
+  // rather than the (possibly not-yet-refreshed) `note.fields`, so the Save
+  // button disables immediately after a save in both cards and notes modes.
   const [edits, setEdits] = useState<Map<string, string>>(new Map());
+  const [committed, setCommitted] = useState<Map<string, string>>(new Map());
   useEffect(() => {
-    setEdits(new Map(note ? note.fields : []));
+    const seed = new Map(note ? note.fields : []);
+    setEdits(seed);
+    setCommitted(seed);
   }, [note?.id]);
 
   if (!note) {
@@ -587,8 +593,8 @@ function NoteDetailsPanel({
   }
 
   const dirty = (() => {
-    if (edits.size !== note.fields.size) return true;
-    for (const [k, v] of note.fields) {
+    if (edits.size !== committed.size) return true;
+    for (const [k, v] of committed) {
       if (edits.get(k) !== v) return true;
     }
     return false;
@@ -603,7 +609,9 @@ function NoteDetailsPanel({
   }
 
   function save() {
-    update(eventNoteSave(note!.id, null, new Map(edits)));
+    const snapshot = new Map(edits);
+    update(eventNoteSave(note!.id, null, snapshot));
+    setCommitted(snapshot);
   }
 
   return (
