@@ -44,30 +44,30 @@ the existing shell contracts (do **not** author parallel stories). Form-factor-
 specific items (answer keys, "spacebar also answers", theme) are shell-owned and
 tracked here only.
 
-| Screen / behaviour | Leptos (now) | SwiftUI | WinUI | Compose | Libadwaita |
-|---|---|---|---|---|---|
-| Auth (login / restore session / `/me`) | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Decks | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Notes | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Cards / browser | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Tagging (list/tree) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Study session | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Study actions (bury/suspend/resched/flag) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Deck options settings | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Classes / dashboard | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| On-screen timer | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Audio playback | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Auto-advance | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Timebox popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Leech "Tag Only" popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Theme (dark/light/follow-system) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Screen / behaviour | Leptos (now) | React (now) | SwiftUI | WinUI | Compose | Libadwaita |
+|---|---|---|---|---|---|---|
+| Auth (login / restore session / `/me`) | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Decks | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Notes | ⚪ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Cards / browser | ⚪ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Tagging (list/tree) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Study session | ⚪ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Study actions (bury/suspend/resched/flag) | ⚪ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Deck options settings | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Classes / dashboard | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| On-screen timer | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Audio playback | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Auto-advance | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Timebox popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Leech "Tag Only" popup | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Theme (dark/light/follow-system) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
 > **Theme + card dark-mode decision (US-4.6):** dark mode on *cards* is Anki's
 > **CSS inversion** (`night_mode` class + `filter: invert(…)`), not a palette
 > re-theme — card authors write arbitrary CSS that a token swap can't cover. The
 > shell injects the inversion into the card `<iframe>`; the core/server only
 > deliver `StudyCardView.styling`. See US-4.6 in [`docs/process/ROADMAP.md`](../process/ROADMAP.md).
-| Answer-key bindings | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Answer-key bindings | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
 Legend: ✅ implemented · 🟡 partial · ⚪ not yet / shell not built.
 

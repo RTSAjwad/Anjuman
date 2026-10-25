@@ -212,6 +212,31 @@ between the core agent and the shell agent.
   (see §9 for the styling contract) with `gloo-net` + `gloo-storage`.
 - **SwiftUI / WinUI / Compose** — FFI shells; see [`CLIENT.md`](./CLIENT.md) §BoltFFI for
   the binding + typegen flow (`boltffi generate <lang>`).
+- **React** (`client/shells/react/`) — the primary web shell as of stage 4. React
+  Router (framework mode), SPA (`ssr: false`), non-Rust FFI shell driving the
+  core over the `Bridge` as WASM + `bincode`. Toolchain + decisions:
+  - **Build**: `boltffi pack wasm` (→ `shared` npm package) + `codegen
+    --language typescript` (→ `shared_types`), both pinned to the same BoltFFI
+    version. `@boltffi/runtime` is pinned to match `boltffi_cli` (0.30.1) via a
+    `pnpm-workspace.yaml` override — a version skew here breaks `CoreFfi` init.
+  - **Styling**: shadcn/ui over **Base UI** + Tailwind v4 (no daisyUI). Components
+    own their styling; the import alias is `~/` (not `@/`). Base UI `GroupLabel`
+    must sit inside a `Group` (Select `SelectLabel` in `SelectGroup`, Dropdown
+    `DropdownMenuLabel` in `DropdownMenuGroup`).
+  - **Routing (Caveat A = A2)**: React Router owns the URL/history; the rendered
+    screen still reads `ViewModel.route` (single source of truth). Web-local
+    `router.ts` mirrors route↔hash and turns `hashchange`/deep-links back into
+    `Show*`/`OpenDeck*` events (see `use-hash-router.ts`).
+  - **State**: single `CoreProvider` holds the latest `ViewModel`; controls are
+    controlled (`value` in from `ViewModel`, event out). Form inputs are
+    shell-local `useState` (correct — they commit via a `Save` event).
+  - **Browser table**: TanStack Table v9 in **manual mode** (sort/filter/
+    pagination stay server-owned via `CardsRequested`/`NotesRequested`; TanStack
+    only models columns/rows).
+  - **Gotchas**: generated code needs `verbatimModuleSyntax:false`; WASM-dependent
+    modules must be `.client.ts(x)` (SPA prerender would otherwise import the wasm
+    package server-side); generated KV bytes are `number[]` vs HTTP `Uint8Array`;
+    `int64` is `bigint` in the generated types.
 
 Add a section here for each shell as it is implemented.
 
