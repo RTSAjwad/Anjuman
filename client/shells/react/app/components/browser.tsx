@@ -169,14 +169,16 @@ export function BrowserScreen(props: BrowserScreenProps) {
     else update(eventNotesRequested(buildNoteFilter(page)));
   }
 
-  // First entry: note-types + default fetch, once.
+  // Fetch the current view's data. Re-fires whenever the route changes (Cards ↔
+  // Notes) so the newly-selected list is populated; note-types are fetched once.
   useEffect(() => {
-    if (initialized) return;
-    setInitialized(true);
-    update(eventNoteTypesRequested());
+    if (!initialized) {
+      setInitialized(true);
+      update(eventNoteTypesRequested());
+    }
     apply(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialized, route]);
+  }, [route]);
 
   function set<K extends keyof FilterState>(key: K, value: FilterState[K]) {
     setFilter((f) => ({ ...f, [key]: value }));
