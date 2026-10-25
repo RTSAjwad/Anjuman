@@ -198,11 +198,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
   const error = route === "Cards" ? props.cardError : props.noteError;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {route === "Cards" ? (
-        <CardActions card={props.cardSelected} update={update} />
-      ) : null}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1 overflow-hidden">
       <aside className="w-56 shrink-0 overflow-y-auto border-r p-3">
         <form
           onSubmit={(e) => {
@@ -325,7 +321,6 @@ export function BrowserScreen(props: BrowserScreenProps) {
           </div>
         </div>
         {route === "Cards" ? <CardInspector {...props} /> : <NoteInspector {...props} />}
-      </div>
       </div>
     </div>
   );
@@ -453,12 +448,12 @@ function FlagSwatch({ flag }: { flag: bigint }) {
   );
 }
 
-function CardActions({ card, update }: { card: CardBrowserView | null; update: (e: Event) => void }) {
+export function CardActions({ card, update }: { card: CardBrowserView | null; update: (e: Event) => void }) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [days, setDays] = useState("");
 
   if (!card) {
-    return <div className="flex h-11 shrink-0 items-center border-b px-3 text-sm text-muted-foreground" />;
+    return null;
   }
 
   function confirmReschedule() {
@@ -471,7 +466,7 @@ function CardActions({ card, update }: { card: CardBrowserView | null; update: (
   }
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-4 border-b px-3">
+    <div className="flex items-center gap-4">
       <div className="flex items-center gap-2">
         <Label className="text-sm text-muted-foreground">Suspended</Label>
         <Switch

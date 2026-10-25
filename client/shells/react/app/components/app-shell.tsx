@@ -46,6 +46,7 @@ import {
   DeckOptionsScreen,
   BrowserScreen,
 } from "./screens";
+import { CardActions } from "./browser";
 import { StudyCountBadges, StudyControls } from "./study";
 import { LoginScreen } from "./login-screen";
 
@@ -103,12 +104,17 @@ function Layout() {
               </BreadcrumbList>
             </Breadcrumb>
           ) : route === "Cards" || route === "Notes" ? (
-            <BrowserTabs
-              route={route}
-              canManageNotes={canManageNotes}
-              onShowCards={() => update(eventShowCards())}
-              onShowNotes={() => update(eventShowNotes())}
-            />
+            <>
+              <BrowserTabs
+                route={route}
+                canManageNotes={canManageNotes}
+                onShowCards={() => update(eventShowCards())}
+                onShowNotes={() => update(eventShowNotes())}
+              />
+              {route === "Cards" ? (
+                <CardActions card={view.browser_selected} update={update} />
+              ) : null}
+            </>
           ) : route === "Study" ? (
             <>
               <DeckBreadcrumb
