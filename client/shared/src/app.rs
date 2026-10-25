@@ -659,28 +659,45 @@ pub struct CardBrowserView {
     pub deck_id: i64,
     pub deck_title: String,
     pub note_type_name: String,
+    pub note_type_id: i64,
     pub front: String,
     pub back: String,
     pub state: String,
     pub flag: i64,
     pub suspended: bool,
     pub buried: bool,
+    /// The note's fields, flattened to string values (mirrors `NoteView.fields`,
+    /// so the shared note-details panel can edit a card's note directly).
+    pub fields: HashMap<String, String>,
 }
 
 impl From<&CardBrowserResponse> for CardBrowserView {
     fn from(c: &CardBrowserResponse) -> Self {
+        let fields = c
+            .fields
+            .iter()
+            .map(|(k, v)| {
+                let s = match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                (k.clone(), s)
+            })
+            .collect();
         CardBrowserView {
             card_id: c.card_id,
             note_id: c.note_id,
             deck_id: c.deck_id,
             deck_title: c.deck_title.clone(),
             note_type_name: c.note_type_name.clone(),
+            note_type_id: c.note_type_id,
             front: c.front.clone(),
             back: c.back.clone(),
             state: c.state.clone().unwrap_or_default(),
             flag: c.flag.unwrap_or(0),
             suspended: c.suspended.unwrap_or(false),
             buried: c.buried_at.is_some(),
+            fields,
         }
     }
 }
@@ -2705,7 +2722,12 @@ mod tests {
             note_type_name: "Basic".to_string(),
             note_type_id: 1,
             template_name: "Card 1".to_string(),
-            fields: serde_json::Map::new(),
+            fields: [
+                ("Front".to_string(), serde_json::Value::String("hola".to_string())),
+                ("Back".to_string(), serde_json::Value::String("hello".to_string())),
+            ]
+            .into_iter()
+            .collect(),
             state: Some("review".to_string()),
             due_at: None,
             stability: None,
@@ -4264,6 +4286,25 @@ mod tests {
         assert_eq!(vm.browser_cards.len(), 2);
         assert_eq!(vm.browser_cards[0].card_id, 11);
         assert_eq!(vm.browser_cards[0].deck_title, "Spanish");
+    }
+
+    /// `CardBrowserView::from(&CardBrowserResponse)` carries the card's note
+    /// `fields` (flattened to strings) and `note_type_id`, so the shared
+    /// note-details panel can edit a selected card's note directly.
+    #[test]
+    fn card_browser_view_carries_fields_and_note_type_id() {
+        let c = browser_card(11);
+        let v = CardBrowserView::from(&c);
+
+        assert_eq!(v.note_type_id, 1);
+        assert_eq!(
+            v.fields.get("Front").map(|s| s.as_str()),
+            Some("hola")
+        );
+        assert_eq!(
+            v.fields.get("Back").map(|s| s.as_str()),
+            Some("hello")
+        );
     }
 
     /// `BrowserSelectCard` records the selected card; an unknown id clears it.
