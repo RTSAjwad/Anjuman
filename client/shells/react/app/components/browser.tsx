@@ -27,6 +27,7 @@ import {
   eventBrowserUnburyCard,
   eventBrowserRescheduleCard,
   eventBrowserFlagCard,
+  eventBrowserMoveCard,
   eventNoteSave,
   eventNoteAddTags,
   eventNoteRemoveTags,
@@ -451,9 +452,27 @@ function FlagSwatch({ flag }: { flag: bigint }) {
   );
 }
 
-export function CardActions({ card, update }: { card: CardBrowserView | null; update: (e: Event) => void }) {
+// Flatten the deck tree into a flat list of { id, path } with the full
+// `::`-joined ancestor path (matching the browser's Deck column), for the
+// change-deck picker.
+function flatDeckOptions(decks: DeckSummary[]): { id: bigint; path: string }[] {
+  const out: { id: bigint; path: string }[] = [];
+  function walk(ds: DeckSummary[], path: string[]) {
+    for (const d of ds) {
+      const next = [...path, d.title];
+      out.push({ id: d.id, path: next.join("::") });
+      walk(d.children, next);
+    }
+  }
+  walk(decks, []);
+  return out;
+}
+
+export function CardActions({ card, decks, update }: { card: CardBrowserView | null; decks: DeckSummary[]; update: (e: Event) => void }) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [days, setDays] = useState("");
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [targetDeck, setTargetDeck] = useState("");
 
   if (!card) {
     return null;
@@ -465,6 +484,14 @@ export function CardActions({ card, update }: { card: CardBrowserView | null; up
       update(eventBrowserRescheduleCard(card!.card_id, BigInt(d)));
       setDays("");
       setRescheduleOpen(false);
+    }
+  }
+
+  function confirmMove() {
+    if (targetDeck !== "") {
+      update(eventBrowserMoveCard(card!.card_id, BigInt(targetDeck)));
+      setTargetDeck("");
+      setMoveOpen(false);
     }
   }
 
@@ -512,6 +539,38 @@ export function CardActions({ card, update }: { card: CardBrowserView | null; up
         </Select>
       </div>
       <Button variant="outline" onClick={() => setRescheduleOpen(true)}>Reschedule</Button>
+      <Button variant="outline" onClick={() => setMoveOpen(true)}>Change deck</Button>
+
+      <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change deck</DialogTitle>
+            <DialogDescription>Move this card to a different deck.</DialogDescription>
+          </DialogHeader>
+          <Select
+            items={flatDeckOptions(decks).map((d) => ({ value: String(d.id), label: d.path }))}
+            value={targetDeck}
+            onValueChange={(v) => { if (v !== null) setTargetDeck(v); }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {flatDeckOptions(decks).map((d) => (
+                  <SelectItem key={String(d.id)} value={String(d.id)}>
+                    {d.path}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoveOpen(false)}>Cancel</Button>
+            <Button onClick={confirmMove} disabled={targetDeck === ""}>Move</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
         <DialogContent>

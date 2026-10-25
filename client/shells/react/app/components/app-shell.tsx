@@ -112,7 +112,7 @@ function Layout() {
                 onShowNotes={() => update(eventShowNotes())}
               />
               {route === "Cards" ? (
-                <CardActions card={view.browser_selected} update={update} />
+                <CardActions card={view.browser_selected} decks={view.decks} update={update} />
               ) : null}
             </>
           ) : route === "Study" ? (
