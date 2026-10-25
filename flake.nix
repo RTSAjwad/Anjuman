@@ -81,10 +81,13 @@
           # outside `mkShell`, so it must be listed explicitly.
           stdenv.cc
 
-          # Web (React) shell tooling. `wasm-bindgen-cli` is required by
-          # `boltffi pack wasm` (it generates the JS bindings glue for the
-          # wasm target); the other three former Leptos-only tools are gone.
+          # Web (React) shell tooling. Both are consumed by `boltffi pack wasm`
+          # (the shared step for *every* web shell, not a Leptos-only concern):
+          # `wasm-bindgen-cli` generates the JS bindings glue, and `binaryen`
+          # provides `wasm-opt`, which boltffi runs to optimize the emitted WASM
+          # when `boltffi.toml` sets `profile = "release"`.
           wasm-bindgen-cli
+          binaryen
 
           # TypeScript type generation (facet) shells out to pnpm.
           pnpm
