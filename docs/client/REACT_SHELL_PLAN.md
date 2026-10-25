@@ -1,8 +1,8 @@
 # React (React Router + Base UI + shadcn) shell — plan
 
-Status: **planned, not started.** The Leptos shell is being **retired to the back
-burner** but **not deleted**. A new React web shell is the intended primary web
-front-end going forward.
+Status: **shipped** — the React shell is implemented and live as the sole web
+front-end (Phases 0–4 done), and the Leptos shell has been **deleted**. This
+document is retained as the historical plan that produced it.
 
 This document is the plan for standing up that shell. It is scoped to the shell
 agent (`client/shells/*`, `docs/client/*`). Anything that touches
@@ -13,8 +13,6 @@ agent (`client/shells/*`, `docs/client/*`). Anything that touches
 
 ## 0. Non-goals / what is explicitly out of scope for this document
 
-- This is **not** a plan to delete the Leptos shell. It stays; its build/runtime
-  remains on `trunk`; it is simply no longer the priority target.
 - This is **not** a plan to change the core. The `shared/` Crux core, its
   `Event`/`ViewModel`/`Effect` surface, and the `anjuman_contracts` wire types
   are untouched. The React shell consumes them exactly as any other shell.
