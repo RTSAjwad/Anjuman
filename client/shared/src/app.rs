@@ -1787,7 +1787,7 @@ impl crux_core::App for Anjuman {
 
             Event::NoteCreated(Ok(_)) => {
                 model.notes_error = None;
-                refresh_notes(model)
+                refresh_notes(model).and(refresh_browser(model))
             }
 
             Event::NoteCreated(Err(e)) => {
@@ -1820,7 +1820,7 @@ impl crux_core::App for Anjuman {
 
             Event::NoteSaved(Ok(_)) => {
                 model.notes_error = None;
-                refresh_notes(model)
+                refresh_notes(model).and(refresh_browser(model))
             }
 
             Event::NoteSaved(Err(e)) => {
@@ -1843,7 +1843,7 @@ impl crux_core::App for Anjuman {
 
             Event::NoteDeleted(Ok(_)) => {
                 model.notes_error = None;
-                refresh_notes(model)
+                refresh_notes(model).and(refresh_browser(model))
             }
 
             Event::NoteDeleted(Err(e)) => {
@@ -4983,7 +4983,7 @@ mod tests {
         }
     }
 
-    /// A successful create clears the error and re-renders (the re-fetch is a
+    /// A successful note create clears the error and re-renders (the re-fetch is a
     /// chained `NotesRequested` command, not an effect here).
     #[test]
     fn note_created_clears_error_and_renders() {
@@ -4993,5 +4993,28 @@ mod tests {
 
         assert!(model.notes_error.is_none());
         assert!(effects.iter().any(|e| matches!(e, Effect::Render(_))));
+    }
+
+    /// `NoteCreated(Ok)` re-fetches **both** the notes list and the card browser
+    /// (the new note's generated cards must appear without toggling views).
+    #[test]
+    fn note_created_refreshes_both_notes_and_browser() {
+        let mut model = authenticated_model();
+        model.notes_filter = Some(NoteBrowserFilter::default());
+        model.browser_filter = Some(CardBrowserFilter::default());
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(note(3)).build();
+        let mut command = app.update(Event::NoteCreated(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::NotesRequested { .. })),
+            "NoteCreated should re-fetch notes, got {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| matches!(e, Event::CardsRequested { .. })),
+            "NoteCreated should re-fetch cards, got {events:?}"
+        );
     }
 }
