@@ -32,6 +32,9 @@ import {
   eventBrowserUnsuspendNote,
   eventBrowserBuryNote,
   eventBrowserUnburyNote,
+  eventBrowserResetCard,
+  eventBrowserRepositionCard,
+  eventBrowserGradeCard,
   eventNoteSave,
   eventNoteAddTags,
   eventNoteRemoveTags,
@@ -101,6 +104,12 @@ const FLAG_OPTIONS = [
   { value: "5", label: "Pink", color: "text-pink-500" },
   { value: "6", label: "Turquoise", color: "text-teal-500" },
   { value: "7", label: "Purple", color: "text-purple-500" },
+];
+const GRADE_OPTIONS = [
+  { value: "1", label: "Again" },
+  { value: "2", label: "Hard" },
+  { value: "3", label: "Good" },
+  { value: "4", label: "Easy" },
 ];
 function flagColor(value: string): string | undefined {
   return FLAG_OPTIONS.find((o) => o.value === value)?.color;
@@ -481,6 +490,9 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
   const [days, setDays] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);
   const [targetDeck, setTargetDeck] = useState("");
+  const [repositionOpen, setRepositionOpen] = useState(false);
+  const [position, setPosition] = useState("");
+  const [grade, setGrade] = useState("");
 
   if (!card) {
     return null;
@@ -492,6 +504,15 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
       update(eventBrowserRescheduleCard(card!.card_id, BigInt(d)));
       setDays("");
       setRescheduleOpen(false);
+    }
+  }
+
+  function confirmReposition() {
+    const p = Number(position.trim());
+    if (Number.isInteger(p) && p >= 0) {
+      update(eventBrowserRepositionCard(card!.card_id, BigInt(p)));
+      setPosition("");
+      setRepositionOpen(false);
     }
   }
 
@@ -528,6 +549,26 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
         </Toggle>
         <Button variant="outline" onClick={() => setRescheduleOpen(true)}>Reschedule</Button>
         <Button variant="outline" onClick={() => setMoveOpen(true)}>Change Deck</Button>
+        <Select
+          items={GRADE_OPTIONS}
+          value={grade}
+          onValueChange={(v) => { if (v !== null) { setGrade(v); update(eventBrowserGradeCard(card.card_id, Number(v))); } }}
+        >
+          <SelectTrigger className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {GRADE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" onClick={() => setRepositionOpen(true)}>Reposition</Button>
+        <Button variant="outline" onClick={() => update(eventBrowserResetCard(card.card_id))}>Reset</Button>
         <Select
           items={FLAG_OPTIONS}
           value={String(card.flag)}
@@ -591,6 +632,20 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
           <DialogFooter>
             <Button variant="outline" onClick={() => setRescheduleOpen(false)}>Cancel</Button>
             <Button onClick={confirmReschedule}>Reschedule</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={repositionOpen} onOpenChange={setRepositionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reposition</DialogTitle>
+            <DialogDescription>New position in the new-card queue.</DialogDescription>
+          </DialogHeader>
+          <Input type="number" value={position} onChange={(e) => setPosition(e.target.value)} placeholder="position" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRepositionOpen(false)}>Cancel</Button>
+            <Button onClick={confirmReposition}>Reposition</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
