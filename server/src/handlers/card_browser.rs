@@ -18,7 +18,7 @@ use sqlx::types::Json as SqlxJson;
 
 use anjuman_contracts::cards::{CardBrowserPage, CardBrowserQuery, CardBrowserResponse};
 
-use crate::{auth::AuthUser, note_types, state::AppState, tags};
+use crate::{auth::AuthUser, db_types::DbCardState, note_types, state::AppState, tags};
 
 async fn rows_to_responses(
     db: &sqlx::PgPool,
@@ -88,6 +88,35 @@ async fn rows_to_responses(
             card_count_cache.insert(r.note_id, n);
             n
         };
+        // FSRS-predicted intervals for the Grade dialog, mirroring the study
+        // screen (reuse the same helper), from the card's scheduling state.
+        let parsed_state = r.state.as_deref().and_then(|s| match s {
+            "new" => Some(DbCardState::New),
+            "learning" => Some(DbCardState::Learning),
+            "review" => Some(DbCardState::Review),
+            "relearning" => Some(DbCardState::Relearning),
+            _ => None,
+        });
+        let predicted_interval = if let Some(state) = parsed_state {
+            crate::deck_options::options_for_deck(db, r.deck_id)
+                .await
+                .ok()
+                .and_then(|options| {
+                    crate::handlers::study::predict_intervals(
+                        &crate::handlers::study::PredictionInput {
+                            state,
+                            stability: r.stability.unwrap_or(0.0),
+                            difficulty: r.difficulty.unwrap_or(0.0),
+                            reps: r.reps.unwrap_or(0),
+                            due_at: r.due_at,
+                            step_index: r.step_index.unwrap_or(0),
+                        },
+                        &options,
+                    )
+                })
+        } else {
+            None
+        };
         cards.push(CardBrowserResponse {
             card_id: r.card_id,
             note_id: r.note_id,
@@ -116,6 +145,7 @@ async fn rows_to_responses(
             note_suspended,
             note_buried,
             card_count,
+            predicted_interval,
             created_at: r.created_at,
             position,
         });
@@ -294,7 +324,7 @@ pub async fn browse_cards(
 
     // Fetch
     let fetch_sql = format!(
-        "SELECT c.id as card_id, c.note_id, c.deck_id, c.template_id, d.title as deck_title, n.note_type_id, nt.name as note_type_name, n.fields_json, c.created_at, c.position, scs.state::text as state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason {} {} ORDER BY {} LIMIT {} OFFSET {}",
+        "SELECT c.id as card_id, c.note_id, c.deck_id, c.template_id, d.title as deck_title, n.note_type_id, nt.name as note_type_name, n.fields_json, c.created_at, c.position, scs.state::text as state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses, scs.step_index, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason {} {} ORDER BY {} LIMIT {} OFFSET {}",
         base_from, base_where, order, per_page, offset
     );
 
@@ -349,6 +379,7 @@ struct CardBrowserRow {
     difficulty: Option<f64>,
     reps: Option<i64>,
     lapses: Option<i64>,
+    step_index: Option<i64>,
     flag: Option<i64>,
     suspended: Option<bool>,
     buried_at: Option<DateTime<Utc>>,

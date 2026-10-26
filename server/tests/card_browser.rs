@@ -488,6 +488,27 @@ async fn reposition_new_card_sets_position_and_rejects_scheduled() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "body: {json}");
 }
 
+/// `GET /cards` carries each card's FSRS-predicted intervals for the Grade
+/// dialog (a rating→seconds map, mirroring the study screen). A review card
+/// returns a non-empty map keyed by "1".."4".
+#[tokio::test]
+async fn cards_return_predicted_interval_for_grade_dialog() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let _card = seed_studiable_card(&app, teacher_id, "review", 0, 1, 0).await;
+
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+
+    let predicted = &json["cards"][0]["predicted_interval"];
+    assert!(predicted.is_object(), "predicted_interval should be a map, body: {json}");
+    let obj = predicted.as_object().expect("map");
+    assert!(!obj.is_empty(), "predicted_interval should be non-empty, body: {json}");
+    assert!(obj.contains_key("1"), "again rating present, body: {json}");
+    assert!(obj.contains_key("4"), "easy rating present, body: {json}");
+}
+
 /// `POST /cards/{id}/reset` resets a card's scheduling back to "new" in place:
 /// flag is preserved, `suspended`/bury/leech are cleared, and review history is
 /// kept (matching Anki's Reset, as documented in US-4.12b).

@@ -1046,7 +1046,17 @@ async fn row_to_study_card(
     // Predicted intervals (in seconds) for each rating, mirroring the exact
     // scheduling rules in `apply_review` so the pre-submission hints are
     // truthful.
-    let predicted_interval = predict_intervals(&c, options);
+    let predicted_interval = predict_intervals(
+        &PredictionInput {
+            state: c.state,
+            stability: c.stability,
+            difficulty: c.difficulty,
+            reps: c.reps,
+            due_at: c.due_at,
+            step_index: c.step_index,
+        },
+        options,
+    );
 
     Ok(StudyCard {
         card_id: c.id,
@@ -1073,10 +1083,24 @@ async fn row_to_study_card(
 /// Compute the predicted next interval (in seconds) for each rating, using the
 /// same step + FSRS graduation rules applied by `apply_review`. This makes the
 /// frontend's interval hints consistent with the actual scheduling outcome.
-fn predict_intervals(
-    c: &CardRow,
+///
+/// Takes a compact `PredictionInput` (decoupled from the study-specific `CardRow`)
+/// so the card browser can reuse it for its Grade dialog.
+#[derive(Clone, Copy)]
+pub(crate) struct PredictionInput {
+    pub state: DbCardState,
+    pub stability: f64,
+    pub difficulty: f64,
+    pub reps: i64,
+    pub due_at: Option<DateTime<Utc>>,
+    pub step_index: i64,
+}
+
+pub(crate) fn predict_intervals(
+    input: &PredictionInput,
     options: &crate::deck_options::DeckOptions,
 ) -> Option<HashMap<String, i64>> {
+    let c = input;
     let fsrs = fsrs::FSRS::default();
     let desired_retention = options.desired_retention as f32;
     let now = Utc::now();
