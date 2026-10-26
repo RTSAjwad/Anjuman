@@ -20,6 +20,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "./ui/sidebar";
+import { Separator } from "./ui/separator";
 import { Fragment, useState } from "react";
 import {
   Breadcrumb,
@@ -46,7 +47,7 @@ import {
   DeckOptionsScreen,
   BrowserScreen,
 } from "./screens";
-import { CardActions } from "./browser";
+import { CardActions, NoteActions } from "./browser";
 import { AddNoteDialog } from "./add-note-dialog";
 import { StudyCountBadges, StudyControls } from "./study";
 import { LoginScreen } from "./login-screen";
@@ -122,6 +123,18 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
               />
               {route === "Cards" ? (
                 <CardActions card={view.browser_selected} decks={view.decks} canManageNotes={canManageNotes} update={update} />
+              ) : view.notes_selected ? (
+                <>
+                  <Separator orientation="vertical" />
+                  <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
+                  <NoteActions
+                    noteId={view.notes_selected.id}
+                    noteSuspended={null}
+                    noteBuried={null}
+                    canManageNotes={canManageNotes}
+                    update={update}
+                  />
+                </>
               ) : null}
             </>
           ) : route === "Study" ? (

@@ -480,7 +480,6 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
   const [days, setDays] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);
   const [targetDeck, setTargetDeck] = useState("");
-  const [deleteNoteOpen, setDeleteNoteOpen] = useState(false);
 
   if (!card) {
     return null;
@@ -501,11 +500,6 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
       setTargetDeck("");
       setMoveOpen(false);
     }
-  }
-
-  function confirmDeleteNote() {
-    update(eventNoteDelete(card!.note_id));
-    setDeleteNoteOpen(false);
   }
 
   return (
@@ -557,42 +551,13 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
 
       <Separator orientation="vertical" />
       <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
-      <ButtonGroup>
-        <Toggle
-          variant="outline"
-          pressed={card.note_suspended}
-          onPressedChange={(v) =>
-            update(v ? eventBrowserSuspendNote(card.note_id) : eventBrowserUnsuspendNote(card.note_id))
-          }
-        >
-          Suspend Note
-        </Toggle>
-        <Toggle
-          variant="outline"
-          pressed={card.note_buried}
-          onPressedChange={(v) =>
-            update(v ? eventBrowserBuryNote(card.note_id) : eventBrowserUnburyNote(card.note_id))
-          }
-        >
-          Bury Note
-        </Toggle>
-        <Button variant="destructive" onClick={() => setDeleteNoteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
-      </ButtonGroup>
-
-      <Dialog open={deleteNoteOpen} onOpenChange={setDeleteNoteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete note</DialogTitle>
-            <DialogDescription>
-              This deletes the note and all of its cards. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteNoteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmDeleteNote}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NoteActions
+        noteId={card.note_id}
+        noteSuspended={card.note_suspended}
+        noteBuried={card.note_buried}
+        canManageNotes={canManageNotes}
+        update={update}
+      />
 
       <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
         <DialogContent>
@@ -639,6 +604,80 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export function NoteActions({
+  noteId,
+  noteSuspended,
+  noteBuried,
+  canManageNotes,
+  update,
+}: {
+  noteId: bigint;
+  noteSuspended: boolean | null;
+  noteBuried: boolean | null;
+  canManageNotes: boolean;
+  update: (e: Event) => void;
+}) {
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  function confirmDelete() {
+    update(eventNoteDelete(noteId));
+    setDeleteOpen(false);
+  }
+
+  return (
+    <>
+      <ButtonGroup>
+        {noteSuspended === null ? (
+          <Button variant="outline" disabled={!canManageNotes} onClick={() => update(eventBrowserSuspendNote(noteId))}>
+            Suspend Note
+          </Button>
+        ) : (
+          <Toggle
+            variant="outline"
+            pressed={noteSuspended}
+            onPressedChange={(v) =>
+              update(v ? eventBrowserSuspendNote(noteId) : eventBrowserUnsuspendNote(noteId))
+            }
+          >
+            Suspend Note
+          </Toggle>
+        )}
+        {noteBuried === null ? (
+          <Button variant="outline" disabled={!canManageNotes} onClick={() => update(eventBrowserBuryNote(noteId))}>
+            Bury Note
+          </Button>
+        ) : (
+          <Toggle
+            variant="outline"
+            pressed={noteBuried}
+            onPressedChange={(v) =>
+              update(v ? eventBrowserBuryNote(noteId) : eventBrowserUnburyNote(noteId))
+            }
+          >
+            Bury Note
+          </Toggle>
+        )}
+        <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
+      </ButtonGroup>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete note</DialogTitle>
+            <DialogDescription>
+              This deletes the note and all of its cards. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
