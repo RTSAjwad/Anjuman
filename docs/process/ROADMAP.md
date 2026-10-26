@@ -1578,6 +1578,18 @@ One decision, recorded so this is unambiguous:
   reality. (Whether an *admin's* grant is blanket or owner/collaborator-based is
   settled in US-4.7.)
 
+- **Never-seen cards count as "new" (no `student_card_states` row).** A card is
+  "new" by the *absence* of a per-student scheduling row, not by a lazily-created
+  `state = 'new'` row. The seed inserts `cards` with **no** `student_card_states`
+  rows, and `ensure_card_states_for_deck` only materialises them later (on study).
+  So `deck_counts_for_student` / `due_now_class_counts` / `next_due_card` treat a
+  **missing row** as new (`LEFT JOIN` + `scs.card_id IS NULL`/`COALESCE`), matching
+  `browse_cards` (`scs.state IS NULL OR scs.state == 'new'`) and Anki's "absence =
+  new" semantics. Without this, the deck list showed `0` for fresh seed decks until
+  each was opened. (`ensure_card_states_for_deck` remains in `deck_advance` because
+  `apply_review` needs a real row to `UPDATE` when the card is answered — a distinct
+  concern from counting.)
+
 **Acceptance criteria**
 
 - [x] `list_decks` admin + teacher branches compute `studyable` from the new
