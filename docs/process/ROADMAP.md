@@ -1135,24 +1135,31 @@ needs the mirror direction (same as auth/decks).
       distinguish "fetching" from "nothing due" (carve-out).
 - [x] The contracts prerequisite is done: study DTOs round-trip
       (`Serialize`/`Deserialize` on the response types and `StudyAdvanceBody`).
-- [x] **Deck-list counts stay in sync with study progress (write-through).**
-      `StudyStarted(Ok)` and `StudyAdvanced(Ok)` fold `StudyAdvance.counts`
-      (`new/learning/review/relearning`) back into the selected deck's entry in
-      `model.decks`, so the deck-list badges and study-screen badges are one
-      source of truth. `total_count` is left untouched (it's a card count, not a
-      due count; `StudyCounts` doesn't carry it). No extra `/decks/counts`
-      round-trip per answer.
+- [x] **Deck-list counts stay in sync with study progress (re-fetch).**
+      `StudyStarted(Ok)` and `StudyAdvanced(Ok)` re-fetch `GET /decks/counts`
+      (chained via `refresh_deck_counts`), so **all** decks update — including the
+      child subdecks that fed a parent-deck session (the `StudyAdvance.counts`
+      aggregate can't say which subdeck a card came from). `total_count` is a
+      card count and is preserved by the merge (answer/bury/suspend don't change
+      how many cards exist).
 - [x] Each criterion has a `shared` test named after it; `cargo test` passes.
 
 **Count-sync decision (settled)**
 
-Study progress updates the deck list **by write-through** from
-`StudyAdvance.counts` (the authoritative per-deck count for the deck in hand),
-not by re-fetching `/decks/counts` after each answer. Rationale: it's free (no
-extra round-trip per card) and it's already the exact number the study screen
-shows. The one field the study counts can't supply — `total_count` (a card
-count, not a due count) — is preserved from the last `GET /decks`, which is
-still correct because answer/bury/suspend don't change how many cards exist.
+Study progress updates the deck list **by re-fetching `/decks/counts`** after
+`StudyStarted`/`StudyAdvanced` (not by a parent-only write-through). Rationale:
+`StudyAdvance.counts` is the *aggregate* for the selected (parent) deck and
+cannot attribute a card to its originating child subdeck, so folding it back
+would leave child decks' badges stale until re-fetched. Re-fetching makes every
+deck's badge authoritative at once (and reuses the same path as the browser
+actions). `total_count` (a card count) is preserved because answer/bury/suspend
+never change how many cards exist.
+
+**Optimization (future, not now):** this fires one `GET /decks/counts` round-trip
+per answer. It is cheap and correct, but a later story could avoid it by adding a
+per-`deck_id` breakdown to `StudyAdvance` (which subdeck each gathered card came
+from / their post-answer counts), letting the core update only the affected decks
+without a full re-fetch. Defer until the round-trip shows up as a real cost.
 
 **Shell contract**
 
