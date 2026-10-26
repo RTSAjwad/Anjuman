@@ -616,8 +616,8 @@ export function NoteActions({
   update,
 }: {
   noteId: bigint;
-  noteSuspended: boolean | null;
-  noteBuried: boolean | null;
+  noteSuspended: boolean;
+  noteBuried: boolean;
   canManageNotes: boolean;
   update: (e: Event) => void;
 }) {
@@ -631,36 +631,24 @@ export function NoteActions({
   return (
     <>
       <ButtonGroup>
-        {noteSuspended === null ? (
-          <Button variant="outline" disabled={!canManageNotes} onClick={() => update(eventBrowserSuspendNote(noteId))}>
-            Suspend Note
-          </Button>
-        ) : (
-          <Toggle
-            variant="outline"
-            pressed={noteSuspended}
-            onPressedChange={(v) =>
-              update(v ? eventBrowserSuspendNote(noteId) : eventBrowserUnsuspendNote(noteId))
-            }
-          >
-            Suspend Note
-          </Toggle>
-        )}
-        {noteBuried === null ? (
-          <Button variant="outline" disabled={!canManageNotes} onClick={() => update(eventBrowserBuryNote(noteId))}>
-            Bury Note
-          </Button>
-        ) : (
-          <Toggle
-            variant="outline"
-            pressed={noteBuried}
-            onPressedChange={(v) =>
-              update(v ? eventBrowserBuryNote(noteId) : eventBrowserUnburyNote(noteId))
-            }
-          >
-            Bury Note
-          </Toggle>
-        )}
+        <Toggle
+          variant="outline"
+          pressed={noteSuspended}
+          onPressedChange={(v) =>
+            update(v ? eventBrowserSuspendNote(noteId) : eventBrowserUnsuspendNote(noteId))
+          }
+        >
+          Suspend Note
+        </Toggle>
+        <Toggle
+          variant="outline"
+          pressed={noteBuried}
+          onPressedChange={(v) =>
+            update(v ? eventBrowserBuryNote(noteId) : eventBrowserUnburyNote(noteId))
+          }
+        >
+          Bury Note
+        </Toggle>
         <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
       </ButtonGroup>
 
@@ -709,6 +697,7 @@ function NoteDetailsPanel({
             id: cardSelected.note_id,
             note_type_id: cardSelected.note_type_id,
             note_type_name: cardSelected.note_type_name,
+            card_count: cardSelected.card_count,
             fields: cardSelected.fields,
             tags: [...cardSelected.tags],
           }
@@ -718,6 +707,7 @@ function NoteDetailsPanel({
             id: noteSelected.id,
             note_type_id: noteSelected.note_type_id,
             note_type_name: noteSelected.note_type_name,
+            card_count: noteSelected.card_count,
             fields: noteSelected.fields,
             tags: [...noteSelected.tags],
           }
@@ -783,8 +773,9 @@ function NoteDetailsPanel({
     <aside className="flex w-72 shrink-0 flex-col gap-3 border-l p-3">
       <h3 className="text-sm font-semibold">Note Details</h3>
       <div className="flex items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Note Type</Label>
-        <Badge variant="outline">{note.note_type_name}</Badge>
+        <Badge variant="outline">
+          {note.note_type_name} · {Number(note.card_count)} card{Number(note.card_count) === 1 ? "" : "s"}
+        </Badge>
       </div>
       <div className="flex flex-col gap-2">
         {fieldNames.map((name) => (
