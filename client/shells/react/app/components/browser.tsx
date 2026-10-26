@@ -105,12 +105,6 @@ const FLAG_OPTIONS = [
   { value: "6", label: "Turquoise", color: "text-teal-500" },
   { value: "7", label: "Purple", color: "text-purple-500" },
 ];
-const GRADE_OPTIONS = [
-  { value: "1", label: "Again" },
-  { value: "2", label: "Hard" },
-  { value: "3", label: "Good" },
-  { value: "4", label: "Easy" },
-];
 function flagColor(value: string): string | undefined {
   return FLAG_OPTIONS.find((o) => o.value === value)?.color;
 }
@@ -492,7 +486,7 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
   const [targetDeck, setTargetDeck] = useState("");
   const [repositionOpen, setRepositionOpen] = useState(false);
   const [position, setPosition] = useState("");
-  const [grade, setGrade] = useState("");
+  const [gradeOpen, setGradeOpen] = useState(false);
 
   if (!card) {
     return null;
@@ -549,24 +543,7 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
         </Toggle>
         <Button variant="outline" onClick={() => setRescheduleOpen(true)}>Reschedule</Button>
         <Button variant="outline" onClick={() => setMoveOpen(true)}>Change Deck</Button>
-        <Select
-          items={GRADE_OPTIONS}
-          value={grade}
-          onValueChange={(v) => { if (v !== null) { setGrade(v); update(eventBrowserGradeCard(card.card_id, Number(v))); } }}
-        >
-          <SelectTrigger className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {GRADE_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+        <Button variant="outline" onClick={() => setGradeOpen(true)}>Grade</Button>
         <Button variant="outline" onClick={() => setRepositionOpen(true)}>Reposition</Button>
         <Button variant="outline" onClick={() => update(eventBrowserResetCard(card.card_id))}>Reset</Button>
         <Select
@@ -649,6 +626,39 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={gradeOpen} onOpenChange={setGradeOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Grade</DialogTitle>
+            <DialogDescription>Grade this card now, regardless of due state.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap justify-center gap-2">
+            <GradeButton label="Again" variant="destructive" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 1)); setGradeOpen(false); }} />
+            <GradeButton label="Hard" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 2)); setGradeOpen(false); }} />
+            <GradeButton label="Good" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 3)); setGradeOpen(false); }} />
+            <GradeButton label="Easy" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 4)); setGradeOpen(false); }} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function GradeButton({
+  label,
+  variant = "ghost",
+  onAnswer,
+}: {
+  label: string;
+  variant?: "ghost" | "destructive";
+  onAnswer: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <Button variant={variant} size="lg" onClick={onAnswer}>
+        {label}
+      </Button>
     </div>
   );
 }
