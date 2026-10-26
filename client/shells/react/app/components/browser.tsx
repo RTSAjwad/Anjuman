@@ -527,7 +527,7 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
           Bury Card
         </Toggle>
         <Button variant="outline" onClick={() => setRescheduleOpen(true)}>Reschedule</Button>
-        <Button variant="outline" onClick={() => setMoveOpen(true)}>Change deck</Button>
+        <Button variant="outline" onClick={() => setMoveOpen(true)}>Change Deck</Button>
         <Select
           items={FLAG_OPTIONS}
           value={String(card.flag)}
@@ -563,7 +563,7 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
       <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Change deck</DialogTitle>
+            <DialogTitle>Change Deck</DialogTitle>
             <DialogDescription>Move this card to a different deck.</DialogDescription>
           </DialogHeader>
           <Select
