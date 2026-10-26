@@ -81,6 +81,10 @@ export function AddNoteDialog({ noteTypes, decks, update, open, onOpenChange, pr
   }, [open, prefill])
 
   function selectNoteType(id: string) {
+    if (id === noteTypeId) {
+      // Re-selecting the current type keeps the (possibly prefilled) field values.
+      return
+    }
     setNoteTypeId(id)
     // Reset field values against the newly-selected note type's field names.
     const nt = noteTypes.find((n) => String(n.id) === id)
