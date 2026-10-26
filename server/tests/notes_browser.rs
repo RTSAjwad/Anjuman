@@ -128,6 +128,42 @@ async fn note_response_sort_field_resolves_to_first_field_fallback() {
     );
 }
 
+/// `GET /notes` carries the caller's own note-level suspend state: `false` with
+/// no (or partial) suspension, `true` only when *every* card is suspended.
+#[tokio::test]
+async fn note_response_carries_note_suspended_and_buried() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note = seed_note(&app, teacher_id).await;
+
+    let card_id: i64 = sqlx::query_scalar!("SELECT id FROM cards WHERE note_id = $1", note)
+        .fetch_one(&app.db)
+        .await
+        .expect("card id");
+
+    // No scheduling state yet → note is neither suspended nor buried.
+    let (status, json) = get(&app, "/notes?sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["notes"][0]["note_suspended"], false, "body: {json}");
+    assert_eq!(json["notes"][0]["note_buried"], false, "body: {json}");
+
+    // Suspend the sole card for the caller → the whole note is suspended.
+    sqlx::query!(
+        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses, step_index, suspended) VALUES ($1, $2, 'new', 0.0, 0.0, 0, 0, 0, TRUE) ON CONFLICT (student_id, card_id) DO UPDATE SET suspended = TRUE",
+        teacher_id,
+        card_id
+    )
+    .execute(&app.db)
+    .await
+    .expect("suspend");
+
+    let (status, json) = get(&app, "/notes?sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["notes"][0]["note_suspended"], true, "body: {json}");
+    assert_eq!(json["notes"][0]["note_buried"], false, "body: {json}");
+}
+
 /// A note's card `front`/`back` are wrapped in `.card` at render time (US-4.6.1),
 /// so the note type's styling (which targets `.card`) actually applies.
 #[tokio::test]

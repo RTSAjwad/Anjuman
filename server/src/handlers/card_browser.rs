@@ -121,7 +121,7 @@ async fn rows_to_responses(
 /// false when even one sibling is not. Cards with no `student_card_states` row
 /// (never studied) are excluded by the JOIN — they are neither suspended nor
 /// buried, so an unsuspended sibling correctly yields `false`.
-async fn note_state_for(
+pub(crate) async fn note_state_for(
     db: &sqlx::PgPool,
     student_id: i64,
     note_id: i64,

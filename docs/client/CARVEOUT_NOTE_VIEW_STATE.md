@@ -2,7 +2,7 @@
 
 **From:** shell agent
 **To:** core agent
-**Status:** pending
+**Status:** done
 
 ## Symptom
 

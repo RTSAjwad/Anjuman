@@ -805,6 +805,10 @@ pub struct NoteView {
     pub tags: Vec<String>,
     /// The resolved sort-field value (see `NoteResponse.sort_field`).
     pub sort_field: Option<String>,
+    /// True if *all* of the note's cards are suspended for the authenticated user.
+    pub note_suspended: bool,
+    /// True if *all* of the note's cards are buried for the authenticated user.
+    pub note_buried: bool,
 }
 
 impl From<&NoteResponse> for NoteView {
@@ -828,6 +832,8 @@ impl From<&NoteResponse> for NoteView {
             fields,
             tags,
             sort_field: n.sort_field.clone(),
+            note_suspended: n.note_suspended,
+            note_buried: n.note_buried,
         }
     }
 }
@@ -2994,6 +3000,8 @@ mod tests {
             cards: vec![],
             tags: vec![Tag { id: 1, name: "spanish".to_string() }],
             sort_field: Some("hola".to_string()),
+            note_suspended: false,
+            note_buried: false,
             created_at: chrono::Utc::now(),
         }
     }
@@ -4989,6 +4997,25 @@ mod tests {
         let mut none = note(2);
         none.sort_field = None;
         assert_eq!(NoteView::from(&none).sort_field, None);
+    }
+
+    /// `NoteView::from(&NoteResponse)` carries the note-level suspend/bury state
+    /// through so the shell can render true toggles (not one-way buttons).
+    #[test]
+    fn note_view_carries_note_suspended_and_buried() {
+        let mut r = note(1);
+        assert!(!r.note_suspended);
+        assert!(!r.note_buried);
+
+        let v = NoteView::from(&r);
+        assert!(!v.note_suspended);
+        assert!(!v.note_buried);
+
+        r.note_suspended = true;
+        r.note_buried = true;
+        let v = NoteView::from(&r);
+        assert!(v.note_suspended);
+        assert!(v.note_buried);
     }
 
     /// `NoteBrowserSelectNote` records the selection; an unknown id clears it.

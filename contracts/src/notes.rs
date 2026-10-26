@@ -88,6 +88,11 @@ pub struct NoteResponse {
     /// field when its `sort_field` is empty (Anki default), and `None` only when
     /// that field's value is genuinely absent.
     pub sort_field: Option<String>,
+    /// True if *all* of the note's cards are suspended for the authenticated user.
+    /// (Note-level toggle state, read from the caller's own scheduling state.)
+    pub note_suspended: bool,
+    /// True if *all* of the note's cards are buried for the authenticated user.
+    pub note_buried: bool,
     pub created_at: DateTime<Utc>,
 }
 

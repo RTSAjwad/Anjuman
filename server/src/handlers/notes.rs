@@ -152,9 +152,12 @@ pub(crate) async fn check_note_authorization(
 }
 
 /// Fetch a note and render its cards at display time. Each card includes its
-/// deck_id so callers know where the note's cards live.
+/// deck_id so callers know where the note's cards live. `student_id` is the
+/// caller's own id, used to compute the note-level suspend/bury state from their
+/// per-student scheduling state.
 async fn fetch_note_with_cards(
     db: &sqlx::PgPool,
+    student_id: i64,
     note_id: i64,
 ) -> Result<NoteResponse, StatusCode> {
     let note = sqlx::query!(
@@ -214,6 +217,16 @@ async fn fetch_note_with_cards(
         .get(nt.effective_sort_field())
         .map(value_to_string);
 
+    // Note-level suspend/bury state, read from the caller's *own* scheduling
+    // state (the same user the note suspend/bury endpoints act on), so the
+    // toggle's displayed state and its action are self-consistent.
+    let (note_suspended, note_buried) = crate::handlers::card_browser::note_state_for(
+        db,
+        student_id,
+        note_id,
+    )
+    .await?;
+
     Ok(NoteResponse {
         id: note.id,
         note_type_id: note.note_type_id,
@@ -222,6 +235,8 @@ async fn fetch_note_with_cards(
         cards: card_summaries,
         tags: note_tags,
         sort_field,
+        note_suspended,
+        note_buried,
         created_at: note.created_at,
     })
 }
@@ -291,7 +306,7 @@ pub async fn create_note(
         )
     })?;
 
-    let note = fetch_note_with_cards(&state.db, note_id)
+    let note = fetch_note_with_cards(&state.db, claims.sub, note_id)
         .await
         .map_err(|s| (s, "Failed to fetch created note".to_string()))?;
 
@@ -386,7 +401,7 @@ pub async fn list_notes(
 
     let mut result = Vec::new();
     for n in rows {
-        let note = fetch_note_with_cards(&state.db, n.id)
+        let note = fetch_note_with_cards(&state.db, claims.sub, n.id)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
         result.push(note);
@@ -411,7 +426,7 @@ pub async fn get_note(
     // Reuse note-level authorization (requires access to all decks it spans).
     check_note_authorization(&state.db, note_id, claims.school_id, &claims).await?;
 
-    let note = fetch_note_with_cards(&state.db, note_id)
+    let note = fetch_note_with_cards(&state.db, claims.sub, note_id)
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "Note not found"))?;
 
@@ -520,7 +535,7 @@ pub async fn update_note(
         )
     })?;
 
-    let note = fetch_note_with_cards(&state.db, note_id)
+    let note = fetch_note_with_cards(&state.db, claims.sub, note_id)
         .await
         .map_err(|s| (s, "Failed to fetch updated note".to_string()))?;
 
