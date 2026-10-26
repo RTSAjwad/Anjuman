@@ -1973,6 +1973,85 @@ teacher/admin only (gate via `vm.permissions.can_manage_notes` in the shell).
 
 ---
 
+#### US-4.13b — Duplicate note (copy fields + regenerate cards)
+
+**As** a signed-in teacher/admin in the notes browser,
+**I want** to duplicate an existing note into a new note sharing its note type
+and field values,
+**so that** I can quickly create a variation of a note without retyping it.
+
+**Background / Anki grounding**
+
+Anki's browser has a **"Duplicate"** note action: it copies the note's fields
+into a brand-new note of the same note type, then regenerates that note's cards
+(all templates) into the browser's *currently-selected deck*. It deliberately
+copies *content only* — not scheduling state, not review history, and not tags
+the user hasn't asked for.
+
+Anjuman maps this directly onto what already exists:
+
+- A note is `note_type_id` + `fields_json` (it has **no deck of its own** — deck
+  membership is via its generated cards). The server's `create_note(note_type_id,
+  fields, deck_id)` is already the exact primitive needed: it inserts the note
+  and calls `sync_card_rows` to generate one card per template into `deck_id`.
+- **No server endpoint exists yet for duplication.** There is `clone_note_type`
+  (for note *types*, not notes) — unrelated. This story adds a dedicated
+  `POST /notes/{id}/duplicate` that reuses the note-insert + `sync_card_rows`
+  path rather than reimplementing it.
+
+**Scope: server → core → shell.** New endpoint + contracts DTO + a core event,
+in that order — not a shell-only glyph.
+
+**Acceptance criteria (server first, then core)**
+
+- [ ] Server `POST /notes/{id}/duplicate` (teacher/admin, `check_note_authorization`
+      on the source) inserts a new note with the source's `note_type_id` + an
+      exact copy of `fields_json`, generates the cards via `sync_card_rows` into
+      the **caller-chosen deck** (see body below), and returns the new
+      `NoteResponse`. It must **not** copy `created_at`, tags, scheduling state,
+      or review history.
+- [ ] Duplication is **single-deck**: the request body carries the target deck
+      (the "selected deck"), matching `create_note`. A note spanning multiple
+      decks is duplicated into *one* chosen deck, not fanned out across all of
+      its decks (the multi-deck fan-out is ambiguous and out of scope).
+- [ ] Contracts: a request DTO (e.g. `DuplicateNote { deck_id: i64 }`) deriving
+      `Deserialize` (and `Serialize` for the core); OpenAPI regenerates.
+- [ ] Each criterion has a `server/tests/notes_browser.rs` test named after it
+      (e.g. `duplicate_note_copies_fields_and_regenerates_cards`,
+      `duplicate_note_does_not_copy_tags_or_scheduling`).
+- [ ] Core: `Event::NoteDuplicate { note_id: i64, deck_id: i64 }` emits the
+      request; `NoteDuplicated(Ok)` refreshes the notes list via `refresh_notes`
+      (and the browser if both lists are kept in sync — see US-4.13's existing
+      refresh-both rule).
+
+**Shell contract**
+
+- [ ] Add "Duplicate" to the note editor's action bar (next to Save/Delete),
+      forwarding `Event::NoteDuplicate`. Because duplication needs a target
+      deck, the shell offers the current deck selector (or the selected deck
+      from the browser's deck filter) as the destination; if ambiguous, default
+      to the note's primary/currently-visible deck.
+
+**Out of scope**
+
+- Duplicating a note's **tags** — tags are a shared school taxonomy (US-4.14),
+  not note content, so they are **not** copied by default. (A favourite/"copy
+  tags too" opt-in is a possible follow-up, recorded as an open decision.)
+- Copying scheduling state / review history / bury / suspend / leech — a
+  duplicate is a *new* note with new cards; it starts in the new queue.
+- Duplicating into **multiple** decks at once (fan-out) — a note spanning
+  several decks is duplicated into one chosen deck.
+
+**Open decisions (to settle before implementing)**
+
+1. **Target deck selection** — does the duplicate go to (a) the deck the shell
+   currently has selected in its deck filter (the "browser's selected deck",
+   matching Anki), or (b) an explicit deck picker in the duplicate dialog?
+   Recommend (a) for Anki parity, with the deck picker as the fallback when no
+   single deck is selected.
+
+---
+
 ### US-4.14 — Tagging UI (sidebar tree + per-note tag CRUD)
 
 **As** a signed-in teacher/admin viewing notes,
