@@ -1880,12 +1880,23 @@ is missing:
    state overridden). Recommend (b) — always regrade the card, regardless of due
    state — to match the "act on any card" spirit of the browser.
 
-2. **Reset** (Anki: "Forget"/Ctrl+Alt+R) — reset a card's scheduling: delete its
-   `student_card_states` row (and reviews history) so it returns to the **new**
-   queue, as if never studied. **No server endpoint exists yet** — needs a new
-   `POST /cards/{id}/reset` (or `DELETE /cards/{id}/schedule`) that removes the
-   per-student state row (and optionally its `reviews` rows) and re-assigns a new
-   `cards.position`.
+2. **Reset** (Anki: "Forget"/Ctrl+Alt+R) — reset a card's scheduling back to
+   **new** as if never studied, matching
+   <https://docs.ankiweb.net/faqs/resetting-progress-in-a-deck>. The per-student
+   `student_card_states` row is reset **in place** (so the card's Anki-style flag,
+   which lives on the same row, is preserved — deleting the row would silently
+   clear it) and `suspended`/bury/leech are cleared. **Review history (`reviews`)
+   is kept**, matching Anki (only the separate "Remove card history" add-on
+   deletes it). **No server endpoint exists yet** — needs a new
+   `POST /cards/{id}/reset`.
+
+   **Important caveat:** Anki preserves review history, but the FSRS scheduler
+   **ignores history recorded before a reset** during study *and* optimisation.
+   Anki models this with a `review_kind` reset marker on review rows; we don't
+   store one yet, so the future FSRS optimizer (US-2.18b) must either add that
+   marker (recorded in US-2.18b's deferred history-selection note) or derive
+   "history before reset" by detecting a reset. This is a deferred, non-blocking
+   gap — reset itself only needs the state reset.
 
 3. **Reposition** (Anki: "Reposition") — place a **new** card at a chosen position
    in the new-card queue (Anki's reposition window; front/end/at-index). Maps to
@@ -1900,11 +1911,13 @@ is missing:
 
 **Acceptance criteria (server first, then core)**
 
-- [ ] Server: `reset` clears the card's `student_card_states` row (card is "new"
-      on next `GET /cards`); `reposition` sets `cards.position` and survives a
-      re-fetch; `grade now` routes through `apply_review` and updates scheduling.
-      Each has a `server/tests/card_browser.rs` (or `card_mod.rs`) test named after
-      it.
+- [ ] Server: `reset` resets the card's `student_card_states` row **in place** to
+      `state='new'` (stability/difficulty/reps/lapses/step_index zeroed, due/last-
+      reviewed/bury/leech cleared, `suspended=FALSE`), preserving `flag` and
+      keeping `reviews` history (card is "new" on next `GET /cards`); `reposition`
+      sets `cards.position` and survives a re-fetch; `grade now` routes through
+      `apply_review` and updates scheduling. Each has a `server/tests/` test named
+      after it (e.g. `card_browser.rs`/`card_mod.rs`).
 - [ ] Contracts: request/response DTOs for reset/reposition (and any grade-now
       body) derive `Serialize`/`Deserialize` appropriately; OpenAPI regenerates.
 - [ ] Core: `Event::BrowserGradeCard { card_id, rating }` (→ `POST /reviews`),

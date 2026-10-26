@@ -77,6 +77,7 @@ pub fn router(state: AppState) -> Router {
         .route("/cards/{card_id}/bury", post(card_mod::bury))
         .route("/cards/{card_id}/unbury", post(card_mod::unbury))
         .route("/cards/{card_id}/reschedule", patch(card_mod::reschedule))
+        .route("/cards/{card_id}/reset", post(card_mod::reset))
         .route("/notes/{note_id}/bury", post(card_mod::bury_note))
         .route("/notes/{note_id}/suspend", post(card_mod::suspend_note))
         .route("/notes/{note_id}/unbury", post(card_mod::unbury_note))

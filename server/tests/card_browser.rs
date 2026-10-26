@@ -31,6 +31,26 @@ async fn get(app: &common::TestApp, path: &str, token: &str) -> (StatusCode, ser
     (status, json)
 }
 
+async fn post(app: &common::TestApp, path: &str, token: &str) -> (StatusCode, serde_json::Value) {
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(path)
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
 /// The empty-filter query (what the client sends by default) returns 200 with a
 /// page, and decodes the `card_state` enum without erroring.
 #[tokio::test]
@@ -361,4 +381,87 @@ async fn cards_return_note_card_count() {
     for c in json["cards"].as_array().expect("cards array") {
         assert_eq!(c["card_count"], 2, "body: {json}");
     }
+}
+
+/// `POST /cards/{id}/reset` resets a card's scheduling back to "new" in place:
+/// flag is preserved, `suspended`/bury/leech are cleared, and review history is
+/// kept (matching Anki's Reset, as documented in US-4.12b).
+#[tokio::test]
+async fn reset_card_returns_to_new_preserving_flag_and_history() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    // A review card with non-trivial scheduling + a flag + a review-history row.
+    let card = seed_studiable_card(&app, teacher_id, "review", 1, 5, 2).await;
+    sqlx::query!(
+        "UPDATE student_card_states SET flag = 3, suspended = TRUE, leech_at = NOW(), buried_at = NOW(), bury_reason = 'user_card', due_at = NOW(), stability = 3.0, difficulty = 7.0, step_index = 2 WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        card
+    )
+    .execute(&app.db)
+    .await
+    .expect("seed scheduling + flag");
+    sqlx::query!(
+        "INSERT INTO reviews (student_id, card_id, rating, reviewed_at, state_before) VALUES ($1, $2, 4, NOW(), 'review')",
+        teacher_id,
+        card
+    )
+    .execute(&app.db)
+    .await
+    .expect("review row");
+
+    let (status, json) = post(&app, &format!("/cards/{card}/reset"), &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["state"], "new", "body: {json}");
+    assert_eq!(json["suspended"], false, "body: {json}");
+    assert_eq!(json["buried_at"], serde_json::Value::Null, "body: {json}");
+    assert!(json["due_at"].is_null(), "due_at should be null, body: {json}");
+
+    // The row is reset in place: flag preserved, scheduling zeroed.
+    let flag: i64 = sqlx::query_scalar!(
+        "SELECT flag FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        card
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("flag");
+    assert_eq!(flag, 3, "flag must be preserved by reset");
+
+    let state: String = sqlx::query_scalar!(
+        "SELECT state::text FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        card
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("state")
+    .unwrap_or_default();
+    assert_eq!(state, "new", "state must be reset to new");
+
+    let (suspended, leech, buried, due): (bool, bool, bool, bool) = sqlx::query_as(
+        "SELECT suspended, leech_at IS NOT NULL, buried_at IS NOT NULL, due_at IS NOT NULL FROM student_card_states WHERE student_id = $1 AND card_id = $2",
+    )
+    .bind(teacher_id)
+    .bind(card)
+    .fetch_one(&app.db)
+    .await
+    .expect("reset columns");
+    assert!(!suspended, "reset must unsuspend");
+    assert!(!leech, "reset must clear the leech marker");
+    assert!(!buried, "reset must unbury");
+    assert!(!due, "reset must clear due_at");
+
+    // Review history is kept (Anki Reset; only 'Remove card history' deletes it).
+    let reviews_after: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM reviews WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        card
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("review count")
+    .unwrap_or(0);
+    assert_eq!(reviews_after, 1, "review history must be preserved");
 }

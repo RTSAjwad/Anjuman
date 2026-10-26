@@ -568,3 +568,61 @@ pub async fn move_card(
         deck_id: body.deck_id,
     }))
 }
+
+/// `POST /cards/:card_id/reset` — Reset a card's scheduling back to "new" (Anki's
+/// browser "Reset" / "Forget").
+///
+/// This returns the card to the new queue as if never studied, matching
+/// <https://docs.ankiweb.net/faqs/resetting-progress-in-a-deck>. Unlike simple
+/// deletion, the row is reset **in place** so the card's Anki-style **flag** and
+/// its existence in `student_card_states` are preserved (flags live on the same
+/// row — deleting it would silently clear them, which Anki's Reset does not do).
+///
+/// Scheduling-only fields are zeroed: `state = 'new'`, stability/difficulty/reps/
+/// lapses/step_index reset, and `due_at`/`last_reviewed_at`/`buried_at`/
+/// `bury_reason`/`leech_at`/`suspended` cleared (a reset card is unsuspended +
+/// unburied + not a leech). **Review history (`reviews`) is untouched**, matching
+/// Anki (only the separate "Remove card history" add-on deletes it). Note: pre-
+/// reset history must be ignored by the future FSRS optimizer (US-2.18b) — Anki
+/// models this with a reset marker we don't yet store; see the roadmap caveat.
+pub async fn reset(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Path(card_id): Path<i64>,
+) -> Result<Json<CardModResponse>, (StatusCode, &'static str)> {
+    // Reset the scheduling state in place, preserving `flag` (and any other
+    // non-scheduling column) but clearing every scheduling signal. `state`
+    // becomes 'new' — the authoritative "never studied" signal.
+    let result = sqlx::query!(
+        r#"
+        UPDATE student_card_states
+        SET state = 'new', stability = 0.0, difficulty = 0.0,
+            step_index = 0, reps = 0, lapses = 0,
+            due_at = NULL, last_reviewed_at = NULL,
+            suspended = FALSE, buried_at = NULL, bury_reason = NULL,
+            leech_at = NULL
+        WHERE student_id = $1 AND card_id = $2
+        "#,
+        claims.sub,
+        card_id
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Card state not found"));
+    }
+
+    let (state, due_at, suspended, buried_at, bury_reason) =
+        fetch_state(&state.db, claims.sub, card_id).await?;
+
+    Ok(Json(CardModResponse {
+        card_id,
+        suspended,
+        buried_at,
+        bury_reason,
+        due_at,
+        state,
+    }))
+}
