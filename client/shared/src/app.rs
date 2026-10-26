@@ -2647,6 +2647,7 @@ impl crux_core::App for Anjuman {
                         deck.new_count = Some(c.new_count);
                         deck.learning_count = Some(c.learning_count);
                         deck.review_count = Some(c.review_count);
+                        deck.relearning_count = Some(c.relearning_count);
                         deck.total_count = Some(c.total_count);
                     }
                 }

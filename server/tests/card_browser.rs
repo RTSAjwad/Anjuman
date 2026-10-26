@@ -591,3 +591,37 @@ async fn reset_card_returns_to_new_preserving_flag_and_history() {
     .unwrap_or(0);
     assert_eq!(reviews_after, 1, "review history must be preserved");
 }
+
+/// After `reset`, the card's deck shows a `new_count` >= 1 in `GET /decks/counts`
+/// (the reset card returns to the new queue). Guards the count-sync behaviour the
+/// client depends on after browser reset.
+#[tokio::test]
+async fn reset_card_surfaces_in_deck_new_counts() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    let card = seed_studiable_card(&app, teacher_id, "review", 0, 1, 0).await;
+    let deck_id: i64 = sqlx::query_scalar!("SELECT deck_id FROM cards WHERE id = $1", card)
+        .fetch_one(&app.db)
+        .await
+        .expect("deck id");
+
+    // Reset the review card → new queue.
+    let (status, _) = post(&app, &format!("/cards/{card}/reset"), &token).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The deck's new count must now be at least 1.
+    let (status, json) = get(&app, "/decks/counts", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    let deck = json["decks"]
+        .as_array()
+        .expect("decks array")
+        .iter()
+        .find(|d| d["deck_id"] == deck_id)
+        .expect("missing deck in counts, body");
+    assert!(
+        deck["new_count"].as_i64().unwrap_or(0) >= 1,
+        "reset card should count as new, body: {json}"
+    );
+}
