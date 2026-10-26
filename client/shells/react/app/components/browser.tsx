@@ -550,16 +550,6 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
         </Select>
       </ButtonGroup>
 
-      <Separator orientation="vertical" />
-      <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
-      <NoteActions
-        noteId={card.note_id}
-        noteSuspended={card.note_suspended}
-        noteBuried={card.note_buried}
-        canManageNotes={canManageNotes}
-        update={update}
-      />
-
       <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
         <DialogContent>
           <DialogHeader>
@@ -613,43 +603,54 @@ export function NoteActions({
   noteSuspended,
   noteBuried,
   canManageNotes,
+  onCreateNote,
   update,
 }: {
-  noteId: bigint;
-  noteSuspended: boolean;
-  noteBuried: boolean;
+  noteId: bigint | null;
+  noteSuspended: boolean | null;
+  noteBuried: boolean | null;
   canManageNotes: boolean;
+  onCreateNote: () => void;
   update: (e: Event) => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   function confirmDelete() {
-    update(eventNoteDelete(noteId));
-    setDeleteOpen(false);
+    if (noteId !== null) {
+      update(eventNoteDelete(noteId));
+      setDeleteOpen(false);
+    }
   }
 
   return (
     <>
       <ButtonGroup>
-        <Toggle
-          variant="outline"
-          pressed={noteSuspended}
-          onPressedChange={(v) =>
-            update(v ? eventBrowserSuspendNote(noteId) : eventBrowserUnsuspendNote(noteId))
-          }
-        >
-          Suspend Note
-        </Toggle>
-        <Toggle
-          variant="outline"
-          pressed={noteBuried}
-          onPressedChange={(v) =>
-            update(v ? eventBrowserBuryNote(noteId) : eventBrowserUnburyNote(noteId))
-          }
-        >
-          Bury Note
-        </Toggle>
-        <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
+        <Button variant="outline" onClick={onCreateNote} disabled={!canManageNotes}>Create Note</Button>
+        {noteId !== null && noteSuspended !== null ? (
+          <Toggle
+            variant="outline"
+            pressed={noteSuspended}
+            onPressedChange={(v) =>
+              update(v ? eventBrowserSuspendNote(noteId) : eventBrowserUnsuspendNote(noteId))
+            }
+          >
+            Suspend Note
+          </Toggle>
+        ) : null}
+        {noteId !== null && noteBuried !== null ? (
+          <Toggle
+            variant="outline"
+            pressed={noteBuried}
+            onPressedChange={(v) =>
+              update(v ? eventBrowserBuryNote(noteId) : eventBrowserUnburyNote(noteId))
+            }
+          >
+            Bury Note
+          </Toggle>
+        ) : null}
+        {noteId !== null ? (
+          <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
+        ) : null}
       </ButtonGroup>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

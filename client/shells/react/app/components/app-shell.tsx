@@ -40,7 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { LibraryIcon, TableIcon, LogOutIcon, PlusIcon } from "lucide-react";
+import { LibraryIcon, TableIcon, LogOutIcon } from "lucide-react";
 import {
   DeckListScreen,
   StudyScreen,
@@ -100,7 +100,6 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
         onShowDeckList={() => update(eventShowDeckList())}
         onShowCards={() => update(eventShowCards())}
         onLogout={() => update(eventLogout())}
-        onAddNote={() => setAddNoteOpen(true)}
       />
       <SidebarInset className="min-w-0 flex-1">
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
@@ -121,20 +120,18 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
                 onShowCards={() => update(eventShowCards())}
                 onShowNotes={() => update(eventShowNotes())}
               />
-              {route === "Cards" ? (
+              <Separator orientation="vertical" />
+              <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
+              <NoteActions
+                noteId={route === "Cards" ? (view.browser_selected?.note_id ?? null) : (view.notes_selected?.id ?? null)}
+                noteSuspended={route === "Cards" ? (view.browser_selected?.note_suspended ?? null) : (view.notes_selected?.note_suspended ?? null)}
+                noteBuried={route === "Cards" ? (view.browser_selected?.note_buried ?? null) : (view.notes_selected?.note_buried ?? null)}
+                canManageNotes={canManageNotes}
+                onCreateNote={() => setAddNoteOpen(true)}
+                update={update}
+              />
+              {route === "Cards" && view.browser_selected ? (
                 <CardActions card={view.browser_selected} decks={view.decks} canManageNotes={canManageNotes} update={update} />
-              ) : view.notes_selected ? (
-                <>
-                  <Separator orientation="vertical" />
-                  <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
-                  <NoteActions
-                    noteId={view.notes_selected.id}
-                    noteSuspended={view.notes_selected.note_suspended}
-                    noteBuried={view.notes_selected.note_buried}
-                    canManageNotes={canManageNotes}
-                    update={update}
-                  />
-                </>
               ) : null}
             </>
           ) : route === "Study" ? (
@@ -184,7 +181,6 @@ function AppSidebar({
   onShowDeckList,
   onShowCards,
   onLogout,
-  onAddNote,
 }: {
   displayName: string;
   email: string;
@@ -193,7 +189,6 @@ function AppSidebar({
   onShowDeckList: () => void;
   onShowCards: () => void;
   onLogout: () => void;
-  onAddNote: () => void;
 }) {
   return (
     <Sidebar collapsible="icon">
@@ -201,17 +196,6 @@ function AppSidebar({
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {canManageNotes ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={onAddNote}
-                    tooltip="Add note"
-                  >
-                    <PlusIcon />
-                    <span>Add note</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : null}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={onShowDeckList}
