@@ -316,6 +316,10 @@ pub enum Event {
         card_id: i64,
         rating: i32,
     },
+    /// Reset a browser card's scheduling back to "new" (Anki "Forget").
+    BrowserResetCard {
+        card_id: i64,
+    },
     /// Move a browser card (by id) to another deck.
     BrowserMoveCard {
         card_id: i64,
@@ -486,6 +490,12 @@ pub enum Event {
     #[facet(skip)]
     BrowserGradeDone(
         #[facet(opaque)] crux_http::Result<crux_http::Response<ReviewResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserResetDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<CardModResponse>>,
     ),
 
     #[serde(skip)]
@@ -2402,6 +2412,19 @@ impl crux_core::App for Anjuman {
                     .then_send(Event::BrowserGradeDone)
             }
 
+            Event::BrowserResetCard { card_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/reset"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserResetDone)
+            }
+
             Event::BrowserFlagCard { card_id, flag } => {
                 if !(0..=7).contains(&flag) {
                     return render::render();
@@ -2475,6 +2498,16 @@ impl crux_core::App for Anjuman {
             }
 
             Event::BrowserGradeDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserResetDone(Ok(_)) => {
+                model.browser_error = None;
+                refresh_browser(model)
+            }
+
+            Event::BrowserResetDone(Err(e)) => {
                 model.browser_error = Some(e.to_string());
                 render::render()
             }
@@ -4886,6 +4919,24 @@ mod tests {
                 assert_eq!(body.card_id, 42);
                 assert_eq!(body.rating, 3);
                 assert_eq!(body.response_time_ms, None);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserResetCard` emits `POST /cards/{id}/reset` (Anki "Forget").
+    #[test]
+    fn browser_reset_card_emits_post_reset() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserResetCard { card_id: 42 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/reset"
+                );
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
