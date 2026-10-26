@@ -76,6 +76,7 @@ import { ButtonGroup } from "~/components/ui/button-group";
 import { ChipInput } from "~/components/ui/chip-input";
 import { Separator } from "~/components/ui/separator";
 import { ChevronRight, Flag, Search } from "lucide-react";
+import { formatInterval } from "./study";
 
 const CARD_SORT_OPTIONS = [
   ["created_at", "Created"],
@@ -510,6 +511,11 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
     }
   }
 
+  function intervalFor(rating: number): string {
+    const secs = card!.predicted_interval?.get(rating);
+    return secs === undefined ? "" : formatInterval(secs);
+  }
+
   function confirmMove() {
     if (targetDeck !== "") {
       update(eventBrowserMoveCard(card!.card_id, BigInt(targetDeck)));
@@ -634,10 +640,10 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
             <DialogDescription>Grade this card now, regardless of due state.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap justify-center gap-2">
-            <GradeButton label="Again" variant="destructive" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 1)); setGradeOpen(false); }} />
-            <GradeButton label="Hard" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 2)); setGradeOpen(false); }} />
-            <GradeButton label="Good" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 3)); setGradeOpen(false); }} />
-            <GradeButton label="Easy" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 4)); setGradeOpen(false); }} />
+            <GradeButton label="Again" interval={intervalFor(1)} variant="destructive" onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 1)); setGradeOpen(false); }} />
+            <GradeButton label="Hard" interval={intervalFor(2)} onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 2)); setGradeOpen(false); }} />
+            <GradeButton label="Good" interval={intervalFor(3)} onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 3)); setGradeOpen(false); }} />
+            <GradeButton label="Easy" interval={intervalFor(4)} onAnswer={() => { update(eventBrowserGradeCard(card.card_id, 4)); setGradeOpen(false); }} />
           </div>
         </DialogContent>
       </Dialog>
@@ -647,10 +653,12 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
 
 function GradeButton({
   label,
+  interval,
   variant = "ghost",
   onAnswer,
 }: {
   label: string;
+  interval: string;
   variant?: "ghost" | "destructive";
   onAnswer: () => void;
 }) {
@@ -659,6 +667,7 @@ function GradeButton({
       <Button variant={variant} size="lg" onClick={onAnswer}>
         {label}
       </Button>
+      <span className="text-xs text-muted-foreground">{interval}</span>
     </div>
   );
 }
