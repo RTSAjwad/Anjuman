@@ -1858,6 +1858,65 @@ fields, no tests.
 - Card *edit* (fields/templates) — that's the notes browser (US-4.13); move-to-
   another-deck is a follow-up.
 
+#### US-4.12a — New-card position: make `cards.position` authoritative (prereq)
+
+**As** the scheduler and the card browser,
+**I want** `cards.position` to be the single source of truth for a card's place
+in the new-card queue — *stored*, *read back*, and *mutated* —
+**so that** Reposition (US-4.12b) and Reset's "restore original position" can
+operate on a real, persisted queue order instead of a page-local display counter.
+
+**Background / Anki grounding**
+
+Anki models a new card's position as a **single collection-wide `due` counter**
+(not per-deck). From `rslib/src/card/mod.rs`: `CardQueue::New` documents `due` as
+"the order cards are shown in", and there is a separate `original_position:
+Option<u32>` = "the position in the new queue before leaving it". Reposition
+simply **sets `due`** (front/end/at-index); "shift existing" renumbers the tail
+of the whole new queue with `due >= target`.
+
+Anjuman already has the right *shape*: `cards.position BIGINT NOT NULL` (migration
+`0005`, US-2.8a), a global monotonic sequence (`card_position_seq`) — deliberately
+scoped to a preset's decks on re-sort (US-2.13, a documented multi-tenant divergence
+from Anki's global namespace). **The gap is that `position` is orphaned:**
+
+- It is written on insert (`sync_card_rows` + the column default), but **never read
+  back for display** — `browse_cards` does not `SELECT c.position`, and
+  `rows_to_responses` instead *synthesizes* a page-local `new_card_position` counter
+  (seeded by a `COUNT(*)` of earlier new cards, page-relative and sort-dependent).
+- It is **not** the target of any endpoint (Reposition/Reset-position don't exist
+  yet).
+- Reset (US-4.12b) does not touch it, so there is no "original position" to restore.
+
+**Scope: server → core.** This is a **foundation** story: no new user-facing action,
+but it makes the browser's "Due" column faithful and unblocks US-4.12b's Reposition
+and Reset-position behaviours.
+
+**Acceptance criteria (server first)**
+
+- [ ] `browse_cards` selects `c.position` and `CardBrowserRow` carries it; for a
+      **new** card, `CardBrowserResponse` exposes the stored `position` (not the
+      current synthesized counter). Non-new cards expose `position = NULL`/absent
+      (Anki's Due column shows an interval for review/relearning, not a position).
+- [ ] `new_card_position` semantics are recomputed from `cards.position`, ordered
+      per Anki's collection-wide queue, without the page-local `new_card_offset`
+      counter (or the counter is derived from stored positions, not synthesized).
+- [ ] Each criterion has a `server/tests/card_browser.rs` test named after it
+      (e.g. `cards_return_stored_position_for_new_cards`), and OpenAPI regenerates.
+- [ ] No migration is required for *this* story (the `position` column already
+      exists) — unless the "original position" concept (see below) is chosen to be
+      stored now.
+
+**Open decisions (to settle before implementing)**
+
+1. **Display shape** — does `CardBrowserResponse` carry the raw `position: i64`
+   (the stored queue ordinal), or a nullable `position: Option<i64>` that is `Some`
+   only for new cards? Recommend nullable `Some` for new cards, `None` otherwise,
+   so the shell can render Anki's Due column verbatim (position for new, interval for
+   scheduled).
+
+---
+
 #### US-4.12b — Browser scheduling actions (Grade Now / Reset / Reposition)
 
 **As** a signed-in user in the card browser,
@@ -1900,10 +1959,12 @@ is missing:
 
 3. **Reposition** (Anki: "Reposition") — place a **new** card at a chosen position
    in the new-card queue (Anki's reposition window; front/end/at-index). Maps to
-   setting `cards.position` (per-deck monotonic sequence — see migrations
-   `0005`/`0018`). **No server endpoint exists yet** — needs a new
+   setting `cards.position` — the **collection-wide** monotonic sequence (see
+   migrations `0005`/`0018`), now made authoritative + read back by US-4.12a
+   (prereq). **No server endpoint exists yet** — needs a new
    `PATCH /cards/{id}/position` (or reuse a broader reposition body) that writes
-   `cards.position`. Distinct from `reschedule` (absolute due date), which already
+   `cards.position` and, optionally, "shifts" the tail (Anki's "Shift position of
+   existing cards"). Distinct from `reschedule` (absolute due date), which already
    exists.
 
 **Scope: server → core → shell.** These are *new* server endpoints + contracts DTOs
