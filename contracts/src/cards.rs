@@ -142,6 +142,10 @@ pub struct CardBrowserResponse {
     pub buried_at: Option<DateTime<Utc>>,
     /// Why the card is buried; null if not buried (student view only).
     pub bury_reason: Option<String>,
+    /// True if *all* of the note's cards are suspended for this student.
+    pub note_suspended: bool,
+    /// True if *all* of the note's cards are buried for this student.
+    pub note_buried: bool,
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_card_position: Option<i64>,

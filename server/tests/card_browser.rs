@@ -204,3 +204,34 @@ async fn cards_return_sort_field_deck_path_and_due_at() {
     );
     assert!(card["due_at"].is_string(), "due_at should be present, body: {json}");
 }
+
+/// `GET /cards` carries the note-level aggregate suspend/bury flags (uniform
+/// bulk ops, so they equal the per-card state) — for the note toggle controls.
+#[tokio::test]
+async fn cards_return_note_suspended_and_buried_flags() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+
+    // Unsuspended/unburied by default.
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["cards"][0]["note_suspended"], false, "body: {json}");
+    assert_eq!(json["cards"][0]["note_buried"], false, "body: {json}");
+
+    // Suspend the card (a uniform note op) → note_suspended flips true.
+    sqlx::query!(
+        "UPDATE student_card_states SET suspended = TRUE WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        card
+    )
+    .execute(&app.db)
+    .await
+    .expect("suspend");
+
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["cards"][0]["note_suspended"], true, "body: {json}");
+    assert_eq!(json["cards"][0]["note_buried"], false, "body: {json}");
+}

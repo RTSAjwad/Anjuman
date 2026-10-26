@@ -90,6 +90,11 @@ async fn rows_to_responses(
             suspended: r.suspended,
             buried_at: r.buried_at,
             bury_reason: r.bury_reason,
+            // Note suspend/bury are uniform bulk ops (all cards of a note set
+            // identically; see `card_mod.rs::suspend_note`/`bury_note`), so the
+            // per-card values above also represent the note's true state.
+            note_suspended: r.suspended.unwrap_or(false),
+            note_buried: r.buried_at.is_some(),
             created_at: r.created_at,
             new_card_position,
         });

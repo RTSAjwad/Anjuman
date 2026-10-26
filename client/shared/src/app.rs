@@ -713,6 +713,10 @@ pub struct CardBrowserView {
     pub flag: i64,
     pub suspended: bool,
     pub buried: bool,
+    /// True if *all* of the note's cards are suspended (note-level toggle state).
+    pub note_suspended: bool,
+    /// True if *all* of the note's cards are buried (note-level toggle state).
+    pub note_buried: bool,
     /// The note's fields, flattened to string values (mirrors `NoteView.fields`,
     /// so the shared note-details panel can edit a card's note directly).
     pub fields: HashMap<String, String>,
@@ -758,6 +762,8 @@ impl From<&CardBrowserResponse> for CardBrowserView {
             flag: c.flag.unwrap_or(0),
             suspended: c.suspended.unwrap_or(false),
             buried: c.buried_at.is_some(),
+            note_suspended: c.note_suspended,
+            note_buried: c.note_buried,
             fields,
             tags,
             template_name: c.template_name.clone(),
@@ -2945,6 +2951,8 @@ mod tests {
             suspended: Some(false),
             buried_at: None,
             bury_reason: None,
+            note_suspended: false,
+            note_buried: false,
             created_at: chrono::Utc::now(),
             new_card_position: None,
         }
@@ -4526,6 +4534,8 @@ mod tests {
         c.sort_field = Some("hola".to_string());
         c.due_at = Some(chrono::Utc::now());
         c.deck_path = "Biology 101::Cell Biology".to_string();
+        c.note_suspended = true;
+        c.note_buried = true;
 
         let v = CardBrowserView::from(&c);
 
@@ -4533,6 +4543,8 @@ mod tests {
         assert_eq!(v.sort_field.as_deref(), Some("hola"));
         assert!(v.due_at.is_some(), "due_at should be pre-formatted");
         assert_eq!(v.deck_path, "Biology 101::Cell Biology");
+        assert!(v.note_suspended, "note_suspended should map through");
+        assert!(v.note_buried, "note_buried should map through");
     }
 
     /// `BrowserSelectCard` records the selected card; an unknown id clears it.
