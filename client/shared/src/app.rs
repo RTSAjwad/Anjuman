@@ -24,7 +24,7 @@ use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions}
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::notes::{
-    CardSummary, CreateNote, ListNotesQuery, NoteBrowserPage, NoteResponse, UpdateNote,
+    CreateNote, ListNotesQuery, NoteBrowserPage, NoteResponse, UpdateNote,
 };
 use anjuman_contracts::reviews::{FlagResponse, ReviewResponse, SetFlag, SubmitReview};
 use anjuman_contracts::MessageResponse;
@@ -186,6 +186,10 @@ pub enum Event {
     Logout,
     /// Fetch the signed-in user's decks (fired after a successful login/restore).
     DecksRequested,
+    /// Fetch the authoritative per-deck due counts (`GET /decks/counts`) — fired
+    /// after a browser action that changes scheduling, so deck-list badges stay
+    /// in sync without a full `GET /decks` round-trip.
+    DecksCountsRequested,
     /// Open a deck (by id) to study it — records the selection and switches the
     /// shell from the list view to the study screen.
     OpenDeck {
@@ -1070,6 +1074,13 @@ fn refresh_browser(model: &Model) -> Command<Effect, Event> {
         return render::render();
     };
     render::render().and(Command::event(Event::CardsRequested { filter }))
+}
+
+/// Request authoritative per-deck due counts (`GET /decks/counts`). Chained after
+/// browser/card actions that change a card's scheduling state so the deck-list
+/// badges stay in sync (the server is the single source of truth for counts).
+fn refresh_deck_counts() -> Command<Effect, Event> {
+    Command::event(Event::DecksCountsRequested)
 }
 
 /// Re-sync `browser_selected` to the matching card in `browser_cards` (the single
@@ -2464,7 +2475,7 @@ impl crux_core::App for Anjuman {
             // (unlike the study actions, which advance to the next due card).
             Event::BrowserCardActionDone(Ok(_)) => {
                 model.browser_error = None;
-                refresh_browser(model)
+                refresh_browser(model).and(refresh_deck_counts())
             }
 
             Event::BrowserCardActionDone(Err(e)) => {
@@ -2474,7 +2485,7 @@ impl crux_core::App for Anjuman {
 
             Event::BrowserRescheduleDone(Ok(_)) => {
                 model.browser_error = None;
-                refresh_browser(model)
+                refresh_browser(model).and(refresh_deck_counts())
             }
 
             Event::BrowserRescheduleDone(Err(e)) => {
@@ -2484,7 +2495,7 @@ impl crux_core::App for Anjuman {
 
             Event::BrowserRepositionDone(Ok(_)) => {
                 model.browser_error = None;
-                refresh_browser(model)
+                refresh_browser(model).and(refresh_deck_counts())
             }
 
             Event::BrowserRepositionDone(Err(e)) => {
@@ -2494,7 +2505,7 @@ impl crux_core::App for Anjuman {
 
             Event::BrowserGradeDone(Ok(_)) => {
                 model.browser_error = None;
-                refresh_browser(model)
+                refresh_browser(model).and(refresh_deck_counts())
             }
 
             Event::BrowserGradeDone(Err(e)) => {
@@ -2504,7 +2515,7 @@ impl crux_core::App for Anjuman {
 
             Event::BrowserResetDone(Ok(_)) => {
                 model.browser_error = None;
-                refresh_browser(model)
+                refresh_browser(model).and(refresh_deck_counts())
             }
 
             Event::BrowserResetDone(Err(e)) => {
@@ -2530,9 +2541,10 @@ impl crux_core::App for Anjuman {
             Event::BrowserMoveCardDone(Ok(_)) => {
                 // Moving a card changes its deck, so re-fetch using the last
                 // filter; `refresh_browser` also re-syncs `browser_selected` so the
-                // selected card's deck_id/deck_title/deck_path update.
+                // selected card's deck_id/deck_title/deck_path update. Move also
+                // changes both decks' due counts, so refresh deck counts too.
                 model.browser_error = None;
-                refresh_browser(model)
+                refresh_browser(model).and(refresh_deck_counts())
             }
 
             Event::BrowserMoveCardDone(Err(e)) => {
@@ -2596,7 +2608,7 @@ impl crux_core::App for Anjuman {
             // affected cards' suspended/buried columns and the selected note update.
             Event::BrowserNoteActionDone(Ok(_)) => {
                 model.browser_error = None;
-                refresh_notes(model).and(refresh_browser(model))
+                refresh_notes(model).and(refresh_browser(model)).and(refresh_deck_counts())
             }
 
             Event::BrowserNoteActionDone(Err(e)) => {
@@ -2617,6 +2629,18 @@ impl crux_core::App for Anjuman {
                     .expect_json()
                     .build()
                     .then_send(Event::DecksResult)
+            }
+
+            Event::DecksCountsRequested => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                Http::get(format!("{API_URL}/decks/counts"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DecksCountsResult)
             }
 
             Event::DecksResult(Ok(mut response)) => {
@@ -2749,6 +2773,7 @@ impl crux_core::App for Anjuman {
 mod tests {
     use super::*;
     use anjuman_contracts::UserRole;
+    use anjuman_contracts::notes::CardSummary;
     use crux_core::App as _;
     use crux_http::testing::ResponseBuilder;
 
@@ -4859,6 +4884,46 @@ mod tests {
             events.iter().any(|e| matches!(e, Event::CardsRequested { .. })),
             "should re-fetch cards, got {events:?}"
         );
+    }
+
+    /// A browser scheduling action completion also re-fetches authoritative deck
+    /// counts, so the deck-list badges stay in sync (US-4.12b consistency).
+    #[test]
+    fn browser_action_done_refreshes_deck_counts() {
+        let mut model = authenticated_model();
+        model.browser_filter = Some(CardBrowserFilter::default());
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(card_mod_response()).build();
+        let mut command = app.update(Event::BrowserCardActionDone(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DecksCountsRequested)),
+            "should re-fetch deck counts, got {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| matches!(e, Event::CardsRequested { .. })),
+            "should re-fetch cards, got {events:?}"
+        );
+    }
+
+    /// `DecksCountsRequested` emits `GET /decks/counts` with the bearer header.
+    #[test]
+    fn decks_counts_requested_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(Event::DecksCountsRequested, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/counts"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
     }
 
     /// `BrowserRescheduleCard` emits `PATCH /cards/{id}/reschedule` with a body.
