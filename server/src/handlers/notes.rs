@@ -299,6 +299,32 @@ pub async fn create_note(
             )
         })?;
 
+    // Attach any requested tags, in the same transaction, mirroring
+    // `handlers/tags.rs::add_tags` (normalise + dedup; empty names rejected).
+    let mut names: Vec<String> = Vec::new();
+    for raw in &body.tags {
+        let n = crate::tags::normalize_name(raw);
+        if n.is_empty() {
+            return Err((StatusCode::BAD_REQUEST, "Tag name cannot be empty".to_string()));
+        }
+        if !names.contains(&n) {
+            names.push(n);
+        }
+    }
+    for name in &names {
+        let tag_id = crate::tags::ensure_tag(&mut tx, name)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+        sqlx::query!(
+            "INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2) ON CONFLICT (note_id, tag_id) DO NOTHING",
+            note_id,
+            tag_id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    }
+
     tx.commit().await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

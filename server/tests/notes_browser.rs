@@ -27,6 +27,32 @@ async fn get(app: &common::TestApp, path: &str, token: &str) -> (StatusCode, ser
     (status, json)
 }
 
+async fn post_json(
+    app: &common::TestApp,
+    path: &str,
+    token: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(path)
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
 /// Seed a note (deck + note type + template + card) owned by `owner_id`, and
 /// return the note id.
 async fn seed_note(app: &common::TestApp, owner_id: i64) -> i64 {
@@ -187,4 +213,52 @@ async fn note_cards_wrap_front_and_back_in_card_wrapper() {
         "<div class=\"card\">hello</div>",
         "back should be wrapped in a .card element, body: {json}"
     );
+}
+
+/// `POST /notes` creates a note and attaches the requested tags (normalised +
+/// deduped), returning them on the response; the note's deck is the first card's
+/// deck (duplicate-note prefill).
+#[tokio::test]
+async fn create_note_with_tags_attaches_them_and_returns_deck() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_id = seed_note(&app, teacher_id).await;
+
+    // Reuse the seeded note's note type + deck for the create request.
+    let note_type_id: i64 = sqlx::query_scalar!("SELECT note_type_id FROM notes WHERE id = $1", note_id)
+        .fetch_one(&app.db)
+        .await
+        .expect("note type id");
+    let deck_id: i64 = sqlx::query_scalar!("SELECT deck_id FROM cards WHERE note_id = $1", note_id)
+        .fetch_one(&app.db)
+        .await
+        .expect("deck id");
+
+    let (status, json) = post_json(
+        &app,
+        "/notes",
+        &token,
+        serde_json::json!({
+            "note_type_id": note_type_id,
+            "deck_id": deck_id,
+            "fields": {"Front": "bonjour", "Back": "hello"},
+            "tags": ["Biology", "biology", " Cells "]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {json}");
+
+    // Tags are normalised (trim + lowercase) and deduped.
+    let tags = json["tags"]
+        .as_array()
+        .expect("tags array")
+        .iter()
+        .map(|t| t["name"].as_str().expect("tag name").to_string())
+        .collect::<Vec<String>>();
+    assert_eq!(tags, vec!["biology".to_string(), "cells".to_string()], "body: {json}");
+
+    // The note's deck is its (first/only) card's deck.
+    let card_deck = json["cards"][0]["deck_id"].as_i64().unwrap();
+    assert_eq!(card_deck, deck_id, "body: {json}");
 }

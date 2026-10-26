@@ -14,6 +14,10 @@ pub struct CreateNote {
     pub fields: Map<String, Value>,
     /// The deck the note's generated cards go into (the "selected deck").
     pub deck_id: i64,
+    /// Tags to attach to the new note (free-form names; server normalises +
+    /// dedups, mirroring POST /notes/{id}/tags). Empty/absent = no tags.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Fields that can be updated on a note.
