@@ -94,6 +94,35 @@ async fn empty_filter_returns_page() {
     assert_eq!(json["cards"][0]["state"], "new", "body: {json}");
 }
 
+/// `sort=position` orders cards by their stored `cards.position` (the new-card
+/// queue ordinal) ascending.
+#[tokio::test]
+async fn sort_by_position_orders_by_stored_position() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let a = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+    let b = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+
+    // Give them explicit, out-of-insertion-order positions.
+    sqlx::query!("UPDATE cards SET position = 200 WHERE id = $1", a)
+        .execute(&app.db)
+        .await
+        .expect("position a");
+    sqlx::query!("UPDATE cards SET position = 100 WHERE id = $1", b)
+        .execute(&app.db)
+        .await
+        .expect("position b");
+
+    let (status, json) = get(&app, "/cards?sort=position&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    let cards = json["cards"].as_array().expect("cards array");
+    assert_eq!(cards.len(), 2, "body: {json}");
+    // b (position 100) sorts before a (position 200).
+    assert_eq!(cards[0]["card_id"], b, "body: {json}");
+    assert_eq!(cards[1]["card_id"], a, "body: {json}");
+}
+
 /// A deck filter narrows to cards in that deck.
 #[tokio::test]
 async fn deck_filter_narrows_results() {

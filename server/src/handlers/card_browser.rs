@@ -282,6 +282,7 @@ fn sort_clause(sort: &str) -> &'static str {
         "due_at" => "scs.due_at ASC NULLS LAST, c.created_at DESC",
         "deck" => "d.title ASC, c.created_at DESC",
         "question" => "n.fields_json ASC, c.created_at DESC",
+        "position" => "c.position ASC, c.created_at DESC",
         _ => "c.created_at DESC",
     }
 }
