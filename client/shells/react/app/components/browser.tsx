@@ -678,6 +678,7 @@ export function NoteActions({
   noteBuried,
   canManageNotes,
   onCreateNote,
+  onDuplicate,
   update,
 }: {
   noteId: bigint | null;
@@ -685,6 +686,7 @@ export function NoteActions({
   noteBuried: boolean | null;
   canManageNotes: boolean;
   onCreateNote: () => void;
+  onDuplicate: (() => void) | null;
   update: (e: Event) => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -723,7 +725,10 @@ export function NoteActions({
           </Toggle>
         ) : null}
         {noteId !== null ? (
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
+          <>
+            <Button variant="outline" onClick={onDuplicate ?? undefined} disabled={!canManageNotes || onDuplicate === null}>Duplicate</Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
+          </>
         ) : null}
       </ButtonGroup>
 

@@ -49,6 +49,7 @@ import {
 } from "./screens";
 import { CardActions, NoteActions } from "./browser";
 import { AddNoteDialog } from "./add-note-dialog";
+import type { NotePrefill } from "./add-note-dialog";
 import { StudyCountBadges, StudyControls } from "./study";
 import { LoginScreen } from "./login-screen";
 
@@ -72,6 +73,7 @@ function Layout() {
 
 function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => void }) {
   const [addNoteOpen, setAddNoteOpen] = useState(false);
+  const [prefill, setPrefill] = useState<NotePrefill | null>(null);
 
   const route = view.route.kind;
   const canManageNotes = view.permissions.can_manage_notes;
@@ -89,6 +91,37 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
   if (!authenticated) {
     return <LoginScreen />;
   }
+
+  function openCreateNote() {
+    setPrefill(null);
+    setAddNoteOpen(true);
+  }
+
+  function openDuplicateNote() {
+    if (route === "Cards") {
+      const c = view.browser_selected;
+      if (!c) return;
+      setPrefill({
+        noteTypeId: String(c.note_type_id),
+        deckId: String(c.deck_id),
+        fields: Object.fromEntries(c.fields),
+        tags: [...c.tags],
+      });
+    } else {
+      const n = view.notes_selected;
+      if (!n) return;
+      setPrefill({
+        noteTypeId: String(n.note_type_id),
+        deckId: n.deck_id === null ? "" : String(n.deck_id),
+        fields: Object.fromEntries(n.fields),
+        tags: [...n.tags],
+      });
+    }
+    setAddNoteOpen(true);
+  }
+
+  const hasSelection =
+    route === "Cards" ? view.browser_selected !== null : view.notes_selected !== null;
 
   return (
     <div className="flex h-svh w-full">
@@ -127,7 +160,8 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
                 noteSuspended={route === "Cards" ? (view.browser_selected?.note_suspended ?? null) : (view.notes_selected?.note_suspended ?? null)}
                 noteBuried={route === "Cards" ? (view.browser_selected?.note_buried ?? null) : (view.notes_selected?.note_buried ?? null)}
                 canManageNotes={canManageNotes}
-                onCreateNote={() => setAddNoteOpen(true)}
+                onCreateNote={openCreateNote}
+                onDuplicate={hasSelection ? openDuplicateNote : null}
                 update={update}
               />
               {route === "Cards" && view.browser_selected ? (
@@ -168,6 +202,7 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
         update={update}
         open={addNoteOpen}
         onOpenChange={setAddNoteOpen}
+        prefill={prefill}
       />
     </div>
   );

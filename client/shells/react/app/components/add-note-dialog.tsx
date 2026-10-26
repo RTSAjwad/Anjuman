@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { DeckSummary, Event, NoteTypeView } from "shared_types/app"
 import { eventNoteCreate } from "shared_types/app"
 import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
+import { ChipInput } from "~/components/ui/chip-input"
 import {
   Dialog,
   DialogContent,
@@ -38,20 +39,46 @@ function flatDecks(decks: DeckSummary[]): { id: bigint; path: string }[] {
   return out
 }
 
+export type NotePrefill = {
+  noteTypeId: string
+  deckId: string
+  fields: Record<string, string>
+  tags: string[]
+}
+
 type AddNoteDialogProps = {
   noteTypes: NoteTypeView[]
   decks: DeckSummary[]
   update: (e: Event) => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  prefill?: NotePrefill | null
 }
 
-export function AddNoteDialog({ noteTypes, decks, update, open, onOpenChange }: AddNoteDialogProps) {
+export function AddNoteDialog({ noteTypes, decks, update, open, onOpenChange, prefill }: AddNoteDialogProps) {
   const [noteTypeId, setNoteTypeId] = useState("")
   const [deckId, setDeckId] = useState("")
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
+  const [tags, setTags] = useState<string[]>([])
 
   const noteType = noteTypes.find((nt) => String(nt.id) === noteTypeId) ?? null
+
+  // Seed the form whenever the dialog opens (with the prefill for "Duplicate",
+  // or blank for a fresh "Create Note").
+  useEffect(() => {
+    if (!open) return
+    if (prefill) {
+      setNoteTypeId(prefill.noteTypeId)
+      setDeckId(prefill.deckId)
+      setFieldValues(prefill.fields)
+      setTags(prefill.tags)
+    } else {
+      setNoteTypeId("")
+      setDeckId("")
+      setFieldValues({})
+      setTags([])
+    }
+  }, [open, prefill])
 
   function selectNoteType(id: string) {
     setNoteTypeId(id)
@@ -69,11 +96,7 @@ export function AddNoteDialog({ noteTypes, decks, update, open, onOpenChange }: 
     const fields = new Map<string, string>(
       (noteType.field_names ?? []).map((name) => [name, fieldValues[name] ?? ""]),
     )
-    update(eventNoteCreate(noteType.id, BigInt(deckId), fields))
-    // Reset + close on a valid submit (the core refreshes the notes list).
-    setNoteTypeId("")
-    setDeckId("")
-    setFieldValues({})
+    update(eventNoteCreate(noteType.id, BigInt(deckId), fields, tags))
     onOpenChange(false)
   }
 
@@ -83,7 +106,7 @@ export function AddNoteDialog({ noteTypes, decks, update, open, onOpenChange }: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add note</DialogTitle>
+          <DialogTitle>{prefill ? "Duplicate Note" : "Create Note"}</DialogTitle>
           <DialogDescription>Create a new note in a deck.</DialogDescription>
         </DialogHeader>
 
@@ -141,6 +164,15 @@ export function AddNoteDialog({ noteTypes, decks, update, open, onOpenChange }: 
               ))}
             </div>
           ) : null}
+
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Tags</Label>
+            <ChipInput
+              tags={tags}
+              onAdd={(tag) => setTags((prev) => prev.includes(tag) ? prev : [...prev, tag])}
+              onRemove={(tag) => setTags((prev) => prev.filter((t) => t !== tag))}
+            />
+          </div>
         </div>
 
         <DialogFooter>
