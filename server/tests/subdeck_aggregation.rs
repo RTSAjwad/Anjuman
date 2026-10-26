@@ -170,3 +170,63 @@ async fn study_returns_due_card_for_new_seed() {
         "a new card should be due, body: {json}"
     );
 }
+
+/// Cards with **no** `student_card_states` row (the seed's initial state) are
+/// counted as new by `deck_counts_for_student` — the deck list must show them
+/// without requiring the lazy `ensure_card_states_for_deck` materialisation first.
+#[tokio::test]
+async fn unfetched_cards_count_as_new_in_deck_counts() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (student_id, _token) = create_user(&app, UserRole::Student).await;
+
+    // Build a deck + note + template + one card, deliberately NOT creating a
+    // `student_card_states` row (mirrors the seed migrations).
+    let deck_id = sqlx::query!(
+        "INSERT INTO decks (school_id, title, created_by) VALUES (1, 'Fresh Seed Deck', $1) RETURNING id",
+        student_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("deck")
+    .id;
+    let note_type_id = sqlx::query!(
+        "INSERT INTO note_types (school_id, name, field_names) VALUES (1, $1, '[\"Front\",\"Back\"]') RETURNING id",
+        uuid::Uuid::new_v4().to_string()
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("note type")
+    .id;
+    let template_id = sqlx::query!(
+        "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES ($1, 0, 'Card 1', '{{Front}}', '{{Back}}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("template")
+    .id;
+    let note_id = sqlx::query!(
+        "INSERT INTO notes (note_type_id, fields_json) VALUES ($1, '{\"Front\":\"Q\",\"Back\":\"A\"}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("note")
+    .id;
+    sqlx::query!(
+        "INSERT INTO cards (note_id, deck_id, template_id) VALUES ($1, $2, $3)",
+        note_id,
+        deck_id,
+        template_id
+    )
+    .execute(&app.db)
+    .await
+    .expect("card");
+
+    // The card has no student_card_states row, yet must count as 1 new card.
+    let counts = deck_counts_for_student(&app.db, student_id, deck_id)
+        .await
+        .expect("counts");
+    assert_eq!(counts.new_count, 1, "never-seen card must count as new");
+}

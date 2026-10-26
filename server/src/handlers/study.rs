@@ -371,6 +371,12 @@ pub async fn deck_counts_for_student(
 
     // Per-subdeck physical due-now counts, grouped by the card's own deck, so
     // each subdeck's own remaining budget can cap its contribution.
+    //
+    // A card with *no* `student_card_states` row is treated as a NEW card
+    // (never studied), mirroring `browse_cards` (`scs.state IS NULL OR 'new'`).
+    // This is why the seed inserts cards without state rows yet the deck list
+    // must still show them as new — the state is derived from absence, not lazily
+    // materialised first.
     let rows = sqlx::query!(
         r#"
         WITH RECURSIVE subtree(id) AS (
@@ -379,12 +385,12 @@ pub async fn deck_counts_for_student(
             SELECT d.id FROM decks d JOIN subtree s ON d.parent_id = s.id
         )
         SELECT c.deck_id as "deck_id!: i64",
-            COALESCE(SUM(CASE WHEN (scs.state = 'new') AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "new_total!: i64",
-            COALESCE(SUM(CASE WHEN scs.state = 'learning' AND scs.due_at <= $3 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "learning_total!: i64",
-            COALESCE(SUM(CASE WHEN scs.state = 'review' AND scs.due_at <= $4 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "review_total!: i64",
-            COALESCE(SUM(CASE WHEN scs.state = 'relearning' AND scs.due_at <= $3 AND (scs.suspended = FALSE AND (scs.buried_at IS NULL OR scs.buried_at < $2)) THEN 1 ELSE 0 END), 0) as "relearning_total!: i64"
+            COALESCE(SUM(CASE WHEN (scs.state = 'new' OR scs.card_id IS NULL) AND (scs.suspended IS NULL OR scs.suspended = FALSE) AND (scs.buried_at IS NULL OR scs.buried_at < $2) THEN 1 ELSE 0 END), 0) as "new_total!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'learning' AND scs.due_at <= $3 AND (scs.suspended IS NULL OR scs.suspended = FALSE) AND (scs.buried_at IS NULL OR scs.buried_at < $2) THEN 1 ELSE 0 END), 0) as "learning_total!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'review' AND scs.due_at <= $4 AND (scs.suspended IS NULL OR scs.suspended = FALSE) AND (scs.buried_at IS NULL OR scs.buried_at < $2) THEN 1 ELSE 0 END), 0) as "review_total!: i64",
+            COALESCE(SUM(CASE WHEN scs.state = 'relearning' AND scs.due_at <= $3 AND (scs.suspended IS NULL OR scs.suspended = FALSE) AND (scs.buried_at IS NULL OR scs.buried_at < $2) THEN 1 ELSE 0 END), 0) as "relearning_total!: i64"
         FROM cards c
-        JOIN student_card_states scs
+        LEFT JOIN student_card_states scs
             ON scs.card_id = c.id AND scs.student_id = $5
         WHERE c.deck_id IN (SELECT id FROM subtree)
         GROUP BY c.deck_id
@@ -449,21 +455,21 @@ async fn due_now_class_counts(
         SELECT
             COALESCE(SUM(CASE WHEN scs.state IN ('learning','relearning') AND COALESCE(dos.seconds,0) >= 86400 THEN 1 ELSE 0 END), 0) as "interday!: i64",
             COALESCE(SUM(CASE WHEN scs.state = 'review' THEN 1 ELSE 0 END), 0) as "review!: i64",
-            COALESCE(SUM(CASE WHEN scs.state = 'new' THEN 1 ELSE 0 END), 0) as "new!: i64"
+            COALESCE(SUM(CASE WHEN scs.state = 'new' OR scs.card_id IS NULL THEN 1 ELSE 0 END), 0) as "new!: i64"
         FROM cards c
         JOIN decks cd ON cd.id = c.deck_id
-        JOIN student_card_states scs ON scs.card_id = c.id AND scs.student_id = $2
+        LEFT JOIN student_card_states scs ON scs.card_id = c.id AND scs.student_id = $2
         LEFT JOIN deck_option_steps dos
             ON dos.options_id = COALESCE(cd.options_id, 0)
            AND dos.kind = (CASE scs.state WHEN 'relearning' THEN 'relearning' ELSE 'learning' END)::step_kind
            AND dos.step_index = scs.step_index
         WHERE c.deck_id IN (SELECT id FROM subtree)
-          AND scs.suspended = FALSE
+          AND (scs.suspended IS NULL OR scs.suspended = FALSE)
           AND (scs.buried_at IS NULL OR scs.buried_at < $3)
           AND (
                 (scs.state IN ('learning', 'relearning') AND scs.due_at <= $4)
              OR (scs.state = 'review' AND scs.due_at <= $4)
-             OR (scs.state = 'new')
+             OR (scs.state = 'new' OR scs.card_id IS NULL)
           )
         "#,
         deck_id,
@@ -743,12 +749,12 @@ async fn next_due_card(
     let sql = format!(
         r#"
         SELECT c.id, c.note_id, c.template_id, n.note_type_id, n.fields_json,
-               scs.state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses,
-               scs.leech_at, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason, scs.step_index
+               COALESCE(scs.state, 'new') as state, scs.due_at, COALESCE(scs.stability, 0.0) as stability, COALESCE(scs.difficulty, 0.0) as difficulty, COALESCE(scs.reps, 0) as reps, COALESCE(scs.lapses, 0) as lapses,
+               scs.leech_at, COALESCE(scs.flag, 0) as flag, COALESCE(scs.suspended, FALSE) as suspended, scs.buried_at, scs.bury_reason, COALESCE(scs.step_index, 0) as step_index
         FROM cards c
         JOIN notes n ON n.id = c.note_id
         JOIN decks cd ON cd.id = c.deck_id
-        JOIN student_card_states scs
+        LEFT JOIN student_card_states scs
             ON scs.card_id = c.id AND scs.student_id = $1
         LEFT JOIN deck_option_steps dos
             ON dos.options_id = COALESCE(cd.options_id, 0)
@@ -765,12 +771,12 @@ async fn next_due_card(
             )
             SELECT id FROM subtree
         )
-          AND scs.suspended = FALSE
+          AND (scs.suspended IS NULL OR scs.suspended = FALSE)
           AND (scs.buried_at IS NULL OR scs.buried_at < $3)
           AND (
                 (scs.state IN ('learning', 'relearning') AND scs.due_at <= $4)
              OR (scs.state = 'review' AND scs.due_at <= $4 AND $5::bigint > 0 AND budget.review_rem > 0)
-             OR (scs.state = 'new' AND $6::bigint > 0 AND budget.new_rem > 0)
+             OR ((scs.state = 'new' OR scs.card_id IS NULL) AND $6::bigint > 0 AND budget.new_rem > 0)
           )
         ORDER BY
             {class_case},
