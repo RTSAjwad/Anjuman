@@ -308,3 +308,57 @@ async fn cards_return_note_suspended_and_buried_flags() {
         assert_eq!(c["note_buried"], false, "body: {json}");
     }
 }
+
+/// `GET /cards` carries the note's `card_count` (number of generated cards for
+/// the note), unchanged across the note's cards. A one-template note reports 1;
+/// adding a second template+card reports 2.
+#[tokio::test]
+async fn cards_return_note_card_count() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+
+    // One template → one card → card_count 1.
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["cards"][0]["card_count"], 1, "body: {json}");
+
+    // Add a second template + card under the same note → card_count 2.
+    let note_id: i64 = sqlx::query_scalar!("SELECT note_id FROM cards WHERE id = $1", card)
+        .fetch_one(&app.db)
+        .await
+        .expect("note id");
+    let deck_id: i64 = sqlx::query_scalar!("SELECT deck_id FROM cards WHERE id = $1", card)
+        .fetch_one(&app.db)
+        .await
+        .expect("deck id");
+    let note_type_id: i64 =
+        sqlx::query_scalar!("SELECT note_type_id FROM notes WHERE id = $1", note_id)
+            .fetch_one(&app.db)
+            .await
+            .expect("note type id");
+    let template2 = sqlx::query!(
+        "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES ($1, 1, 'Card 2', '{{Back}}', '{{Front}}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("second template")
+    .id;
+    sqlx::query!(
+        "INSERT INTO cards (note_id, deck_id, template_id) VALUES ($1, $2, $3)",
+        note_id,
+        deck_id,
+        template2
+    )
+    .execute(&app.db)
+    .await
+    .expect("second card");
+
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    for c in json["cards"].as_array().expect("cards array") {
+        assert_eq!(c["card_count"], 2, "body: {json}");
+    }
+}
