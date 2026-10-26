@@ -560,7 +560,7 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
       <ButtonGroup>
         <Toggle
           variant="outline"
-          pressed={card.suspended}
+          pressed={card.note_suspended}
           onPressedChange={(v) =>
             update(v ? eventBrowserSuspendNote(card.note_id) : eventBrowserUnsuspendNote(card.note_id))
           }
@@ -569,7 +569,7 @@ export function CardActions({ card, decks, canManageNotes, update }: { card: Car
         </Toggle>
         <Toggle
           variant="outline"
-          pressed={card.buried}
+          pressed={card.note_buried}
           onPressedChange={(v) =>
             update(v ? eventBrowserBuryNote(card.note_id) : eventBrowserUnburyNote(card.note_id))
           }
