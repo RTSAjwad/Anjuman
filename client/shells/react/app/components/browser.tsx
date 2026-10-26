@@ -83,6 +83,7 @@ const CARD_SORT_OPTIONS = [
   ["due_at", "Due"],
   ["deck", "Deck"],
   ["question", "Question"],
+  ["position", "Position"],
 ] as const;
 const NOTE_SORT_OPTIONS = [
   ["created_at", "Created"],
@@ -413,6 +414,7 @@ const cardColumns: ColumnDef<BrowserTableFeatures, CardBrowserView>[] = [
   { accessorKey: "sort_field", header: "Sort field", cell: ({ getValue }) => (getValue() as string | null) ?? "" },
   { accessorKey: "template_name", header: "Card type" },
   { accessorKey: "due_at", header: "Due date", cell: ({ getValue }) => (getValue() as string | null) ?? "" },
+  { accessorKey: "position", header: "Position", cell: ({ getValue }) => (getValue() as bigint | null)?.toString() ?? "" },
   { accessorKey: "state", header: "State" },
   {
     id: "flag",
