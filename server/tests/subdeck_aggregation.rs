@@ -4,6 +4,11 @@ mod common;
 
 use anjuman_server::handlers::study::deck_counts_for_student;
 
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use http_body_util::BodyExt;
+use tower::ServiceExt;
+
 use common::{UserRole, create_user};
 
 /// Seed a parent deck with two child decks, each child holding `n_cards` new
@@ -133,5 +138,35 @@ async fn subdeck_limit_caps_gathering_from_that_subdeck() {
     assert_eq!(
         counts.new_count, 7,
         "child A should be capped at 2, child B contributes its full 5 (ids {child_a}/{child_b})"
+    );
+}
+
+/// `GET /decks/{id}/study` returns a due card for a freshly-seeded new card, and
+/// the count matches — guarding against a "nothing due now" regression when a
+/// card should be due.
+#[tokio::test]
+async fn study_returns_due_card_for_new_seed() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (student_id, token) = create_user(&app, UserRole::Student).await;
+    let (_parent_id, _child_a, _child_b) = seed_parent_with_children(&app, student_id, 1).await;
+
+    // Find the child deck containing a card (any study entry point).
+    let deck_id: i64 = sqlx::query_scalar!("SELECT id FROM decks WHERE title = 'Child A'").
+        fetch_one(&app.db).await.expect("child a id");
+
+    let req = Request::builder()
+        .uri(format!("/decks/{deck_id}/study"))
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "study GET should succeed");
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(
+        json["next_card"].is_object(),
+        "a new card should be due, body: {json}"
     );
 }
