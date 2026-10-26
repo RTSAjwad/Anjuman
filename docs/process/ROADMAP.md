@@ -1991,14 +1991,15 @@ is missing:
       `Serialize`/`Deserialize`; reset reuses `CardModResponse` (no new DTO);
       `SubmitReview` + `ReviewResponse` gained the missing opposite derive (a core
       prerequisite); OpenAPI regenerates.
-- [~] Core: `BrowserGradeCard { card_id, rating }` → `POST /reviews` (done);
+- [x] Core: `Event::BrowserGradeCard { card_id, rating }` → `POST /reviews`;
       `Event::BrowserRepositionCard { card_id, position }` → `PATCH
-      /cards/{id}/position` with `BrowserRepositionDone` (done).
-      `Event::BrowserResetCard { card_id }` → `POST /cards/{id}/reset` is **not yet
-      added** — reset ships server-only; the shell wires it via a follow-up.
-- [~] Each criterion has a `shared` test named after it; `cargo test` passes
-      (reset + reposition + grade-now covered; `BrowserResetCard` core event still
-      pending).
+      /cards/{id}/position`; `Event::BrowserResetCard { card_id }` → `POST
+      /cards/{id}/reset`. Each completion re-fetches via `refresh_browser`
+      (shared tests `browser_grade_card_emits_post_reviews`,
+      `browser_reposition_emits_patch_with_body`,
+      `browser_reset_card_emits_post_reset`).
+- [x] Each criterion has a `shared` test named after it; `cargo test` passes
+      (reset + reposition + grade-now all covered).
 
 **Shell contract**
 
