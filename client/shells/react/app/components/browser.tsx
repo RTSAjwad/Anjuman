@@ -40,6 +40,7 @@ import {
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
+import { Badge } from "~/components/ui/badge";
 import { Toggle } from "~/components/ui/toggle";
 import { Label } from "~/components/ui/label";
 
@@ -780,8 +781,11 @@ function NoteDetailsPanel({
 
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 border-l p-3">
-      <h3 className="text-sm font-semibold">Note</h3>
-      <p className="text-xs text-muted-foreground">{note.note_type_name}</p>
+      <h3 className="text-sm font-semibold">Note Details</h3>
+      <div className="flex items-center gap-2">
+        <Label className="text-xs text-muted-foreground">Note Type</Label>
+        <Badge variant="outline">{note.note_type_name}</Badge>
+      </div>
       <div className="flex flex-col gap-2">
         {fieldNames.map((name) => (
           <div key={name} className="flex flex-col gap-1">
@@ -794,6 +798,7 @@ function NoteDetailsPanel({
           </div>
         ))}
       </div>
+      <Button onClick={save} disabled={!dirty || !canManageNotes}>Save Fields</Button>
       <div className="flex flex-col gap-1">
         <Label className="text-xs text-muted-foreground">Tags</Label>
         <ChipInput
@@ -803,7 +808,6 @@ function NoteDetailsPanel({
           disabled={!canManageNotes}
         />
       </div>
-      <Button onClick={save} disabled={!dirty || !canManageNotes}>Save</Button>
     </aside>
   );
 }
