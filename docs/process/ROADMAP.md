@@ -1894,18 +1894,18 @@ and Reset-position behaviours.
 
 **Acceptance criteria (server first)**
 
-- [ ] `browse_cards` selects `c.position` and `CardBrowserRow` carries it; for a
+- [x] `browse_cards` selects `c.position` and `CardBrowserRow` carries it; for a
       **new** card, `CardBrowserResponse` exposes the stored `position` (not the
       current synthesized counter). Non-new cards expose `position = NULL`/absent
       (Anki's Due column shows an interval for review/relearning, not a position).
-- [ ] `new_card_position` semantics are recomputed from `cards.position`, ordered
+- [x] `new_card_position` semantics are recomputed from `cards.position`, ordered
       per Anki's collection-wide queue, without the page-local `new_card_offset`
       counter (or the counter is derived from stored positions, not synthesized).
-- [ ] Each criterion has a `server/tests/card_browser.rs` test named after it
+- [x] Each criterion has a `server/tests/card_browser.rs` test named after it
       (e.g. `cards_return_stored_position_for_new_cards`), and OpenAPI regenerates.
-- [ ] No migration is required for *this* story (the `position` column already
-      exists) — unless the "original position" concept (see below) is chosen to be
-      stored now.
+- [x] No migration is required for *this* story (the `position` column already
+      exists); the `original_position` concept is deferred to US-4.12b's Reset-
+      "restore original position" follow-up.
 
 **Open decisions (to settle before implementing)**
 

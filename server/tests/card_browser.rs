@@ -383,6 +383,42 @@ async fn cards_return_note_card_count() {
     }
 }
 
+/// `GET /cards` exposes the *stored* `cards.position` for new cards (not a
+/// page-local counter), and `null` for scheduled (non-new) cards — matching
+/// Anki's Due column (US-4.12a).
+#[tokio::test]
+async fn cards_return_stored_position_for_new_cards() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    // A new card and a review card.
+    let new_card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+    let review_card = seed_studiable_card(&app, teacher_id, "review", 0, 1, 0).await;
+
+    // Read the stored positions from the DB (the authoritative values).
+    let stored_new: i64 = sqlx::query_scalar!("SELECT position FROM cards WHERE id = $1", new_card)
+        .fetch_one(&app.db)
+        .await
+        .expect("new position");
+
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+
+    let cards = json["cards"].as_array().expect("cards array");
+    assert_eq!(cards.len(), 2, "body: {json}");
+
+    for c in cards {
+        if c["card_id"] == new_card {
+            // New card → the stored position is surfaced.
+            assert_eq!(c["position"], stored_new, "body: {json}");
+        } else if c["card_id"] == review_card {
+            // Scheduled card → no position (Anki shows an interval instead).
+            assert_eq!(c["position"], serde_json::Value::Null, "body: {json}");
+        }
+    }
+}
+
 /// `POST /cards/{id}/reset` resets a card's scheduling back to "new" in place:
 /// flag is preserved, `suspended`/bury/leech are cleared, and review history is
 /// kept (matching Anki's Reset, as documented in US-4.12b).

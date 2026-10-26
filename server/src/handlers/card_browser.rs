@@ -24,11 +24,9 @@ async fn rows_to_responses(
     db: &sqlx::PgPool,
     student_id: i64,
     rows: Vec<CardBrowserRow>,
-    new_card_offset: i64,
     deck_map: &std::collections::HashMap<i64, (String, Option<i64>)>,
 ) -> Result<Vec<CardBrowserResponse>, StatusCode> {
     let mut cards = Vec::new();
-    let mut new_pos = new_card_offset;
     // Memoize the note-level suspend/bury aggregate per note_id to avoid a
     // repeated query for multi-card notes appearing in the same page.
     let mut note_state_cache: std::collections::HashMap<i64, (bool, bool)> =
@@ -51,12 +49,11 @@ async fn rows_to_responses(
         // explicitly marked 'new'. `reps` is no longer used as a new-card
         // signal — `state` is authoritative.
         let is_new = r.state.as_deref().is_none_or(|s| s == "new");
-        let new_card_position = if is_new {
-            new_pos += 1;
-            Some(new_pos)
-        } else {
-            None
-        };
+        // The stored collection-wide `cards.position` is the authoritative
+        // new-card queue ordinal (US-4.12a). Expose it only for new cards
+        // (Anki's Due column shows a position for new cards, an interval for
+        // scheduled ones).
+        let position = is_new.then_some(r.position);
         let template_name = nt
             .templates
             .iter()
@@ -120,7 +117,7 @@ async fn rows_to_responses(
             note_buried,
             card_count,
             created_at: r.created_at,
-            new_card_position,
+            position,
         });
     }
     Ok(cards)
@@ -297,7 +294,7 @@ pub async fn browse_cards(
 
     // Fetch
     let fetch_sql = format!(
-        "SELECT c.id as card_id, c.note_id, c.deck_id, c.template_id, d.title as deck_title, n.note_type_id, nt.name as note_type_name, n.fields_json, c.created_at, scs.state::text as state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason {} {} ORDER BY {} LIMIT {} OFFSET {}",
+        "SELECT c.id as card_id, c.note_id, c.deck_id, c.template_id, d.title as deck_title, n.note_type_id, nt.name as note_type_name, n.fields_json, c.created_at, c.position, scs.state::text as state, scs.due_at, scs.stability, scs.difficulty, scs.reps, scs.lapses, scs.flag, scs.suspended, scs.buried_at, scs.bury_reason {} {} ORDER BY {} LIMIT {} OFFSET {}",
         base_from, base_where, order, per_page, offset
     );
 
@@ -307,26 +304,6 @@ pub async fn browse_cards(
         .fetch_all(&state.db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    // New card offset for position numbering.
-    // We build a separate WHERE that excludes the state filter — we always
-    // want to count only new cards regardless of which state the user filtered by.
-    let new_card_offset = if let Some(first) = rows.first() {
-        let new_where = format!("WHERE d.school_id = $2 {} {}", deck_filter, q_filter);
-        let off_sql = format!(
-            "SELECT COUNT(*) {} {} AND (scs.state = 'new' OR scs.state IS NULL) AND c.created_at > $3",
-            base_from, new_where
-        );
-        sqlx::query_scalar(&off_sql)
-            .bind(claims.sub)
-            .bind(claims.school_id)
-            .bind(first.created_at)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    } else {
-        0i64
-    };
 
     // Preload the school's deck titles + parents once (single query), so the
     // ancestor walk for `deck_path` does not incur an N+1 of parent lookups.
@@ -342,7 +319,7 @@ pub async fn browse_cards(
         .map(|r| (r.id, (r.title, r.parent_id)))
         .collect();
 
-    let cards = rows_to_responses(&state.db, claims.sub, rows, new_card_offset, &deck_map)
+    let cards = rows_to_responses(&state.db, claims.sub, rows, &deck_map)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -365,6 +342,7 @@ struct CardBrowserRow {
     note_type_name: String,
     fields_json: SqlxJson<serde_json::Map<String, serde_json::Value>>,
     created_at: DateTime<Utc>,
+    position: i64,
     state: Option<String>,
     due_at: Option<DateTime<Utc>>,
     stability: Option<f64>,
