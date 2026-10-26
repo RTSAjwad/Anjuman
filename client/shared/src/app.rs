@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use anjuman_contracts::auth::{LoginRequest, LoginResponse, Permissions, UserResponse};
 use anjuman_contracts::cards::{
     CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, MoveCardBody,
-    MoveCardResponse, NoteModResponse, RescheduleBody,
+    MoveCardResponse, NoteModResponse, RepositionBody, RepositionResponse, RescheduleBody,
 };
 use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
@@ -306,6 +306,11 @@ pub enum Event {
         card_id: i64,
         days: i64,
     },
+    /// Reposition a new browser card (by id) to a new-card queue position.
+    BrowserRepositionCard {
+        card_id: i64,
+        position: i64,
+    },
     /// Move a browser card (by id) to another deck.
     BrowserMoveCard {
         card_id: i64,
@@ -464,6 +469,12 @@ pub enum Event {
     #[facet(skip)]
     BrowserRescheduleDone(
         #[facet(opaque)] crux_http::Result<crux_http::Response<CardModResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserRepositionDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<RepositionResponse>>,
     ),
 
     #[serde(skip)]
@@ -2341,6 +2352,22 @@ impl crux_core::App for Anjuman {
                     .then_send(Event::BrowserRescheduleDone)
             }
 
+            Event::BrowserRepositionCard { card_id, position } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                let body = RepositionBody { position };
+                Http::patch(format!("{API_URL}/cards/{card_id}/position"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize reposition body")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserRepositionDone)
+            }
+
             Event::BrowserFlagCard { card_id, flag } => {
                 if !(0..=7).contains(&flag) {
                     return render::render();
@@ -2394,6 +2421,16 @@ impl crux_core::App for Anjuman {
             }
 
             Event::BrowserRescheduleDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserRepositionDone(Ok(_)) => {
+                model.browser_error = None;
+                refresh_browser(model)
+            }
+
+            Event::BrowserRepositionDone(Err(e)) => {
                 model.browser_error = Some(e.to_string());
                 render::render()
             }
@@ -4763,6 +4800,27 @@ mod tests {
                 let body: RescheduleBody =
                     serde_json::from_slice(&req.operation.body).expect("body JSON");
                 assert_eq!(body.days, Some(3));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserRepositionCard` emits `PATCH /cards/{id}/position` with a body.
+    #[test]
+    fn browser_reposition_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserRepositionCard { card_id: 42, position: 5 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/position"
+                );
+                let body: RepositionBody =
+                    serde_json::from_slice(&req.operation.body).expect("body JSON");
+                assert_eq!(body.position, 5);
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }

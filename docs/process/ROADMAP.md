@@ -1972,21 +1972,30 @@ is missing:
 
 **Acceptance criteria (server first, then core)**
 
-- [ ] Server: `reset` resets the card's `student_card_states` row **in place** to
-      `state='new'` (stability/difficulty/reps/lapses/step_index zeroed, due/last-
+- [x] **Reset** (server): resets the card's `student_card_states` row **in place**
+      to `state='new'` (stability/difficulty/reps/lapses/step_index zeroed, due/last-
       reviewed/bury/leech cleared, `suspended=FALSE`), preserving `flag` and
-      keeping `reviews` history (card is "new" on next `GET /cards`); `reposition`
-      sets `cards.position` and survives a re-fetch; `grade now` routes through
-      `apply_review` and updates scheduling. Each has a `server/tests/` test named
-      after it (e.g. `card_browser.rs`/`card_mod.rs`).
-- [ ] Contracts: request/response DTOs for reset/reposition (and any grade-now
-      body) derive `Serialize`/`Deserialize` appropriately; OpenAPI regenerates.
-- [ ] Core: `Event::BrowserGradeCard { card_id, rating }` (→ `POST /reviews`),
-      `Event::BrowserResetCard { card_id }` (→ `POST /cards/{id}/reset`), and
-      `Event::BrowserRepositionCard { card_id, position }` (→  reposition endpoint);
-      each completion re-fetches the browser via `refresh_browser` (so due/state/
-      position reflect immediately).
-- [ ] Each criterion has a `shared` test named after it; `cargo test` passes.
+      keeping `reviews` history (card is "new" on next `GET /cards`).
+      `POST /cards/{id}/reset`. Test: `reset_card_returns_to_new_preserving_flag_and_history`.
+- [x] **Reposition** (server): `PATCH /cards/{id}/position` writes `cards.position`
+      (new-card only — rejects review/learning/relearning with 400) and survives a
+      re-fetch. "Shift position of existing cards" is **deferred** (needs a dense
+      per-deck ordinal; our global monotonic sequence is out of scope per US-4.12a).
+      Test: `reposition_new_card_sets_position_and_rejects_scheduled`.
+- [ ] **Grade Now** (server): routes a rating through `apply_review` to schedule a
+      card from the browser. **Open decision unresolved** (a) due-only vs (b) regrade
+      any card. No endpoint changes expected (reuse `POST /reviews`).
+- [x] Contracts: `RepositionBody`/`RepositionResponse` derive
+      `Serialize`/`Deserialize`; reset reuses `CardModResponse` (no new DTO);
+      OpenAPI regenerates. (Grade-now body, if a browser-specific wrapper is ever
+      added, is still `[ ]`.)
+- [x] Core: `Event::BrowserResetCard` is **not yet added** — reset currently ships
+      server-only (the shell wires it via a follow-up); `Event::BrowserRepositionCard
+      { card_id, position }` → `PATCH /cards/{id}/position` with `BrowserRepositionDone`
+      refreshing via `refresh_browser` (shared test
+      `browser_reposition_emits_patch_with_body`). `BrowserGradeCard` is `[ ]`.
+- [~] Each criterion has a `shared` test named after it; `cargo test` passes
+      (reset/reposition covered; grade-now pending).
 
 **Shell contract**
 

@@ -51,6 +51,32 @@ async fn post(app: &common::TestApp, path: &str, token: &str) -> (StatusCode, se
     (status, json)
 }
 
+async fn patch_json(
+    app: &common::TestApp,
+    path: &str,
+    token: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    let res = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(path)
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
 /// The empty-filter query (what the client sends by default) returns 200 with a
 /// page, and decodes the `card_state` enum without erroring.
 #[tokio::test]
@@ -417,6 +443,49 @@ async fn cards_return_stored_position_for_new_cards() {
             assert_eq!(c["position"], serde_json::Value::Null, "body: {json}");
         }
     }
+}
+
+/// `PATCH /cards/{id}/position` repositions a new card (writes `cards.position`
+/// and it survives a re-fetch), and rejects non-new cards (US-4.12b Reposition).
+#[tokio::test]
+async fn reposition_new_card_sets_position_and_rejects_scheduled() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+
+    let new_card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+    let review_card = seed_studiable_card(&app, teacher_id, "review", 0, 1, 0).await;
+
+    // Reposition the new card to position 999.
+    let (status, json) = patch_json(
+        &app,
+        &format!("/cards/{new_card}/position"),
+        &token,
+        serde_json::json!({ "position": 999 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["card_id"], new_card, "body: {json}");
+    assert_eq!(json["position"], 999, "body: {json}");
+
+    // The stored position survives a re-fetch.
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    for c in json["cards"].as_array().expect("cards array") {
+        if c["card_id"] == new_card {
+            assert_eq!(c["position"], 999, "body: {json}");
+        }
+    }
+
+    // A review card cannot be repositioned.
+    let (status, json) = patch_json(
+        &app,
+        &format!("/cards/{review_card}/position"),
+        &token,
+        serde_json::json!({ "position": 1 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {json}");
 }
 
 /// `POST /cards/{id}/reset` resets a card's scheduling back to "new" in place:

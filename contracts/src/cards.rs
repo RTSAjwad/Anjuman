@@ -32,6 +32,23 @@ pub struct MoveCardResponse {
     pub deck_id: i64,
 }
 
+/// Request body for repositioning a new card in the new-card queue (Anki's
+/// "Reposition"). `position` is the target collection-wide new-card queue
+/// ordinal (0 = front of the queue). Distinct from reschedule (absolute due).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RepositionBody {
+    pub position: i64,
+}
+
+/// Response after repositioning a new card.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RepositionResponse {
+    pub card_id: i64,
+    pub position: i64,
+}
+
 /// Query parameters for unburying a card/note.
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

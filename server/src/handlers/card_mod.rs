@@ -17,8 +17,8 @@ use axum::{
 use chrono::{DateTime, Duration, Utc};
 
 use anjuman_contracts::cards::{
-    CardModResponse, MoveCardBody, MoveCardResponse, NoteModResponse, RescheduleBody,
-    UnburyQuery,
+    CardModResponse, MoveCardBody, MoveCardResponse, NoteModResponse, RepositionBody,
+    RepositionResponse, RescheduleBody, UnburyQuery,
 };
 
 use crate::{auth::AuthUser, db_types::DbCardState, state::AppState};
@@ -624,5 +624,65 @@ pub async fn reset(
         bury_reason,
         due_at,
         state,
+    }))
+}
+
+/// `PATCH /cards/:card_id/position` — Reposition a new card in the new-card queue
+/// (Anki's "Reposition").
+///
+/// Writes `cards.position` (the collection-wide new-card queue ordinal, now the
+/// authoritative display value per US-4.12a). Reposition is **new-card only**
+/// (matching Anki — review/learning/relearning rows have no position).
+///
+/// Note: Anki's "Shift position of existing cards" renumbers the tail of the new
+/// queue so the card can be *inserted* between existing cards. We defer that
+/// because our `cards.position` is a global monotonic sequence (not a dense
+/// `1..N` per-deck ordinal; see US-4.12a), so "shift existing" would require a
+/// dense renumber that is out of scope for this story.
+pub async fn reposition(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Path(card_id): Path<i64>,
+    Json(body): Json<RepositionBody>,
+) -> Result<Json<RepositionResponse>, (StatusCode, &'static str)> {
+    let current = sqlx::query!(
+        "SELECT c.id, scs.state::text as state \
+         FROM cards c \
+         LEFT JOIN student_card_states scs ON scs.card_id = c.id AND scs.student_id = $2 \
+         WHERE c.id = $1",
+        card_id,
+        claims.sub
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    .ok_or((StatusCode::NOT_FOUND, "Card not found"))?;
+
+    // New-card only: a card with no scheduling state (a NULL-joined row) or an
+    // explicit 'new' state may be repositioned. Anything else is rejected.
+    let is_new = current
+        .state
+        .as_deref()
+        .is_none_or(|s| s == "new");
+    if !is_new {
+        return Err((StatusCode::BAD_REQUEST, "Only new cards can be repositioned"));
+    }
+
+    let result = sqlx::query!(
+        "UPDATE cards SET position = $1 WHERE id = $2",
+        body.position,
+        card_id
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Card not found"));
+    }
+
+    Ok(Json(RepositionResponse {
+        card_id,
+        position: body.position,
     }))
 }
