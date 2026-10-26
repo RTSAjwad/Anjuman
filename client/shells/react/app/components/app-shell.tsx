@@ -129,8 +129,8 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
                   <span className="text-sm font-medium text-muted-foreground">Note Actions</span>
                   <NoteActions
                     noteId={view.notes_selected.id}
-                    noteSuspended={null}
-                    noteBuried={null}
+                    noteSuspended={view.notes_selected.note_suspended}
+                    noteBuried={view.notes_selected.note_buried}
                     canManageNotes={canManageNotes}
                     update={update}
                   />
