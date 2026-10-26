@@ -205,8 +205,9 @@ async fn cards_return_sort_field_deck_path_and_due_at() {
     assert!(card["due_at"].is_string(), "due_at should be present, body: {json}");
 }
 
-/// `GET /cards` carries the note-level aggregate suspend/bury flags (uniform
-/// bulk ops, so they equal the per-card state) — for the note toggle controls.
+/// `GET /cards` carries the true note-level aggregate suspend/bury flags: `true`
+/// only when *every* card of the note is suspended/buried; a single unsuspended
+/// sibling keeps it `false` even though that card's own `suspended` is `true`.
 #[tokio::test]
 async fn cards_return_note_suspended_and_buried_flags() {
     let _guard = common::db_guard().await;
@@ -214,13 +215,59 @@ async fn cards_return_note_suspended_and_buried_flags() {
     let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
     let card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
 
-    // Unsuspended/unburied by default.
+    // Create a second card under the same note, so the note has two cards. The
+    // `idx_cards_note_template` unique index means a note can have only one card
+    // per template, so give the note type a second template first.
+    let note_id: i64 = sqlx::query_scalar!("SELECT note_id FROM cards WHERE id = $1", card)
+        .fetch_one(&app.db)
+        .await
+        .expect("note id");
+    let deck_id: i64 = sqlx::query_scalar!("SELECT deck_id FROM cards WHERE id = $1", card)
+        .fetch_one(&app.db)
+        .await
+        .expect("deck id");
+    let note_type_id: i64 = sqlx::query_scalar!("SELECT note_type_id FROM notes WHERE id = $1", note_id)
+        .fetch_one(&app.db)
+        .await
+        .expect("note type id");
+    let template2 = sqlx::query!(
+        "INSERT INTO note_type_templates (note_type_id, ord, name, front_pattern, back_pattern) VALUES ($1, 1, 'Card 2', '{{Back}}', '{{Front}}') RETURNING id",
+        note_type_id
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert second template")
+    .id;
+    let card2 = sqlx::query!(
+        "INSERT INTO cards (note_id, deck_id, template_id) VALUES ($1, $2, $3) RETURNING id",
+        note_id,
+        deck_id,
+        template2
+    )
+    .fetch_one(&app.db)
+    .await
+    .expect("insert second card")
+    .id;
+    sqlx::query!(
+        "INSERT INTO student_card_states (student_id, card_id, state, stability, difficulty, reps, lapses, step_index) VALUES ($1, $2, 'new', 0.0, 0.0, 0, 0, 0)",
+        teacher_id,
+        card2
+    )
+    .execute(&app.db)
+    .await
+    .expect("second state");
+
+    // Neither suspended by default.
     let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
     assert_eq!(status, StatusCode::OK, "body: {json}");
-    assert_eq!(json["cards"][0]["note_suspended"], false, "body: {json}");
-    assert_eq!(json["cards"][0]["note_buried"], false, "body: {json}");
+    let cards = json["cards"].as_array().expect("cards array");
+    assert_eq!(cards.len(), 2, "body: {json}");
+    for c in cards {
+        assert_eq!(c["note_suspended"], false, "body: {json}");
+        assert_eq!(c["note_buried"], false, "body: {json}");
+    }
 
-    // Suspend the card (a uniform note op) → note_suspended flips true.
+    // Suspend ONLY one card (a per-card op): the note is NOT fully suspended.
     sqlx::query!(
         "UPDATE student_card_states SET suspended = TRUE WHERE student_id = $1 AND card_id = $2",
         teacher_id,
@@ -228,10 +275,36 @@ async fn cards_return_note_suspended_and_buried_flags() {
     )
     .execute(&app.db)
     .await
-    .expect("suspend");
+    .expect("suspend one card");
 
     let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
     assert_eq!(status, StatusCode::OK, "body: {json}");
-    assert_eq!(json["cards"][0]["note_suspended"], true, "body: {json}");
-    assert_eq!(json["cards"][0]["note_buried"], false, "body: {json}");
+    let cards = json["cards"].as_array().expect("cards array");
+    for c in cards {
+        // The note is partially suspended → note_suspended stays false.
+        assert_eq!(c["note_suspended"], false, "body: {json}");
+        // But the suspended card's own `suspended` is true.
+        if c["card_id"] == card {
+            assert_eq!(c["suspended"], true, "body: {json}");
+        } else {
+            assert_eq!(c["suspended"], false, "body: {json}");
+        }
+    }
+
+    // Suspend the second card too → now the whole note is suspended.
+    sqlx::query!(
+        "UPDATE student_card_states SET suspended = TRUE WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        card2
+    )
+    .execute(&app.db)
+    .await
+    .expect("suspend second card");
+
+    let (status, json) = get(&app, "/cards?sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    for c in json["cards"].as_array().expect("cards array") {
+        assert_eq!(c["note_suspended"], true, "body: {json}");
+        assert_eq!(c["note_buried"], false, "body: {json}");
+    }
 }

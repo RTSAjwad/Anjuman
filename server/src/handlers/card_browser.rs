@@ -22,12 +22,17 @@ use crate::{auth::AuthUser, note_types, state::AppState, tags};
 
 async fn rows_to_responses(
     db: &sqlx::PgPool,
+    student_id: i64,
     rows: Vec<CardBrowserRow>,
     new_card_offset: i64,
     deck_map: &std::collections::HashMap<i64, (String, Option<i64>)>,
 ) -> Result<Vec<CardBrowserResponse>, StatusCode> {
     let mut cards = Vec::new();
     let mut new_pos = new_card_offset;
+    // Memoize the note-level suspend/bury aggregate per note_id to avoid a
+    // repeated query for multi-card notes appearing in the same page.
+    let mut note_state_cache: std::collections::HashMap<i64, (bool, bool)> =
+        std::collections::HashMap::new();
     for r in rows {
         let fields: serde_json::Map<String, serde_json::Value> = r.fields_json.0;
         let nt = note_types::get_note_type(db, r.note_type_id)
@@ -65,6 +70,17 @@ async fn rows_to_responses(
             .get(nt.effective_sort_field())
             .map(value_to_string);
         let deck_path = deck_path(&r.deck_title, r.deck_id, deck_map);
+        // True note-level state: aggregate over ALL of the note's cards (for
+        // this student). Note suspend/bury are uniform for *note-level* ops, but
+        // per-card ops (`card_mod::suspend`/`bury`) set a single row, so the
+        // per-card `r.suspended`/`r.buried_at` above are NOT the note's state.
+        let (note_suspended, note_buried) = if let Some(st) = note_state_cache.get(&r.note_id) {
+            *st
+        } else {
+            let st = note_state_for(db, student_id, r.note_id).await?;
+            note_state_cache.insert(r.note_id, st);
+            st
+        };
         cards.push(CardBrowserResponse {
             card_id: r.card_id,
             note_id: r.note_id,
@@ -90,16 +106,44 @@ async fn rows_to_responses(
             suspended: r.suspended,
             buried_at: r.buried_at,
             bury_reason: r.bury_reason,
-            // Note suspend/bury are uniform bulk ops (all cards of a note set
-            // identically; see `card_mod.rs::suspend_note`/`bury_note`), so the
-            // per-card values above also represent the note's true state.
-            note_suspended: r.suspended.unwrap_or(false),
-            note_buried: r.buried_at.is_some(),
+            note_suspended,
+            note_buried,
             created_at: r.created_at,
             new_card_position,
         });
     }
     Ok(cards)
+}
+
+/// The note's true suspend/bury state: `(all_suspended, all_buried)` over every
+/// card of the note for this student. `BOOL_AND` returns true only when *every*
+/// card is suspended/buried (matching the note-toggle "pressed" semantics), and
+/// false when even one sibling is not. Cards with no `student_card_states` row
+/// (never studied) are excluded by the JOIN — they are neither suspended nor
+/// buried, so an unsuspended sibling correctly yields `false`.
+async fn note_state_for(
+    db: &sqlx::PgPool,
+    student_id: i64,
+    note_id: i64,
+) -> Result<(bool, bool), StatusCode> {
+    let row = sqlx::query!(
+        "SELECT \
+            BOOL_AND(scs.suspended) AS note_suspended, \
+            BOOL_AND(scs.buried_at IS NOT NULL) AS note_buried \
+         FROM student_card_states scs \
+         JOIN cards c ON c.id = scs.card_id \
+         WHERE scs.student_id = $1 AND c.note_id = $2",
+        student_id,
+        note_id
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok((
+        row.note_suspended.unwrap_or(false),
+        row.note_buried.unwrap_or(false),
+    ))
 }
 
 /// Coerce a field `Value` to a string for display (strings pass through, other
@@ -277,7 +321,7 @@ pub async fn browse_cards(
         .map(|r| (r.id, (r.title, r.parent_id)))
         .collect();
 
-    let cards = rows_to_responses(&state.db, rows, new_card_offset, &deck_map)
+    let cards = rows_to_responses(&state.db, claims.sub, rows, new_card_offset, &deck_map)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 

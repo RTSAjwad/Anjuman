@@ -2,7 +2,7 @@
 
 **From:** shell agent
 **To:** core agent
-**Status:** pending (correctness bug in `1ceb0a6`)
+**Status:** done
 
 ## Symptom
 
