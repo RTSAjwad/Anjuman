@@ -1934,10 +1934,10 @@ is missing:
    Anki *desktop* browser menu item (Anki grades only in the reviewer), so it is a
    deliberate Anjuman convenience. Server already has the mechanism: `POST
    /reviews` (`apply_review(student_id, card_id, rating, response_time_ms)`).
-   **Open decision to settle before implementing:** whether "Grade Now" should (a)
-   require the card be *currently due*, or (b) allow regrading any card (selected
-   state overridden). Recommend (b) — always regrade the card, regardless of due
-   state — to match the "act on any card" spirit of the browser.
+   **Decision (settled): (b)** — always regrade the card, regardless of due state,
+   to match the "act on any card" spirit of the browser. `apply_review` performs no
+   due-state check today, so this needs no server change; the browser just posts
+   `SubmitReview { card_id, rating, response_time_ms: None }` to `POST /reviews`.
 
 2. **Reset** (Anki: "Forget"/Ctrl+Alt+R) — reset a card's scheduling back to
    **new** as if never studied, matching
@@ -1982,20 +1982,23 @@ is missing:
       re-fetch. "Shift position of existing cards" is **deferred** (needs a dense
       per-deck ordinal; our global monotonic sequence is out of scope per US-4.12a).
       Test: `reposition_new_card_sets_position_and_rejects_scheduled`.
-- [ ] **Grade Now** (server): routes a rating through `apply_review` to schedule a
-      card from the browser. **Open decision unresolved** (a) due-only vs (b) regrade
-      any card. No endpoint changes expected (reuse `POST /reviews`).
+- [x] **Grade Now** (server → core): routes a rating through the existing
+      `POST /reviews` (`SubmitReview { card_id, rating, response_time_ms: None }`).
+      Regrades any card regardless of due state (decision (b)). No server endpoint
+      added. Core `Event::BrowserGradeCard { card_id, rating }` → `BrowserGradeDone`
+      → `refresh_browser` (shared test `browser_grade_card_emits_post_reviews`).
 - [x] Contracts: `RepositionBody`/`RepositionResponse` derive
       `Serialize`/`Deserialize`; reset reuses `CardModResponse` (no new DTO);
-      OpenAPI regenerates. (Grade-now body, if a browser-specific wrapper is ever
-      added, is still `[ ]`.)
-- [x] Core: `Event::BrowserResetCard` is **not yet added** — reset currently ships
-      server-only (the shell wires it via a follow-up); `Event::BrowserRepositionCard
-      { card_id, position }` → `PATCH /cards/{id}/position` with `BrowserRepositionDone`
-      refreshing via `refresh_browser` (shared test
-      `browser_reposition_emits_patch_with_body`). `BrowserGradeCard` is `[ ]`.
+      `SubmitReview` + `ReviewResponse` gained the missing opposite derive (a core
+      prerequisite); OpenAPI regenerates.
+- [~] Core: `BrowserGradeCard { card_id, rating }` → `POST /reviews` (done);
+      `Event::BrowserRepositionCard { card_id, position }` → `PATCH
+      /cards/{id}/position` with `BrowserRepositionDone` (done).
+      `Event::BrowserResetCard { card_id }` → `POST /cards/{id}/reset` is **not yet
+      added** — reset ships server-only; the shell wires it via a follow-up.
 - [~] Each criterion has a `shared` test named after it; `cargo test` passes
-      (reset/reposition covered; grade-now pending).
+      (reset + reposition + grade-now covered; `BrowserResetCard` core event still
+      pending).
 
 **Shell contract**
 

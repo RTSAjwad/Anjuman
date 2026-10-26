@@ -26,7 +26,7 @@ use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::notes::{
     CardSummary, CreateNote, ListNotesQuery, NoteBrowserPage, NoteResponse, UpdateNote,
 };
-use anjuman_contracts::reviews::{FlagResponse, SetFlag};
+use anjuman_contracts::reviews::{FlagResponse, ReviewResponse, SetFlag, SubmitReview};
 use anjuman_contracts::MessageResponse;
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
 use anjuman_contracts::tags::{AddTags, RemoveTags, Tag, TagNode};
@@ -311,6 +311,11 @@ pub enum Event {
         card_id: i64,
         position: i64,
     },
+    /// Grade a browser card now (regardless of due state) with a rating 1-4.
+    BrowserGradeCard {
+        card_id: i64,
+        rating: i32,
+    },
     /// Move a browser card (by id) to another deck.
     BrowserMoveCard {
         card_id: i64,
@@ -475,6 +480,12 @@ pub enum Event {
     #[facet(skip)]
     BrowserRepositionDone(
         #[facet(opaque)] crux_http::Result<crux_http::Response<RepositionResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    BrowserGradeDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<ReviewResponse>>,
     ),
 
     #[serde(skip)]
@@ -2368,6 +2379,29 @@ impl crux_core::App for Anjuman {
                     .then_send(Event::BrowserRepositionDone)
             }
 
+            Event::BrowserGradeCard { card_id, rating } => {
+                if !(1..=4).contains(&rating) {
+                    return render::render();
+                }
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.browser_error = None;
+                let body = SubmitReview {
+                    card_id,
+                    rating,
+                    response_time_ms: None,
+                };
+                Http::post(format!("{API_URL}/reviews"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize grade body")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::BrowserGradeDone)
+            }
+
             Event::BrowserFlagCard { card_id, flag } => {
                 if !(0..=7).contains(&flag) {
                     return render::render();
@@ -2431,6 +2465,16 @@ impl crux_core::App for Anjuman {
             }
 
             Event::BrowserRepositionDone(Err(e)) => {
+                model.browser_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::BrowserGradeDone(Ok(_)) => {
+                model.browser_error = None;
+                refresh_browser(model)
+            }
+
+            Event::BrowserGradeDone(Err(e)) => {
                 model.browser_error = Some(e.to_string());
                 render::render()
             }
@@ -4821,6 +4865,27 @@ mod tests {
                 let body: RepositionBody =
                     serde_json::from_slice(&req.operation.body).expect("body JSON");
                 assert_eq!(body.position, 5);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `BrowserGradeCard` emits `POST /reviews` with a `SubmitReview` body (Grade
+    /// Now — regrades the card regardless of due state; US-4.12b).
+    #[test]
+    fn browser_grade_card_emits_post_reviews() {
+        let mut model = authenticated_model();
+        let effects = update(Event::BrowserGradeCard { card_id: 42, rating: 3 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/reviews");
+                let body: SubmitReview =
+                    serde_json::from_slice(&req.operation.body).expect("body JSON");
+                assert_eq!(body.card_id, 42);
+                assert_eq!(body.rating, 3);
+                assert_eq!(body.response_time_ms, None);
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
