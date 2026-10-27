@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { BrowserTableFeatures } from "~/lib/data-table-features";
 import { BrowserDataTable } from "./data-table";
@@ -255,6 +255,21 @@ export function BrowserScreen(props: BrowserScreenProps) {
     apply(1, filter, statusFilter, next);
   }
 
+  // The authoritative tag namespace (flat names). After rename / find-and-replace
+  // the core refreshes `tags`, and any locally-selected name that no longer exists
+  // must be dropped — otherwise the stale name keeps filtering the table while the
+  // tree shows nothing selected.
+  const tagNames = useMemo(() => tags.map((t) => t.name), [tags]);
+  const tagNamesKey = tagNames.join("\u0000");
+  useEffect(() => {
+    const valid = selectedTags.filter((name) => tagNames.includes(name));
+    if (valid.length !== selectedTags.length) {
+      setSelectedTags(valid);
+      apply(1, filter, statusFilter, valid);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagNamesKey]);
+
   // The tree is name-only; resolve a full `::` name to its canonical tag id for
   // rename. Implicit interior nodes (e.g. `biology` when only `biology::cells`
   // exists) have no row and can't be renamed directly.
@@ -320,7 +335,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
                 nodes={tagTree}
                 selected={selectedTags}
                 canManageTags={canManageTags}
-                tagNames={tags.map((t) => t.name)}
+                tagNames={tagNames}
                 onSelect={(name) => toggleTag(name)}
                 onRename={(name) => openRename(name)}
               />
