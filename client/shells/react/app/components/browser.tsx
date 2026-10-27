@@ -9,6 +9,7 @@ import type {
   NoteBrowserFilter,
   NoteView,
   NoteTypeView,
+  TagNodeView,
 } from "shared_types/app";
 import {
   CardBrowserFilter as CardBrowserFilterCtor,
@@ -20,6 +21,7 @@ import {
   eventNotesRequested,
   eventNoteTypesRequested,
   eventTagsRequested,
+  eventTagTreeRequested,
   eventClearUnusedTags,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
@@ -138,12 +140,12 @@ type BrowserScreenProps = {
   noteError: string | null;
   noteTypes: NoteTypeView[];
   canManageNotes: boolean;
-  tagSuggestions: string[];
+  tagTree: TagNodeView[];
   update: (event: Event) => void;
 };
 
 export function BrowserScreen(props: BrowserScreenProps) {
-  const { route, update, tagSuggestions } = props;
+  const { route, update, tagTree } = props;
 
   // Hoisted filter state — shared by the sidebar and pagination (mirrors the
   // Leptos `BrowserState`). A change always refetches page 1.
@@ -211,6 +213,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
       setInitialized(true);
       update(eventNoteTypesRequested());
       update(eventTagsRequested());
+      update(eventTagTreeRequested());
     }
     apply(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,14 +287,13 @@ export function BrowserScreen(props: BrowserScreenProps) {
           </FilterNode>
 
           <FilterNode label="Tag">
-            {() => tagSuggestions.map((name) => (
-              <FilterNode
-                key={name}
-                label={name}
-                active={selectedTags.includes(name)}
-                onSelect={() => toggleTag(name)}
+            {() => (
+              <TagFilterTree
+                nodes={tagTree}
+                selected={selectedTags}
+                onSelect={(name) => toggleTag(name)}
               />
-            ))}
+            )}
           </FilterNode>
 
           {route === "Cards" ? (
@@ -507,6 +509,59 @@ function DeckFilterNode({ deck, selected, onSelect }: { deck: DeckSummary; selec
         <ul className="ml-5 flex flex-col border-l border-border pl-1">
           {deck.children.map((c) => (
             <DeckFilterNode key={String(c.id)} deck={c} selected={selected} onSelect={onSelect} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+function TagFilterTree({ nodes, selected, onSelect }: { nodes: TagNodeView[]; selected: string[]; onSelect: (name: string) => void }) {
+  return (
+    <>
+      {nodes.map((n) => (
+        <TagFilterNode key={n.name} node={n} path={n.name} selected={selected} onSelect={onSelect} />
+      ))}
+    </>
+  );
+}
+
+function TagFilterNode({
+  node,
+  path,
+  selected,
+  onSelect,
+}: {
+  node: TagNodeView;
+  path: string;
+  selected: string[];
+  onSelect: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const hasChildren = node.children.length > 0;
+  const isSel = selected.includes(path);
+
+  return (
+    <li>
+      <FilterTreeRow
+        hasChildren={hasChildren}
+        open={open}
+        active={isSel}
+        onToggle={() => setOpen((v) => !v)}
+        onSelect={() => onSelect(path)}
+      >
+        {node.name}
+      </FilterTreeRow>
+      {hasChildren && open ? (
+        <ul className="ml-5 flex flex-col border-l border-border pl-1">
+          {node.children.map((c) => (
+            <TagFilterNode
+              key={c.name}
+              node={c}
+              path={`${path}::${c.name}`}
+              selected={selected}
+              onSelect={onSelect}
+            />
           ))}
         </ul>
       ) : null}
