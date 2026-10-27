@@ -10,6 +10,7 @@ import type {
   NoteView,
   NoteTypeView,
   TagNodeView,
+  TagView,
 } from "shared_types/app";
 import {
   CardBrowserFilter as CardBrowserFilterCtor,
@@ -25,6 +26,7 @@ import {
   eventTagsStatsRequested,
   eventClearUnusedTags,
   eventFindReplaceTags,
+  eventRenameTag,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
   eventBrowserSuspendCard,
@@ -80,7 +82,7 @@ import {
 import { ButtonGroup } from "~/components/ui/button-group";
 import { ChipInput } from "~/components/ui/chip-input";
 import { Separator } from "~/components/ui/separator";
-import { ChevronRight, Flag, Search } from "lucide-react";
+import { ChevronRight, Flag, Search, Pencil } from "lucide-react";
 import { formatInterval } from "./study";
 
 const CARD_SORT_OPTIONS = [
@@ -143,12 +145,13 @@ type BrowserScreenProps = {
   noteTypes: NoteTypeView[];
   canManageNotes: boolean;
   canManageTags: boolean;
+  tags: TagView[];
   tagTree: TagNodeView[];
   update: (event: Event) => void;
 };
 
 export function BrowserScreen(props: BrowserScreenProps) {
-  const { route, update, tagTree } = props;
+  const { route, update, tags, tagTree, canManageTags } = props;
 
   // Hoisted filter state — shared by the sidebar and pagination (mirrors the
   // Leptos `BrowserState`). A change always refetches page 1.
@@ -166,6 +169,9 @@ export function BrowserScreen(props: BrowserScreenProps) {
   });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameId, setRenameId] = useState<bigint | null>(null);
+  const [renameName, setRenameName] = useState("");
 
   function buildCardFilter(
     page: number,
@@ -249,6 +255,24 @@ export function BrowserScreen(props: BrowserScreenProps) {
     apply(1, filter, statusFilter, next);
   }
 
+  // The tree is name-only; resolve a full `::` name to its canonical tag id for
+  // rename. Implicit interior nodes (e.g. `biology` when only `biology::cells`
+  // exists) have no row and can't be renamed directly.
+  function openRename(fullName: string) {
+    const tag = tags.find((t) => t.name === fullName);
+    if (!tag) return;
+    setRenameId(BigInt(tag.id));
+    setRenameName(fullName);
+    setRenameOpen(true);
+  }
+  function confirmRename() {
+    const next = renameName.trim();
+    if (renameId !== null && next !== "") {
+      update(eventRenameTag(renameId, next));
+    }
+    setRenameOpen(false);
+  }
+
   const page = route === "Cards" ? Number(props.cardPage) : Number(props.notePage);
   const perPage = route === "Cards" ? Math.max(1, Number(props.cardPerPage)) : Math.max(1, Number(props.notePerPage));
   const total = route === "Cards" ? Number(props.cardTotal) : Number(props.noteTotal);
@@ -295,7 +319,10 @@ export function BrowserScreen(props: BrowserScreenProps) {
               <TagFilterTree
                 nodes={tagTree}
                 selected={selectedTags}
+                canManageTags={canManageTags}
+                tagNames={tags.map((t) => t.name)}
                 onSelect={(name) => toggleTag(name)}
+                onRename={(name) => openRename(name)}
               />
             )}
           </FilterNode>
@@ -408,6 +435,25 @@ export function BrowserScreen(props: BrowserScreenProps) {
           update={update}
         />
       </div>
+
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename tag</DialogTitle>
+            <DialogDescription>
+              Renames the tag and its whole <code>::</code>-subtree, merging onto an existing name.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Name</Label>
+            <Input value={renameName} onChange={(e) => setRenameName(e.target.value)} placeholder="e.g. biology" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameOpen(false)}>Cancel</Button>
+            <Button onClick={confirmRename} disabled={renameName.trim() === ""}>Rename</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -442,7 +488,7 @@ function FilterTreeRow({
       <button
         onClick={onSelect}
         className={cn(
-          "flex flex-1 items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
+          "group flex flex-1 items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
           active && "bg-accent text-accent-foreground hover:bg-accent",
         )}
       >
@@ -521,11 +567,34 @@ function DeckFilterNode({ deck, selected, onSelect }: { deck: DeckSummary; selec
   );
 }
 
-function TagFilterTree({ nodes, selected, onSelect }: { nodes: TagNodeView[]; selected: string[]; onSelect: (name: string) => void }) {
+function TagFilterTree({
+  nodes,
+  selected,
+  canManageTags,
+  tagNames,
+  onSelect,
+  onRename,
+}: {
+  nodes: TagNodeView[];
+  selected: string[];
+  canManageTags: boolean;
+  tagNames: string[];
+  onSelect: (name: string) => void;
+  onRename: (name: string) => void;
+}) {
   return (
     <>
       {nodes.map((n) => (
-        <TagFilterNode key={n.name} node={n} path={n.name} selected={selected} onSelect={onSelect} />
+        <TagFilterNode
+          key={n.name}
+          node={n}
+          path={n.name}
+          selected={selected}
+          canManageTags={canManageTags}
+          tagNames={tagNames}
+          onSelect={onSelect}
+          onRename={onRename}
+        />
       ))}
     </>
   );
@@ -535,16 +604,26 @@ function TagFilterNode({
   node,
   path,
   selected,
+  canManageTags,
+  tagNames,
   onSelect,
+  onRename,
 }: {
   node: TagNodeView;
   path: string;
   selected: string[];
+  canManageTags: boolean;
+  tagNames: string[];
   onSelect: (name: string) => void;
+  onRename: (name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const hasChildren = node.children.length > 0;
   const isSel = selected.includes(path);
+  // Rename needs a canonical tag id, which only exists for *real* tags (the
+  // tree's implicit interior nodes — e.g. `biology` while only `biology::cells`
+  // exists — have no row). Hide the rename affordance for those.
+  const canRename = canManageTags && tagNames.includes(path);
 
   return (
     <li>
@@ -555,7 +634,19 @@ function TagFilterNode({
         onToggle={() => setOpen((v) => !v)}
         onSelect={() => onSelect(path)}
       >
-        {node.name}
+        <span className="flex flex-1 items-center justify-between gap-1">
+          <span className="truncate">{node.name}</span>
+          {canRename ? (
+            <button
+              type="button"
+              aria-label={`Rename tag ${path}`}
+              onClick={(e) => { e.stopPropagation(); onRename(path); }}
+              className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+          ) : null}
+        </span>
       </FilterTreeRow>
       {hasChildren && open ? (
         <ul className="ml-5 flex flex-col border-l border-border pl-1">
@@ -565,7 +656,10 @@ function TagFilterNode({
               node={c}
               path={`${path}::${c.name}`}
               selected={selected}
+              canManageTags={canManageTags}
+              tagNames={tagNames}
               onSelect={onSelect}
+              onRename={onRename}
             />
           ))}
         </ul>
