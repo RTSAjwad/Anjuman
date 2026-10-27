@@ -86,6 +86,101 @@ pub async fn count_unused_tags(db: &PgPool) -> Result<i64, sqlx::Error> {
     Ok(count.unwrap_or(0))
 }
 
+/// Rename a tag and its whole `::`-subtree, merging onto an existing target when
+/// one is already present (Anki parity — US-6.7).
+///
+/// `old_name` → `new_name` rewrites every tag whose name is `old_name` or
+/// `old_name::*`, replacing the `old_name` prefix with `new_name`. If a target
+/// name already exists, the source's `note_tags` links are *merged* (deduped by
+/// `(note_id, tag_id)`) into it and the vacated source row is deleted — rather
+/// than erroring on the `UNIQUE(name)` constraint.
+///
+/// Returns the surviving tag for the `new_name` position (the merged target if
+/// one existed, otherwise the renamed source), surfaced to the caller.
+pub async fn rename_tag_subtree(
+    db: &PgPool,
+    old_name: &str,
+    new_name: &str,
+) -> Result<Tag, sqlx::Error> {
+    let old = normalize_name(old_name);
+    let new = normalize_name(new_name);
+
+    let mut tx = db.begin().await?;
+
+    // The exact tag being renamed must exist.
+    let source = sqlx::query!("SELECT id, name FROM tags WHERE name = $1", old)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let Some(source) = source else {
+        return Err(sqlx::Error::RowNotFound);
+    };
+
+    // No-op rename: nothing to rewrite.
+    if old == new {
+        tx.commit().await?;
+        return Ok(Tag { id: source.id, name: new });
+    }
+
+    // The subtree: the source name plus every `old::…` descendant. `LIKE`
+    // placeholders are escaped so a literal `%`/`_` in a tag name can't match
+    // unexpectedly.
+    let old_prefix = format!("{}::", escape_like(&old));
+    let affected = sqlx::query!(
+        "SELECT id, name FROM tags WHERE name = $1 OR name LIKE $2 ESCAPE '\\' ORDER BY name",
+        old,
+        format!("{old_prefix}%")
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+
+    for row in &affected {
+        // The `name = old` case has `suffix` empty; every descendant keeps its
+        // `old::` remainder.
+        let suffix = row.name.strip_prefix(&old).unwrap();
+        let target_name = format!("{new}{suffix}");
+
+        // Upsert the target name (merge: reuse an existing row, else create).
+        let target_id: i64 = sqlx::query_scalar!(
+            "INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+            target_name
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+
+        // Move this source row's note links into the target (deduped).
+        sqlx::query!(
+            "INSERT INTO note_tags (note_id, tag_id)
+             SELECT nt.note_id, $2 FROM note_tags nt WHERE nt.tag_id = $1
+             ON CONFLICT (note_id, tag_id) DO NOTHING",
+            row.id,
+            target_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // Remove the now-vacated source row (its links are already moved/deduped;
+        // ON DELETE CASCADE won't remove the freshly-inserted target links).
+        sqlx::query!("DELETE FROM tags WHERE id = $1", row.id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    // The surviving row (the merged target for `new`, if one existed).
+    let result = sqlx::query!("SELECT id, name FROM tags WHERE name = $1", new)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    Ok(Tag { id: result.id, name: result.name })
+}
+
+/// Escape `%`, `_`, and `\` in a string so it can be used as a literal inside a
+/// `LIKE` pattern with `ESCAPE '\'`.
+fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
 // ---------------------------------------------------------------------------
 // Tree (US-6.4) — the sidebar nesting, `::`-split, with implicit interior nodes.
 // ---------------------------------------------------------------------------

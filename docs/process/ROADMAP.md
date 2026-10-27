@@ -2388,9 +2388,13 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
 - [x] `US-6.2` — **Tag CRUD on notes.** Add/remove/list tags on a note
       (teacher/admin-gated); a distinct-tags list endpoint (the sidebar tree
       source). `server/tests/` per criterion.
-- [x] `US-6.3` — **Rename/move.** Rename a tag (updates the one `tags` row;
-      `note_tags` unaffected since it references the tag id). Teacher/admin-gated.
-      (Clear-unused is done here: `DELETE /tags` removes orphaned tags.)
+- [x] `US-6.3` — **Rename/move (single-tag).** Rename *one* tag by updating the
+      single `tags` row; `note_tags` unaffected since it references the tag id.
+      Teacher/admin-gated. (Clear-unused is done here: `DELETE /tags` removes
+      orphaned tags.) **Note (parity gap → see US-6.7):** this only rewrites the
+      exact `id`; it does **not** rename the tag's `::`-subtree, and renames onto
+      an existing name are 409-rejected rather than merged — Anki renames the
+      whole subtree and merges onto the existing parent.
 - [x] `US-6.4` — **Distinct-tags list + hierarchy.** Expose the distinct tag
       namespace as a `::` tree for the sidebar, and the prefix/`tag:none`/glob
       matching that later search work consumes. `server/tests/`.
@@ -2406,6 +2410,40 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
 - [x] `US-6.6` — **Leech as per-student state, not a tag.** Done via US-2.20
       (per-student `student_card_states.leech_at`; `TagOnly` marks, `SuspendCard`
       marks + suspends — no tag-system involvement).
+- [x] `US-6.7` — **Subtree rename/move + merge (Anki parity).** Renaming a tag
+      renames its whole `::`-subtree: `foo` → `bar` also rewrites `foo::baz` →
+      `bar::baz` (`name = old OR name LIKE 'old::%'`, rewrite the `old::`
+      prefix). Renaming onto an existing parent **merges** rather than 409:
+      `foo` → `bar` when `bar` exists merges `foo`'s `note_tags` links into `bar`
+      (deduped by `(note_id, tag_id)`) and removes the vacated `foo` row. Moving a
+      tag into its own subtree (`foo` → `foo::bar`) is rejected (400). Tests:
+      `rename_tag_renames_subtree`, `rename_tag_merges_onto_existing_name`,
+      `rename_tag_rejects_move_into_own_subtree`.
+- [ ] `US-6.8` — **Find-and-replace within tags (Anki parity).** Rename a tag
+      *segment* across the matching namespace — replace substring `X` with `Y`
+      inside tag names (exact-segment or substring — decide which, matching
+      Anki's tags-manager "find and replace"). Teacher/admin-gated, batched as a
+      single transaction, with the same subtree/merge semantics as US-6.7.
+      `server/tests/` per criterion.
+
+### Rename/merge semantics (settled, US-6.7)
+
+Anki's tags-manager rename renames the **whole subtree** (`foo` → `bar` also
+renames `foo::baz` → `bar::baz`) and **merges onto an existing parent** rather
+than erroring. `PATCH /tags/{id}` now implements exactly that (`tags::rename_tag_subtree`):
+
+- **Subtree rewrite** — `old` → `new` rewrites `old` and every `old::*` name.
+- **Merge, not conflict** — targeting an existing name folds `note_tags` links
+  (`ON CONFLICT (note_id, tag_id) DO NOTHING`) and rewrites the subtree, then
+  deletes the vacated `old` row.
+- **Idempotency** — repeating the rename/merge leaves state unchanged (upsert +
+  dedup are idempotent).
+- **Move-into-own-subtree is rejected** — `foo` → `foo::bar` (target is the tag
+  or one of its descendants) is a 400; the subtree rewrite would be undefined.
+
+**One edge left for US-6.8 to confirm:** find-and-replace uses *substring* or
+*exact-segment* replacement (Anki's tags-manager replaces the exact text; decide
+whether `bio` → `x` touches `biology` too).
 
 ---
 

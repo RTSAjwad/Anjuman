@@ -301,9 +301,11 @@ async fn rename_tag_updates_name() {
     assert_eq!(names, vec!["biology::cells"]);
 }
 
-/// Renaming onto an existing tag name is a conflict, not a silent overwrite.
+/// Renaming onto an existing tag name *merges* (Anki parity) rather than
+/// erroring: the source's note links are folded into the existing target and the
+/// source row is removed.
 #[tokio::test]
-async fn rename_tag_conflict_on_existing_name() {
+async fn rename_tag_merges_onto_existing_name() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
@@ -318,8 +320,10 @@ async fn rename_tag_conflict_on_existing_name() {
     )
     .await;
     let tag_a = added[0]["id"].as_i64().unwrap();
+    let tag_b = added[1]["id"].as_i64().unwrap();
 
-    let (status, _) = send(
+    // Rename "a" onto the existing "b": merges "a"'s note link into "b".
+    let (status, renamed) = send(
         &app,
         "PATCH",
         &format!("/tags/{tag_a}"),
@@ -327,7 +331,118 @@ async fn rename_tag_conflict_on_existing_name() {
         serde_json::json!({ "name": "b" }),
     )
     .await;
-    assert_eq!(status, StatusCode::CONFLICT, "rename onto existing name is a conflict");
+    assert_eq!(status, StatusCode::OK, "merge onto existing name succeeds");
+    assert_eq!(renamed["name"].as_str(), Some("b"));
+    assert_eq!(renamed["id"].as_i64(), Some(tag_b), "survives as the existing target id");
+
+    // Only "b" remains; the note now carries a single deduped "b" tag.
+    let (_, all) = get(&app, "/tags", &token).await;
+    let names: Vec<String> = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(names, vec!["b"]);
+
+    let (_, note_json) = get(&app, &format!("/notes/{note_id}"), &token).await;
+    let note_tags: Vec<String> = note_json["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(note_tags, vec!["b"], "links merged and deduped onto b");
+}
+
+/// Renaming a parent renames its whole `::`-subtree (Anki parity).
+#[tokio::test]
+async fn rename_tag_renames_subtree() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_id = seed_note(&app, teacher_id).await;
+
+    let (_, added) = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_id}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["bio", "bio::cells", "bio::mitosis::deep", "sibling"] }),
+    )
+    .await;
+    // Find the "bio" id.
+    let bio = added
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"].as_str() == Some("bio"))
+        .unwrap();
+    let bio_id = bio["id"].as_i64().unwrap();
+
+    // Rename "bio" -> "biology": the whole subtree follows; "sibling" is untouched.
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        &format!("/tags/{bio_id}"),
+        &token,
+        serde_json::json!({ "name": "biology" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, all) = get(&app, "/tags", &token).await;
+    let mut names: Vec<String> = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        vec![
+            "biology",
+            "biology::cells",
+            "biology::mitosis::deep",
+            "sibling"
+        ]
+    );
+}
+
+/// Moving a tag into its own subtree is rejected (the rewrite is undefined).
+#[tokio::test]
+async fn rename_tag_rejects_move_into_own_subtree() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_id = seed_note(&app, teacher_id).await;
+
+    let (_, added) = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_id}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["bio", "bio::cells"] }),
+    )
+    .await;
+    let bio = added
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"].as_str() == Some("bio"))
+        .unwrap();
+    let bio_id = bio["id"].as_i64().unwrap();
+
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        &format!("/tags/{bio_id}"),
+        &token,
+        serde_json::json!({ "name": "bio::cells" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 /// `GET /tags/tree` returns the tag namespace as a `::`-split tree with implicit

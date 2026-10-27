@@ -176,9 +176,9 @@ pub async fn clear_unused_tags(
     }))
 }
 
-/// `PATCH /tags/{id}` — rename a tag (its `::` hierarchy may change with the
-/// name). Only the canonical `tags` row is updated; all notes keep the tag via
-/// their `note_tags` id.
+/// `PATCH /tags/{id}` — rename a tag and its whole `::`-subtree, merging onto an
+/// existing target name (Anki parity). The `{id}` picks the tag to rename; its
+/// current name is resolved here and the subtree rename operates by name.
 pub async fn rename_tag(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
@@ -192,30 +192,28 @@ pub async fn rename_tag(
         return Err((StatusCode::BAD_REQUEST, "Tag name cannot be empty".to_string()));
     }
 
-    // Rename = one row update; the UNIQUE(name) constraint rejects a rename onto
-    // an existing name (400), so a caller must merge/delete first rather than
-    // silently overwriting another tag's name.
-    let updated = sqlx::query!(
-        "UPDATE tags SET name = $1 WHERE id = $2 RETURNING id, name",
-        normalized,
-        tag_id
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        if e.to_string().contains("UNIQUE") || e.to_string().contains("duplicate key") {
-            (StatusCode::CONFLICT, "A tag with that name already exists".to_string())
-        } else {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error".to_string(),
-            )
-        }
-    })?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, "Tag not found".to_string()))?;
+    // Resolve the tag to rename by id → current name.
+    let old = sqlx::query!("SELECT name FROM tags WHERE id = $1", tag_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Tag not found".to_string()))?;
 
-    Ok(Json(Tag {
-        id: updated.id,
-        name: updated.name,
-    }))
+    // Reject a rename where the target is the tag itself or one of its own
+    // descendants (`foo` → `foo::bar`): the subtree rewrite is undefined there.
+    if normalized == old.name || normalized.starts_with(&format!("{}::", old.name)) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Cannot move a tag into its own subtree".to_string(),
+        ));
+    }
+
+    let renamed = tags::rename_tag_subtree(&state.db, &old.name, &normalized)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Tag not found".to_string()),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()),
+        })?;
+
+    Ok(Json(renamed))
 }
