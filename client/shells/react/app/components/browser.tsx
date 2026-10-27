@@ -22,6 +22,7 @@ import {
   eventNoteTypesRequested,
   eventTagsRequested,
   eventTagTreeRequested,
+  eventTagsStatsRequested,
   eventClearUnusedTags,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
@@ -214,6 +215,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
       update(eventNoteTypesRequested());
       update(eventTagsRequested());
       update(eventTagTreeRequested());
+      update(eventTagsStatsRequested());
     }
     apply(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
