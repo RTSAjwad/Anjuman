@@ -304,24 +304,11 @@ fn status_where(csv: &str) -> String {
 }
 
 /// Build a WHERE fragment for comma-separated tag-name filters. A card matches
-/// if its note has ANY of the listed tags (OR'd; matched by normalised tag name).
+/// if its note has ANY of the listed tags **or any `::-descendant`** of one of
+/// them (Anki parity; sidebar selects e.g. `biology` → also matches
+/// `biology::cells`). See `crate::tags::tag_where_sql`.
 fn tag_where(csv: &str) -> String {
-    let tags: Vec<&str> = csv
-        .split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if tags.is_empty() {
-        return String::new();
-    }
-    let list = tags
-        .iter()
-        .map(|t| format!("'{}'", t.replace('\'', "''")))
-        .collect::<Vec<_>>()
-        .join(",");
-    format!(
-        "AND EXISTS (SELECT 1 FROM note_tags nt JOIN tags tg ON tg.id = nt.tag_id WHERE nt.note_id = n.id AND tg.name IN ({list}))"
-    )
+    crate::tags::tag_where_sql(csv)
 }
 
 fn sort_clause(sort: &str) -> &'static str {

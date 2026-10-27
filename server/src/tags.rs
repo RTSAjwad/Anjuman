@@ -177,8 +177,53 @@ pub async fn rename_tag_subtree(
 
 /// Escape `%`, `_`, and `\` in a string so it can be used as a literal inside a
 /// `LIKE` pattern with `ESCAPE '\'`.
-fn escape_like(s: &str) -> String {
+pub(crate) fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
+/// Escape a string for safe interpolation into a SQL string literal (doubling
+/// single quotes). Tags are interpolated by the dynamic WHERE builders rather
+/// than bound, so this is the analogue of a parameter for those paths.
+fn sql_string_literal(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// Build the `EXISTS` WHERE fragment for the card/note browser tag filter, using
+/// Anki's `::-descendant` semantics (US-6.7): a selected tag `biology` matches
+/// the tag itself **and** any `biology::…` descendant. The sidebar is a
+/// multi-select OR — a note/card matches when its note has ANY selected tag (or
+/// descendant thereof). Wild cards are **not** interpreted here (the search-box
+/// `tag:` predicate owns glob semantics), so any `%`/`_`/`*` is treated literally.
+///
+/// `alias` is the SQL alias of the owning table (`n` for notes, `c` for cards,
+/// both of which join `note_tags`/`tags` through their note id).
+pub(crate) fn tag_where_sql(csv: &str) -> String {
+    let tags: Vec<&str> = csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if tags.is_empty() {
+        return String::new();
+    }
+
+    let predicates: Vec<String> = tags
+        .iter()
+        .map(|t| {
+            let lit = sql_string_literal(t);
+            let like = format!("{}::%", escape_like(t));
+            let like_lit = sql_string_literal(&like);
+            // Exact, or a `::-descendant of the exact name.
+            format!(
+                "(tg.name = '{lit}' OR tg.name LIKE '{like_lit}' ESCAPE '\\')"
+            )
+        })
+        .collect();
+
+    format!(
+        "AND EXISTS (SELECT 1 FROM note_tags nt JOIN tags tg ON tg.id = nt.tag_id WHERE nt.note_id = n.id AND ({clauses}))",
+        clauses = predicates.join(" OR ")
+    )
 }
 
 // ---------------------------------------------------------------------------

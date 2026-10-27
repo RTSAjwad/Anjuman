@@ -294,3 +294,72 @@ async fn notes_tag_filter_returns_notes_with_that_tag() {
 
     let _ = physics_note;
 }
+
+/// `tag=biology` matches a note tagged `biology::cells` (Anki `::-descendant`
+/// semantics), and does **not** match `biologyia`.
+#[tokio::test]
+async fn note_tag_filter_matches_descendants() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let cells_note = seed_note(&app, teacher_id).await;
+    let bioia_note = seed_note(&app, teacher_id).await;
+
+    for (note, name) in [(cells_note, "biology::cells"), (bioia_note, "biologyia")] {
+        let tag_id: i64 = sqlx::query_scalar!("INSERT INTO tags (name) VALUES ($1) RETURNING id", name)
+            .fetch_one(&app.db)
+            .await
+            .expect("tag");
+        sqlx::query!("INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)", note, tag_id)
+            .execute(&app.db)
+            .await
+            .expect("note tag");
+    }
+
+    let (status, json) = get(&app, "/notes?tag=biology&sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["total"], 1, "body: {json}");
+    assert_eq!(json["notes"][0]["id"], cells_note, "biology::cells matches biology; biologyia must not");
+}
+
+/// Tags containing LIKE metacharacters are matched literally, not as wildcards:
+/// `tag=bio%logy` must not match an unrelated `biology` tag.
+#[tokio::test]
+async fn tag_filter_handles_special_characters() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let pct_note = seed_note(&app, teacher_id).await;
+    let underscore_note = seed_note(&app, teacher_id).await;
+    let plain_note = seed_note(&app, teacher_id).await;
+
+    // Three distinct tags, two of which carry LIKE metacharacters literally, plus
+    // a plain `biology` that must not be caught by either escaped query.
+    for (note, name) in [
+        (pct_note, "bio%logy"),
+        (underscore_note, "bio_logy"),
+        (plain_note, "biology"),
+    ] {
+        let tag_id: i64 = sqlx::query_scalar!("INSERT INTO tags (name) VALUES ($1) RETURNING id", name)
+            .fetch_one(&app.db)
+            .await
+            .expect("tag");
+        sqlx::query!("INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)", note, tag_id)
+            .execute(&app.db)
+            .await
+            .expect("note tag");
+    }
+
+    // `bio%logy` matches only itself (not `biology`).
+    let (status, json) = get(&app, "/notes?tag=bio%25logy&sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["total"], 1, "body: {json}");
+    assert_eq!(json["notes"][0]["id"], pct_note, "bio%logy matches literally, not biology");
+
+    // `bio_logy` matches only itself (underscore is literal, not a single-char
+    // wildcard).
+    let (status2, json2) = get(&app, "/notes?tag=bio_logy&sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status2, StatusCode::OK, "body: {json2}");
+    assert_eq!(json2["total"], 1, "body: {json2}");
+    assert_eq!(json2["notes"][0]["id"], underscore_note, "bio_logy matches literally");
+}
