@@ -77,6 +77,8 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
 
   const route = view.route.kind;
   const canManageNotes = view.permissions.can_manage_notes;
+  const canManageTags = view.permissions.can_manage_tags;
+  const hasUnusedTags = view.has_unused_tags;
   const authenticated = view.authenticated;
 
   // Mirror route <-> URL (projection; the core stays the source of truth).
@@ -160,6 +162,8 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
                 noteSuspended={route === "Cards" ? (view.browser_selected?.note_suspended ?? null) : (view.notes_selected?.note_suspended ?? null)}
                 noteBuried={route === "Cards" ? (view.browser_selected?.note_buried ?? null) : (view.notes_selected?.note_buried ?? null)}
                 canManageNotes={canManageNotes}
+                canManageTags={canManageTags}
+                hasUnusedTags={hasUnusedTags}
                 onCreateNote={openCreateNote}
                 onDuplicate={hasSelection ? openDuplicateNote : null}
                 update={update}

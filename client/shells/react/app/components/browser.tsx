@@ -20,6 +20,7 @@ import {
   eventNotesRequested,
   eventNoteTypesRequested,
   eventTagsRequested,
+  eventClearUnusedTags,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
   eventBrowserSuspendCard,
@@ -790,6 +791,8 @@ export function NoteActions({
   noteSuspended,
   noteBuried,
   canManageNotes,
+  canManageTags,
+  hasUnusedTags,
   onCreateNote,
   onDuplicate,
   update,
@@ -798,6 +801,8 @@ export function NoteActions({
   noteSuspended: boolean | null;
   noteBuried: boolean | null;
   canManageNotes: boolean;
+  canManageTags: boolean;
+  hasUnusedTags: boolean;
   onCreateNote: () => void;
   onDuplicate: (() => void) | null;
   update: (e: Event) => void;
@@ -843,6 +848,7 @@ export function NoteActions({
             <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
           </>
         ) : null}
+        <Button variant="outline" onClick={() => update(eventClearUnusedTags())} disabled={!canManageTags || !hasUnusedTags}>Clear Unused Tags</Button>
       </ButtonGroup>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
