@@ -388,12 +388,12 @@ function FilterBranch({ title, children }: { title: string; children: React.Reac
   const [open, setOpen] = useState(true);
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="mt-3">
-      <CollapsibleTrigger className="flex w-full items-center gap-1 px-1 py-1 text-sm font-medium">
+      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-sm px-3 py-1.5 text-left text-sm font-medium hover:bg-muted">
         <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
         {title}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="flex flex-col">{children}</div>
+        <div className="ml-[0.625rem] flex flex-col border-l border-border">{children}</div>
       </CollapsibleContent>
     </Collapsible>
   );
