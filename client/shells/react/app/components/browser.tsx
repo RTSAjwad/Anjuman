@@ -153,6 +153,10 @@ export function BrowserScreen(props: BrowserScreenProps) {
     sort: "created_at",
     query: "",
   });
+  const [statusFilter, setStatusFilter] = useState<{ suspended: boolean; buried: boolean }>({
+    suspended: false,
+    buried: false,
+  });
   const [initialized, setInitialized] = useState(false);
 
   function buildCardFilter(page: number): CardBrowserFilter {
@@ -161,6 +165,10 @@ export function BrowserScreen(props: BrowserScreenProps) {
       filter.noteType === "" || filter.noteType === "0" ? [] : [BigInt(filter.noteType)],
       filter.query.trim() === "" ? null : filter.query.trim(),
       filter.state === "" ? [] : [filter.state],
+      [
+        ...(statusFilter.suspended ? ["suspended"] : []),
+        ...(statusFilter.buried ? ["buried"] : []),
+      ],
       filter.flag === "" ? [] : [BigInt(filter.flag)],
       filter.sort,
       BigInt(page),
@@ -205,6 +213,10 @@ export function BrowserScreen(props: BrowserScreenProps) {
   }
   function toggleSort(value: string) {
     setFilter((f) => ({ ...f, sort: f.sort === value ? "created_at" : value }));
+    apply(1);
+  }
+  function toggleStatus(key: "suspended" | "buried") {
+    setStatusFilter((prev) => ({ ...prev, [key]: !prev[key] }));
     apply(1);
   }
 
@@ -278,6 +290,27 @@ export function BrowserScreen(props: BrowserScreenProps) {
                   {label}
                 </button>
               ))}
+            </FilterBranch>
+
+            <FilterBranch title="Status">
+              <button
+                onClick={() => toggleStatus("suspended")}
+                className={cn(
+                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
+                  statusFilter.suspended && "bg-accent text-accent-foreground",
+                )}
+              >
+                Suspended
+              </button>
+              <button
+                onClick={() => toggleStatus("buried")}
+                className={cn(
+                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
+                  statusFilter.buried && "bg-accent text-accent-foreground",
+                )}
+              >
+                Buried
+              </button>
             </FilterBranch>
 
             <FilterBranch title="Flag">
