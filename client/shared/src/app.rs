@@ -220,6 +220,9 @@ pub enum Event {
     TagsRequested,
     /// Fetch the distinct tag namespace as a `::` tree (for the sidebar).
     TagTreeRequested,
+    /// Clear unused tags (remove `tags` rows no note references) — the sidebar's
+    /// "Clear Unused Tags" affordance (teacher/admin).
+    ClearUnusedTags,
     /// Fetch the school's note types (for the card-browser note-type filter).
     NoteTypesRequested,
     /// Fetch notes with a filter (page/filter/sort), the note analog of
@@ -468,6 +471,12 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     NoteTagsChanged(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<Tag>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    ClearUnusedTagsDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>,
+    ),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -1786,6 +1795,29 @@ impl crux_core::App for Anjuman {
                     .expect_json()
                     .build()
                     .then_send(Event::TagTreeResult)
+            }
+
+            Event::ClearUnusedTags => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.tags_error = None;
+                Http::delete(format!("{API_URL}/tags"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::ClearUnusedTagsDone)
+            }
+
+            Event::ClearUnusedTagsDone(Ok(_)) => {
+                model.tags_error = None;
+                refresh_tags()
+            }
+
+            Event::ClearUnusedTagsDone(Err(e)) => {
+                model.tags_error = Some(e.to_string());
+                render::render()
             }
 
             Event::TagTreeResult(Ok(mut response)) => {
@@ -4264,6 +4296,41 @@ mod tests {
         let mut model = Model::default();
         let effects = update(Event::TagsRequested, &mut model);
         assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// `ClearUnusedTags` emits `DELETE /tags` with the bearer header.
+    #[test]
+    fn clear_unused_tags_emits_delete() {
+        let mut model = authenticated_model();
+        let effects = update(Event::ClearUnusedTags, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "DELETE");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/tags");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `ClearUnusedTagsDone(Ok)` re-fetches the distinct tag namespace.
+    #[test]
+    fn clear_unused_tags_done_refreshes_tags() {
+        let mut model = authenticated_model();
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok()
+            .body(MessageResponse {
+                message: "Removed 3 unused tag(s)".to_string(),
+            })
+            .build();
+        let mut command = app.update(Event::ClearUnusedTagsDone(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::TagsRequested)),
+            "should re-fetch tags, got {events:?}"
+        );
     }
 
     /// `TagTreeRequested` emits `GET /tags/tree` with the bearer header.
