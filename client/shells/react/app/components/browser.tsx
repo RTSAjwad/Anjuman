@@ -265,8 +265,8 @@ export function BrowserScreen(props: BrowserScreenProps) {
                 key={id}
                 onClick={() => toggle("noteType", id, "")}
                 className={cn(
-                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
-                  filter.noteType === id && "bg-accent text-accent-foreground",
+                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
+                  filter.noteType === id && "bg-accent text-accent-foreground hover:bg-accent",
                 )}
               >
                 {nt.name}
@@ -283,8 +283,8 @@ export function BrowserScreen(props: BrowserScreenProps) {
                   key={v}
                   onClick={() => toggle("state", v, "")}
                   className={cn(
-                    "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
-                    filter.state === v && "bg-accent text-accent-foreground",
+                    "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
+                    filter.state === v && "bg-accent text-accent-foreground hover:bg-accent",
                   )}
                 >
                   {label}
@@ -296,8 +296,8 @@ export function BrowserScreen(props: BrowserScreenProps) {
               <button
                 onClick={() => toggleStatus("suspended")}
                 className={cn(
-                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
-                  statusFilter.suspended && "bg-accent text-accent-foreground",
+                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
+                  statusFilter.suspended && "bg-accent text-accent-foreground hover:bg-accent",
                 )}
               >
                 Suspended
@@ -305,8 +305,8 @@ export function BrowserScreen(props: BrowserScreenProps) {
               <button
                 onClick={() => toggleStatus("buried")}
                 className={cn(
-                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
-                  statusFilter.buried && "bg-accent text-accent-foreground",
+                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
+                  statusFilter.buried && "bg-accent text-accent-foreground hover:bg-accent",
                 )}
               >
                 Buried
@@ -319,8 +319,8 @@ export function BrowserScreen(props: BrowserScreenProps) {
                   key={opt.value}
                   onClick={() => toggle("flag", opt.value, "")}
                   className={cn(
-                    "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
-                    filter.flag === opt.value && "bg-accent text-accent-foreground",
+                    "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
+                    filter.flag === opt.value && "bg-accent text-accent-foreground hover:bg-accent",
                   )}
                 >
                   <Flag className={cn("mr-2 size-4", opt.color, "fill-current")} />
@@ -337,8 +337,8 @@ export function BrowserScreen(props: BrowserScreenProps) {
               key={v}
               onClick={() => toggleSort(v)}
               className={cn(
-                "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm",
-                filter.sort === v && "bg-accent text-accent-foreground",
+                "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
+                filter.sort === v && "bg-accent text-accent-foreground hover:bg-accent",
               )}
             >
               {label}
