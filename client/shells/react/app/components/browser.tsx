@@ -71,7 +71,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { ButtonGroup } from "~/components/ui/button-group";
 import { ChipInput } from "~/components/ui/chip-input";
 import { Separator } from "~/components/ui/separator";
@@ -249,102 +248,90 @@ export function BrowserScreen(props: BrowserScreenProps) {
           </ButtonGroup>
         </form>
 
-        <FilterBranch title="Decks">
-          <DeckFilterTree
-            decks={props.decks}
-            selected={filter.deck}
-            onSelect={(id) => toggle("deck", id, "")}
-          />
-        </FilterBranch>
+        <ul className="mt-3 flex flex-col">
+          <FilterNode label="Sort">
+            {() => (route === "Cards" ? CARD_SORT_OPTIONS : NOTE_SORT_OPTIONS).map(([v, label]) => (
+              <FilterNode
+                key={v}
+                label={label}
+                active={filter.sort === v}
+                onSelect={() => toggleSort(v)}
+              />
+            ))}
+          </FilterNode>
 
-        <FilterBranch title="Note types">
-          {props.noteTypes.map((nt) => {
-            const id = String(nt.id);
-            return (
-              <button
-                key={id}
-                onClick={() => toggle("noteType", id, "")}
-                className={cn(
-                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
-                  filter.noteType === id && "bg-accent text-accent-foreground hover:bg-accent",
-                )}
-              >
-                {nt.name}
-              </button>
-            );
-          })}
-        </FilterBranch>
+          {route === "Cards" ? (
+            <>
+              <FilterNode label="Flag">
+                {() => FLAG_OPTIONS.slice(1).map((opt) => (
+                  <FilterNode
+                    key={opt.value}
+                    active={filter.flag === opt.value}
+                    onSelect={() => toggle("flag", opt.value, "")}
+                    label={
+                      <span className="flex items-center">
+                        <Flag className={cn("mr-2 size-4", opt.color, "fill-current")} />
+                        {opt.label}
+                      </span>
+                    }
+                  />
+                ))}
+              </FilterNode>
 
-        {route === "Cards" ? (
-          <>
-            <FilterBranch title="State">
-              {STATE_OPTIONS.map(([v, label]) => (
-                <button
-                  key={v}
-                  onClick={() => toggle("state", v, "")}
-                  className={cn(
-                    "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
-                    filter.state === v && "bg-accent text-accent-foreground hover:bg-accent",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </FilterBranch>
+              <FilterNode label="State">
+                {() => STATE_OPTIONS.map(([v, label]) => (
+                  <FilterNode
+                    key={v}
+                    label={label}
+                    active={filter.state === v}
+                    onSelect={() => toggle("state", v, "")}
+                  />
+                ))}
+              </FilterNode>
 
-            <FilterBranch title="Status">
-              <button
-                onClick={() => toggleStatus("suspended")}
-                className={cn(
-                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
-                  statusFilter.suspended && "bg-accent text-accent-foreground hover:bg-accent",
-                )}
-              >
-                Suspended
-              </button>
-              <button
-                onClick={() => toggleStatus("buried")}
-                className={cn(
-                  "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
-                  statusFilter.buried && "bg-accent text-accent-foreground hover:bg-accent",
-                )}
-              >
-                Buried
-              </button>
-            </FilterBranch>
+              <FilterNode label="Status">
+                {() => [
+                  <FilterNode
+                    key="suspended"
+                    label="Suspended"
+                    active={statusFilter.suspended}
+                    onSelect={() => toggleStatus("suspended")}
+                  />,
+                  <FilterNode
+                    key="buried"
+                    label="Buried"
+                    active={statusFilter.buried}
+                    onSelect={() => toggleStatus("buried")}
+                  />,
+                ]}
+              </FilterNode>
+            </>
+          ) : null}
 
-            <FilterBranch title="Flag">
-              {FLAG_OPTIONS.slice(1).map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => toggle("flag", opt.value, "")}
-                  className={cn(
-                    "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
-                    filter.flag === opt.value && "bg-accent text-accent-foreground hover:bg-accent",
-                  )}
-                >
-                  <Flag className={cn("mr-2 size-4", opt.color, "fill-current")} />
-                  {opt.label}
-                </button>
-              ))}
-            </FilterBranch>
-          </>
-        ) : null}
+          <FilterNode label="Deck">
+            {() => (
+              <DeckFilterTree
+                decks={props.decks}
+                selected={filter.deck}
+                onSelect={(id) => toggle("deck", id, "")}
+              />
+            )}
+          </FilterNode>
 
-        <FilterBranch title="Sort">
-          {(route === "Cards" ? CARD_SORT_OPTIONS : NOTE_SORT_OPTIONS).map(([v, label]) => (
-            <button
-              key={v}
-              onClick={() => toggleSort(v)}
-              className={cn(
-                "flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-muted",
-                filter.sort === v && "bg-accent text-accent-foreground hover:bg-accent",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </FilterBranch>
+          <FilterNode label="Note type">
+            {() => props.noteTypes.map((nt) => {
+              const id = String(nt.id);
+              return (
+                <FilterNode
+                  key={id}
+                  label={nt.name}
+                  active={filter.noteType === id}
+                  onSelect={() => toggle("noteType", id, "")}
+                />
+              );
+            })}
+          </FilterNode>
+        </ul>
 
         {error ? <p className="mt-2 text-xs text-destructive">Could not load {listLabel}: {error}</p> : null}
       </aside>
@@ -384,32 +371,88 @@ export function BrowserScreen(props: BrowserScreenProps) {
   );
 }
 
-function FilterBranch({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(true);
+function FilterTreeRow({
+  hasChildren,
+  open,
+  active,
+  onToggle,
+  onSelect,
+  children,
+}: {
+  hasChildren: boolean;
+  open?: boolean;
+  active?: boolean;
+  onToggle?: () => void;
+  onSelect?: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mt-3">
-      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-sm px-3 py-1.5 text-left text-sm font-medium hover:bg-muted">
-        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
-        {title}
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="ml-[0.625rem] flex flex-col border-l border-border">{children}</div>
-      </CollapsibleContent>
-    </Collapsible>
+    <div className="flex items-center">
+      {hasChildren ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
+          className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+        </button>
+      ) : (
+        <span className="size-5 shrink-0" />
+      )}
+      <button
+        onClick={onSelect}
+        className={cn(
+          "flex flex-1 items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
+          active && "bg-accent text-accent-foreground hover:bg-accent",
+        )}
+      >
+        {children}
+      </button>
+    </div>
+  );
+}
+
+function FilterNode({
+  label,
+  active,
+  onSelect,
+  children,
+}: {
+  label: React.ReactNode;
+  active?: boolean;
+  onSelect?: () => void;
+  children?: () => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  const hasChildren = children !== undefined;
+  return (
+    <li>
+      <FilterTreeRow
+        hasChildren={hasChildren}
+        open={open}
+        active={active}
+        onToggle={() => setOpen((v) => !v)}
+        onSelect={onSelect ?? (hasChildren ? () => setOpen((v) => !v) : undefined)}
+      >
+        {label}
+      </FilterTreeRow>
+      {hasChildren && open ? (
+        <ul className="ml-5 flex flex-col border-l border-border pl-1">{children!()}</ul>
+      ) : null}
+    </li>
   );
 }
 
 function DeckFilterTree({ decks, selected, onSelect }: { decks: DeckSummary[]; selected: string; onSelect: (id: string) => void }) {
   return (
-    <ul className="flex flex-col">
+    <>
       {decks.map((d) => (
-        <DeckFilterNode key={String(d.id)} deck={d} selected={selected} onSelect={onSelect} depth={0} />
+        <DeckFilterNode key={String(d.id)} deck={d} selected={selected} onSelect={onSelect} />
       ))}
-    </ul>
+    </>
   );
 }
 
-function DeckFilterNode({ deck, selected, onSelect, depth }: { deck: DeckSummary; selected: string; onSelect: (id: string) => void; depth: number }) {
+function DeckFilterNode({ deck, selected, onSelect }: { deck: DeckSummary; selected: string; onSelect: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const hasChildren = deck.children.length > 0;
   const id = String(deck.id);
@@ -417,28 +460,19 @@ function DeckFilterNode({ deck, selected, onSelect, depth }: { deck: DeckSummary
 
   return (
     <li>
-      <div className="flex items-center" style={{ paddingInlineStart: `${depth * 1}rem` }}>
-        {hasChildren ? (
-          <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }} className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground">
-            <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
-          </button>
-        ) : (
-          <span className="size-5 shrink-0" />
-        )}
-        <button
-          onClick={() => onSelect(id)}
-          className={cn(
-            "flex flex-1 items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
-            isSel && "bg-accent text-accent-foreground hover:bg-accent",
-          )}
-        >
-          {deck.title}
-        </button>
-      </div>
+      <FilterTreeRow
+        hasChildren={hasChildren}
+        open={open}
+        active={isSel}
+        onToggle={() => setOpen((v) => !v)}
+        onSelect={() => onSelect(id)}
+      >
+        {deck.title}
+      </FilterTreeRow>
       {hasChildren && open ? (
-        <ul className="ml-[0.625rem] flex flex-col border-l border-border">
+        <ul className="ml-5 flex flex-col border-l border-border pl-1">
           {deck.children.map((c) => (
-            <DeckFilterNode key={String(c.id)} deck={c} selected={selected} onSelect={onSelect} depth={depth + 1} />
+            <DeckFilterNode key={String(c.id)} deck={c} selected={selected} onSelect={onSelect} />
           ))}
         </ul>
       ) : null}
