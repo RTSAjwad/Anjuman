@@ -1084,6 +1084,12 @@ fn refresh_deck_counts() -> Command<Effect, Event> {
     Command::event(Event::DecksCountsRequested)
 }
 
+/// Re-fetch the distinct tag namespace (`GET /tags`) so the sidebar's filter
+/// tree reflects newly-created tags after a note save/tag mutation.
+fn refresh_tags() -> Command<Effect, Event> {
+    Command::event(Event::TagsRequested)
+}
+
 /// Re-sync `browser_selected` to the matching card in `browser_cards` (the single
 /// source of truth), so the shell's inspector reflects the freshest data after a
 /// list refresh or an in-place flag update. Clears to `None` when the selected
@@ -1911,7 +1917,9 @@ impl crux_core::App for Anjuman {
 
             Event::NoteSaved(Ok(_)) => {
                 model.notes_error = None;
-                refresh_notes(model).and(refresh_browser(model))
+                // NoteSave may change the note's tags, which can introduce a new
+                // tag name → refresh the distinct tag namespace too.
+                refresh_notes(model).and(refresh_browser(model)).and(refresh_tags())
             }
 
             Event::NoteSaved(Err(e)) => {
@@ -1979,7 +1987,7 @@ impl crux_core::App for Anjuman {
             // each refresh re-runs the existing resync_* selection hooks.
             Event::NoteTagsChanged(Ok(_)) => {
                 model.notes_error = None;
-                refresh_notes(model).and(refresh_browser(model))
+                refresh_notes(model).and(refresh_browser(model)).and(refresh_tags())
             }
 
             Event::NoteTagsChanged(Err(e)) => {
@@ -5587,6 +5595,43 @@ mod tests {
         assert!(
             events.iter().any(|e| matches!(e, Event::CardsRequested { .. })),
             "NoteCreated should re-fetch cards, got {events:?}"
+        );
+    }
+
+    /// `NoteSaved(Ok)` also re-fetches the distinct tag namespace (a saved note's
+    /// tags may have introduced a new tag name).
+    #[test]
+    fn note_saved_refreshes_tags() {
+        let mut model = authenticated_model();
+        model.notes_filter = Some(NoteBrowserFilter::default());
+        model.browser_filter = Some(CardBrowserFilter::default());
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(note(1)).build();
+        let mut command = app.update(Event::NoteSaved(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::TagsRequested)),
+            "should re-fetch tags, got {events:?}"
+        );
+    }
+
+    /// `NoteTagsChanged(Ok)` also re-fetches the distinct tag namespace.
+    #[test]
+    fn note_tags_changed_refreshes_tags() {
+        let mut model = authenticated_model();
+        model.notes_filter = Some(NoteBrowserFilter::default());
+        model.browser_filter = Some(CardBrowserFilter::default());
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(Vec::<Tag>::new()).build();
+        let mut command = app.update(Event::NoteTagsChanged(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::TagsRequested)),
+            "should re-fetch tags, got {events:?}"
         );
     }
 }
