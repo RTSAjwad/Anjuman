@@ -159,35 +159,35 @@ export function BrowserScreen(props: BrowserScreenProps) {
   });
   const [initialized, setInitialized] = useState(false);
 
-  function buildCardFilter(page: number): CardBrowserFilter {
+  function buildCardFilter(page: number, f: FilterState = filter, status = statusFilter): CardBrowserFilter {
     return new CardBrowserFilterCtor(
-      filter.deck === "" || filter.deck === "0" ? [] : [BigInt(filter.deck)],
-      filter.noteType === "" || filter.noteType === "0" ? [] : [BigInt(filter.noteType)],
-      filter.query.trim() === "" ? null : filter.query.trim(),
-      filter.state === "" ? [] : [filter.state],
+      f.deck === "" || f.deck === "0" ? [] : [BigInt(f.deck)],
+      f.noteType === "" || f.noteType === "0" ? [] : [BigInt(f.noteType)],
+      f.query.trim() === "" ? null : f.query.trim(),
+      f.state === "" ? [] : [f.state],
       [
-        ...(statusFilter.suspended ? ["suspended"] : []),
-        ...(statusFilter.buried ? ["buried"] : []),
+        ...(status.suspended ? ["suspended"] : []),
+        ...(status.buried ? ["buried"] : []),
       ],
-      filter.flag === "" ? [] : [BigInt(filter.flag)],
-      filter.sort,
+      f.flag === "" ? [] : [BigInt(f.flag)],
+      f.sort,
       BigInt(page),
       BigInt(50),
     );
   }
-  function buildNoteFilter(page: number): NoteBrowserFilter {
+  function buildNoteFilter(page: number, f: FilterState = filter): NoteBrowserFilter {
     return new NoteBrowserFilterCtor(
-      filter.deck === "" || filter.deck === "0" ? [] : [BigInt(filter.deck)],
-      filter.noteType === "" || filter.noteType === "0" ? [] : [BigInt(filter.noteType)],
-      filter.query.trim() === "" ? null : filter.query.trim(),
-      filter.sort,
+      f.deck === "" || f.deck === "0" ? [] : [BigInt(f.deck)],
+      f.noteType === "" || f.noteType === "0" ? [] : [BigInt(f.noteType)],
+      f.query.trim() === "" ? null : f.query.trim(),
+      f.sort,
       BigInt(page),
       BigInt(50),
     );
   }
-  function apply(page: number) {
-    if (route === "Cards") update(eventCardsRequested(buildCardFilter(page)));
-    else update(eventNotesRequested(buildNoteFilter(page)));
+  function apply(page: number, f: FilterState = filter, status = statusFilter) {
+    if (route === "Cards") update(eventCardsRequested(buildCardFilter(page, f, status)));
+    else update(eventNotesRequested(buildNoteFilter(page, f)));
   }
 
   // Fetch the current view's data. Re-fires whenever the route changes (Cards ↔
@@ -205,19 +205,19 @@ export function BrowserScreen(props: BrowserScreenProps) {
     setFilter((f) => ({ ...f, [key]: value }));
   }
   function toggle<K extends keyof FilterState>(key: K, value: string, resetValue: string) {
-    setFilter((f) => {
-      const next = { ...f, [key]: f[key] === value ? resetValue : value };
-      return next;
-    });
-    apply(1);
+    const next = { ...filter, [key]: filter[key] === value ? resetValue : value };
+    setFilter(next);
+    apply(1, next, statusFilter);
   }
   function toggleSort(value: string) {
-    setFilter((f) => ({ ...f, sort: f.sort === value ? "created_at" : value }));
-    apply(1);
+    const next = { ...filter, sort: filter.sort === value ? "created_at" : value };
+    setFilter(next);
+    apply(1, next, statusFilter);
   }
   function toggleStatus(key: "suspended" | "buried") {
-    setStatusFilter((prev) => ({ ...prev, [key]: !prev[key] }));
-    apply(1);
+    const next = { ...statusFilter, [key]: !statusFilter[key] };
+    setStatusFilter(next);
+    apply(1, filter, next);
   }
 
   const page = route === "Cards" ? Number(props.cardPage) : Number(props.notePage);
