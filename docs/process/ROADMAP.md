@@ -2402,12 +2402,14 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
       `Model.tags`/`tag_tree` + `ViewModel` (via `TagView`/`TagNodeView` Facet
       mirrors), events `TagsRequested`/`TagTreeRequested` (+ `TagsResult`/
       `TagTreeResult`), `tags_error`, and clear-on-logout. `shared` update tests.
-- [ ] `US-6.5b` — **Per-note tag CRUD in the client.** Add/remove tags on a note
+- [x] `US-6.5b` — **Per-note tag CRUD in the client.** Add/remove tags on a note
       from the UI (the server endpoints `POST`/`DELETE /notes/{id}/tags` exist).
       The notes/browser screen is now ✅ (per `docs/support/screens.md`), so this
       is no longer blocked; it needs the shell to render the tag tree + per-note
       tag affordances. Track alongside the "Tagging (list/tree)" shell-coverage
-      row.
+      row. Shipped: sidebar tag tree + click-to-filter, per-note chip editor
+      (gated on `can_manage_tags`), tree rename, clear-unused, and find-and-replace
+      in the React shell.
 - [x] `US-6.6` — **Leech as per-student state, not a tag.** Done via US-2.20
       (per-student `student_card_states.leech_at`; `TagOnly` marks, `SuspendCard`
       marks + suspends — no tag-system involvement).
