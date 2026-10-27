@@ -24,6 +24,7 @@ import {
   eventTagTreeRequested,
   eventTagsStatsRequested,
   eventClearUnusedTags,
+  eventFindReplaceTags,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
   eventBrowserSuspendCard,
@@ -867,11 +868,25 @@ export function NoteActions({
   update: (e: Event) => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [find, setFind] = useState("");
+  const [replace, setReplace] = useState("");
 
   function confirmDelete() {
     if (noteId !== null) {
       update(eventNoteDelete(noteId));
       setDeleteOpen(false);
+    }
+  }
+
+  function confirmFindReplace() {
+    const f = find.trim();
+    const r = replace.trim();
+    if (f !== "") {
+      update(eventFindReplaceTags(f, r));
+      setFindReplaceOpen(false);
+      setFind("");
+      setReplace("");
     }
   }
 
@@ -907,6 +922,7 @@ export function NoteActions({
             <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</Button>
           </>
         ) : null}
+        <Button variant="outline" onClick={() => setFindReplaceOpen(true)} disabled={!canManageTags}>Find &amp; Replace</Button>
         <Button variant="outline" onClick={() => update(eventClearUnusedTags())} disabled={!canManageTags || !hasUnusedTags}>Clear Unused Tags</Button>
       </ButtonGroup>
 
@@ -921,6 +937,31 @@ export function NoteActions({
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={findReplaceOpen} onOpenChange={setFindReplaceOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Find &amp; Replace Tags</DialogTitle>
+            <DialogDescription>
+              Replaces a substring across every tag name (teacher-managed tag taxonomy).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Find</Label>
+              <Input value={find} onChange={(e) => setFind(e.target.value)} placeholder="e.g. biology" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Replace</Label>
+              <Input value={replace} onChange={(e) => setReplace(e.target.value)} placeholder="e.g. life-sciences" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFindReplaceOpen(false)}>Cancel</Button>
+            <Button onClick={confirmFindReplace} disabled={find.trim() === ""}>Replace</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
