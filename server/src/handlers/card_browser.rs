@@ -303,6 +303,27 @@ fn status_where(csv: &str) -> String {
     format!("AND ({})", clauses.join(" OR "))
 }
 
+/// Build a WHERE fragment for comma-separated tag-name filters. A card matches
+/// if its note has ANY of the listed tags (OR'd; matched by normalised tag name).
+fn tag_where(csv: &str) -> String {
+    let tags: Vec<&str> = csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if tags.is_empty() {
+        return String::new();
+    }
+    let list = tags
+        .iter()
+        .map(|t| format!("'{}'", t.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "AND EXISTS (SELECT 1 FROM note_tags nt JOIN tags tg ON tg.id = nt.tag_id WHERE nt.note_id = n.id AND tg.name IN ({list}))"
+    )
+}
+
 fn sort_clause(sort: &str) -> &'static str {
     match sort {
         "due_at" => "scs.due_at ASC NULLS LAST, c.created_at DESC",
@@ -332,13 +353,14 @@ pub async fn browse_cards(
         .unwrap_or_default();
     let state_filter = state_where(&params.state);
     let status_filter = status_where(&params.status);
+    let tag_filter = tag_where(&params.tag);
     let flag_filter = in_clause("scs.flag", &params.flag);
     let order = sort_clause(&params.sort);
 
     let base_from = "FROM cards c JOIN notes n ON n.id = c.note_id JOIN decks d ON d.id = c.deck_id JOIN note_types nt ON nt.id = n.note_type_id LEFT JOIN student_card_states scs ON scs.card_id = c.id AND scs.student_id = $1";
     let base_where = format!(
-        "WHERE d.school_id = $2 {} {} {} {} {} {}",
-        deck_filter, note_type_filter, q_filter, state_filter, status_filter, flag_filter
+        "WHERE d.school_id = $2 {} {} {} {} {} {} {}",
+        deck_filter, note_type_filter, q_filter, state_filter, status_filter, tag_filter, flag_filter
     );
 
     // Count

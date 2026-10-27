@@ -242,6 +242,40 @@ async fn cards_return_note_tags_ordered_by_name() {
     assert_eq!(tags, vec!["biology".to_string(), "cells".to_string()], "body: {json}");
 }
 
+/// `tag=…` filters cards by their note's tags (cards whose note has any of the
+/// listed tags).
+#[tokio::test]
+async fn tag_filter_narrows_cards_by_note_tag() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let biology_card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+    let physics_card = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+
+    // Tag the biology card's note with "biology".
+    let bio_note: i64 = sqlx::query_scalar!("SELECT note_id FROM cards WHERE id = $1", biology_card)
+        .fetch_one(&app.db)
+        .await
+        .expect("bio note");
+    let tag_id: i64 = sqlx::query_scalar!("INSERT INTO tags (name) VALUES ('biology') RETURNING id")
+        .fetch_one(&app.db)
+        .await
+        .expect("tag");
+    sqlx::query!("INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)", bio_note, tag_id)
+        .execute(&app.db)
+        .await
+        .expect("note tag");
+
+    let (status, json) = get(&app, "/cards?tag=biology&sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    let ids: Vec<i64> = json["cards"].as_array().unwrap().iter().map(|c| c["card_id"].as_i64().unwrap()).collect();
+    assert_eq!(ids, vec![biology_card], "body: {json}");
+
+    // The physics card is excluded.
+    assert_eq!(json["total"], 1, "body: {json}");
+    let _ = physics_card;
+}
+
 /// `GET /cards` resolves each card's `sort_field` (note type's sort field),
 /// `deck_path` (full `::`-joined ancestor chain), and `due_at` (the scheduled due
 /// timestamp) for the browser-table columns.

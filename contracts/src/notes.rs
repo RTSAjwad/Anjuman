@@ -45,6 +45,10 @@ pub struct ListNotesQuery {
     pub note_type_id: String,
     /// Free-text search over `fields_json` content.
     pub q: Option<String>,
+    /// Comma-separated tag names (a note is included if it has any of these
+    /// tags). Empty = no tag filter.
+    #[serde(default)]
+    pub tag: String,
     /// Sort key: `created_at` (default) | `note_type` | `deck` | `question`.
     #[serde(default = "default_notes_sort")]
     pub sort: String,

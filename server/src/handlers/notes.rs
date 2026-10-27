@@ -354,6 +354,27 @@ fn in_clause(column: &str, csv: &str) -> String {
     }
 }
 
+/// Build a WHERE fragment for comma-separated tag-name filters. A note matches
+/// if it has ANY of the listed tags (OR'd; matched by normalised tag name).
+fn tag_where(csv: &str) -> String {
+    let tags: Vec<&str> = csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if tags.is_empty() {
+        return String::new();
+    }
+    let list = tags
+        .iter()
+        .map(|t| format!("'{}'", t.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "AND EXISTS (SELECT 1 FROM note_tags nt JOIN tags tg ON tg.id = nt.tag_id WHERE nt.note_id = n.id AND tg.name IN ({list}))"
+    )
+}
+
 /// Map a note sort key to its ORDER BY clause (defaults to `created_at`).
 ///
 /// Notes can span multiple decks, so the `deck` key orders by the
@@ -383,6 +404,7 @@ pub async fn list_notes(
 
     let deck_in = in_clause("c.deck_id", &params.deck_id);
     let note_type_in = in_clause("n.note_type_id", &params.note_type_id);
+    let tag_filter = tag_where(&params.tag);
     let q_filter = params
         .q
         .as_ref()
@@ -395,8 +417,8 @@ pub async fn list_notes(
     // rule). Each note may span multiple decks via its cards.
     let base_from = "FROM notes n JOIN note_types nt ON nt.id = n.note_type_id JOIN cards c ON c.note_id = n.id JOIN decks d ON d.id = c.deck_id LEFT JOIN deck_collaborators dc ON dc.deck_id = d.id";
     let base_where = format!(
-        "WHERE d.school_id = $1 AND (d.created_by = $2 OR dc.user_id = $3) {} {} {}",
-        deck_in, note_type_in, q_filter
+        "WHERE d.school_id = $1 AND (d.created_by = $2 OR dc.user_id = $3) {} {} {} {}",
+        deck_in, note_type_in, q_filter, tag_filter
     );
 
     // Count distinct notes (a note with cards in multiple decks must not be

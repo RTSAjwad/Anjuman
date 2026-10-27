@@ -656,6 +656,9 @@ pub struct CardBrowserFilter {
     /// Statuses to filter by: `"buried"`, `"suspended"` (OR'd). Empty = no
     /// status filter.
     pub statuses: Vec<String>,
+    /// Tag names to filter by (note-scoped; cards whose note has any of these).
+    /// Empty = no tag filter.
+    pub tags: Vec<String>,
     /// Anki-style flag values 0-7 (empty = no filter).
     pub flags: Vec<i64>,
     pub sort: String,
@@ -673,6 +676,7 @@ impl CardBrowserFilter {
             q: self.q.clone(),
             state: self.states.join(","),
             status: self.statuses.join(","),
+            tag: self.tags.join(","),
             flag: csv_i64(&self.flags),
             sort: if self.sort.is_empty() {
                 "created_at".to_string()
@@ -693,6 +697,9 @@ pub struct NoteBrowserFilter {
     pub deck_ids: Vec<i64>,
     pub note_type_ids: Vec<i64>,
     pub q: Option<String>,
+    /// Tag names to filter by (a note is included if it has any of these).
+    /// Empty = no tag filter.
+    pub tags: Vec<String>,
     pub sort: String,
     pub page: i64,
     pub per_page: i64,
@@ -706,6 +713,7 @@ impl NoteBrowserFilter {
             deck_id: csv_i64(&self.deck_ids),
             note_type_id: csv_i64(&self.note_type_ids),
             q: self.q.clone(),
+            tag: self.tags.join(","),
             sort: if self.sort.is_empty() {
                 "created_at".to_string()
             } else {
@@ -4610,6 +4618,7 @@ mod tests {
             q: Some("DNA".to_string()),
             states: vec!["review".to_string()],
             statuses: vec!["suspended".to_string()],
+            tags: vec!["biology".to_string()],
             flags: vec![1, 3],
             sort: "due_at".to_string(),
             page: 2,
@@ -4627,6 +4636,7 @@ mod tests {
                 assert!(url.contains("q=DNA"), "url = {url}");
                 assert!(url.contains("state=review"), "url = {url}");
                 assert!(url.contains("status=suspended"), "url = {url}");
+                assert!(url.contains("tag=biology"), "url = {url}");
                 assert!(url.contains("flag=1,3"), "url = {url}");
                 assert!(url.contains("sort=due_at"), "url = {url}");
                 assert!(url.contains("page=2"), "url = {url}");
@@ -5179,6 +5189,7 @@ mod tests {
             deck_ids: vec![5],
             note_type_ids: vec![1],
             q: Some("hola".to_string()),
+            tags: vec!["biology".to_string()],
             sort: "created_at".to_string(),
             page: 2,
             per_page: 25,
@@ -5193,6 +5204,7 @@ mod tests {
                 assert!(url.contains("deck_id=5"), "url = {url}");
                 assert!(url.contains("note_type_id=1"), "url = {url}");
                 assert!(url.contains("q=hola"), "url = {url}");
+                assert!(url.contains("tag=biology"), "url = {url}");
                 assert!(url.contains("page=2"), "url = {url}");
             }
             other => panic!("expected one Http effect, got {other:?}"),

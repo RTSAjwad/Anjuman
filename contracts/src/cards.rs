@@ -103,6 +103,10 @@ pub struct CardBrowserQuery {
     /// status filter.
     #[serde(default)]
     pub status: String,
+    /// Comma-separated tag names (note-scoped tags; cards whose note has any of
+    /// these tags). Empty = no tag filter.
+    #[serde(default)]
+    pub tag: String,
     /// Comma-separated flag values, e.g. "1,3" for red and green.
     #[serde(default)]
     pub flag: String,

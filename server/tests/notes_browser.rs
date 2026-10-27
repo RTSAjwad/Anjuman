@@ -262,3 +262,35 @@ async fn create_note_with_tags_attaches_them_and_returns_deck() {
     let card_deck = json["cards"][0]["deck_id"].as_i64().unwrap();
     assert_eq!(card_deck, deck_id, "body: {json}");
 }
+
+/// `tag=…` filters notes by their tags (a note is included if it has any of the
+/// listed tags).
+#[tokio::test]
+async fn notes_tag_filter_returns_notes_with_that_tag() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let biology_note = seed_note(&app, teacher_id).await;
+    let physics_note = seed_note(&app, teacher_id).await;
+
+    // Tag the biology note.
+    let tag_id: i64 = sqlx::query_scalar!("INSERT INTO tags (name) VALUES ('biology') RETURNING id")
+        .fetch_one(&app.db)
+        .await
+        .expect("tag");
+    sqlx::query!(
+        "INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)",
+        biology_note,
+        tag_id
+    )
+    .execute(&app.db)
+    .await
+    .expect("note tag");
+
+    let (status, json) = get(&app, "/notes?tag=biology&sort=created_at&page=1&per_page=50", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["total"], 1, "body: {json}");
+    assert_eq!(json["notes"][0]["id"], biology_note, "body: {json}");
+
+    let _ = physics_note;
+}
