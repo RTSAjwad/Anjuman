@@ -123,6 +123,55 @@ async fn sort_by_position_orders_by_stored_position() {
     assert_eq!(cards[1]["card_id"], a, "body: {json}");
 }
 
+/// `status=suspended`/`status=buried` filter cards by their per-card
+/// suspended/buried state (OR'd across the CSV list).
+#[tokio::test]
+async fn status_filter_narrows_to_suspended_and_buried() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let suspended = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+    let buried = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+    let normal = seed_studiable_card(&app, teacher_id, "new", 0, 0, 0).await;
+
+    sqlx::query!(
+        "UPDATE student_card_states SET suspended = TRUE WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        suspended
+    )
+    .execute(&app.db)
+    .await
+    .expect("suspend");
+    sqlx::query!(
+        "UPDATE student_card_states SET buried_at = NOW(), bury_reason = 'user_card' WHERE student_id = $1 AND card_id = $2",
+        teacher_id,
+        buried
+    )
+    .execute(&app.db)
+    .await
+    .expect("bury");
+
+    // suspended only
+    let (status, json) = get(&app, "/cards?status=suspended&sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    let ids: Vec<i64> = json["cards"].as_array().unwrap().iter().map(|c| c["card_id"].as_i64().unwrap()).collect();
+    assert_eq!(ids, vec![suspended], "body: {json}");
+
+    // buried only
+    let (status, json) = get(&app, "/cards?status=buried&sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    let ids: Vec<i64> = json["cards"].as_array().unwrap().iter().map(|c| c["card_id"].as_i64().unwrap()).collect();
+    assert_eq!(ids, vec![buried], "body: {json}");
+
+    // OR'd
+    let (status, json) = get(&app, "/cards?status=suspended,buried&sort=created_at", &token).await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert_eq!(json["total"], 2, "body: {json}");
+
+    // normal card is excluded by any status filter
+    let _ = normal;
+}
+
 /// A deck filter narrows to cards in that deck.
 #[tokio::test]
 async fn deck_filter_narrows_results() {

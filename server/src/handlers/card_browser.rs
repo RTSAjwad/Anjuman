@@ -277,6 +277,32 @@ fn state_where(csv: &str) -> String {
     format!("AND ({})", clauses.join(" OR "))
 }
 
+/// Build a WHERE fragment for comma-separated card-status filters:
+/// `buried` (has a `buried_at`), `suspended` (suspended = TRUE). OR'd.
+fn status_where(csv: &str) -> String {
+    let statuses: Vec<&str> = csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if statuses.is_empty() {
+        return String::new();
+    }
+
+    let mut clauses: Vec<String> = Vec::new();
+    for status in statuses {
+        match status {
+            "buried" => clauses.push("scs.buried_at IS NOT NULL".into()),
+            "suspended" => clauses.push("scs.suspended = TRUE".into()),
+            _ => {}
+        }
+    }
+    if clauses.is_empty() {
+        return String::new();
+    }
+    format!("AND ({})", clauses.join(" OR "))
+}
+
 fn sort_clause(sort: &str) -> &'static str {
     match sort {
         "due_at" => "scs.due_at ASC NULLS LAST, c.created_at DESC",
@@ -305,13 +331,14 @@ pub async fn browse_cards(
         .map(|q| format!("AND n.fields_json::text LIKE '%{}%'", q.trim()))
         .unwrap_or_default();
     let state_filter = state_where(&params.state);
+    let status_filter = status_where(&params.status);
     let flag_filter = in_clause("scs.flag", &params.flag);
     let order = sort_clause(&params.sort);
 
     let base_from = "FROM cards c JOIN notes n ON n.id = c.note_id JOIN decks d ON d.id = c.deck_id JOIN note_types nt ON nt.id = n.note_type_id LEFT JOIN student_card_states scs ON scs.card_id = c.id AND scs.student_id = $1";
     let base_where = format!(
-        "WHERE d.school_id = $2 {} {} {} {} {}",
-        deck_filter, note_type_filter, q_filter, state_filter, flag_filter
+        "WHERE d.school_id = $2 {} {} {} {} {} {}",
+        deck_filter, note_type_filter, q_filter, state_filter, status_filter, flag_filter
     );
 
     // Count

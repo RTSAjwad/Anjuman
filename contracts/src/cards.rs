@@ -99,6 +99,10 @@ pub struct CardBrowserQuery {
     /// Comma-separated states, e.g. "review,learning"
     #[serde(default)]
     pub state: String,
+    /// Comma-separated card statuses: "buried", "suspended" (OR'd). Empty = no
+    /// status filter.
+    #[serde(default)]
+    pub status: String,
     /// Comma-separated flag values, e.g. "1,3" for red and green.
     #[serde(default)]
     pub flag: String,

@@ -653,6 +653,9 @@ pub struct CardBrowserFilter {
     pub q: Option<String>,
     /// `new`, `learning`, `review`, `relearning`.
     pub states: Vec<String>,
+    /// Statuses to filter by: `"buried"`, `"suspended"` (OR'd). Empty = no
+    /// status filter.
+    pub statuses: Vec<String>,
     /// Anki-style flag values 0-7 (empty = no filter).
     pub flags: Vec<i64>,
     pub sort: String,
@@ -669,6 +672,7 @@ impl CardBrowserFilter {
             note_type_id: csv_i64(&self.note_type_ids),
             q: self.q.clone(),
             state: self.states.join(","),
+            status: self.statuses.join(","),
             flag: csv_i64(&self.flags),
             sort: if self.sort.is_empty() {
                 "created_at".to_string()
@@ -4605,6 +4609,7 @@ mod tests {
             note_type_ids: vec![7],
             q: Some("DNA".to_string()),
             states: vec!["review".to_string()],
+            statuses: vec!["suspended".to_string()],
             flags: vec![1, 3],
             sort: "due_at".to_string(),
             page: 2,
@@ -4621,6 +4626,7 @@ mod tests {
                 assert!(url.contains("note_type_id=7"), "url = {url}");
                 assert!(url.contains("q=DNA"), "url = {url}");
                 assert!(url.contains("state=review"), "url = {url}");
+                assert!(url.contains("status=suspended"), "url = {url}");
                 assert!(url.contains("flag=1,3"), "url = {url}");
                 assert!(url.contains("sort=due_at"), "url = {url}");
                 assert!(url.contains("page=2"), "url = {url}");
