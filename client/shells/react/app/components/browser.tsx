@@ -451,7 +451,7 @@ const cardColumns: ColumnDef<BrowserTableFeatures, CardBrowserView>[] = [
   { accessorKey: "state", header: "State" },
   {
     id: "buried_suspended",
-    header: "Buried/Suspended",
+    header: "Status",
     cell: ({ row }) => {
       const status = row.original.suspended ? "Suspended" : row.original.buried ? "Buried" : "";
       return <span>{status}</span>;
