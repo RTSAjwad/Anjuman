@@ -1107,10 +1107,13 @@ fn refresh_deck_counts() -> Command<Effect, Event> {
     Command::event(Event::DecksCountsRequested)
 }
 
-/// Re-fetch the distinct tag namespace (`GET /tags`) so the sidebar's filter
-/// tree reflects newly-created tags after a note save/tag mutation.
+/// Re-fetch the distinct tag namespace (`GET /tags`) and its `::`-tree shape
+/// (`GET /tags/tree`) so the sidebar's filter tree reflects newly-created tags
+/// after a note save/tag mutation, plus the unused-tag count (`GET /tags/stats`).
 fn refresh_tags() -> Command<Effect, Event> {
-    Command::event(Event::TagsRequested).and(Command::event(Event::TagsStatsRequested))
+    Command::event(Event::TagsRequested)
+        .and(Command::event(Event::TagTreeRequested))
+        .and(Command::event(Event::TagsStatsRequested))
 }
 
 /// Re-sync `browser_selected` to the matching card in `browser_cards` (the single
@@ -4417,7 +4420,8 @@ mod tests {
         assert!(!vm.has_unused_tags, "should report no unused tags");
     }
 
-    /// `refresh_tags` chains `TagsStatsRequested` so the count stays fresh.
+    /// `refresh_tags` chains `TagTreeRequested` and `TagsStatsRequested` so the
+    /// tree and count stay fresh alongside the flat list.
     #[test]
     fn refresh_tags_chains_tags_stats_requested() {
         let mut refresh = refresh_tags();
@@ -4427,10 +4431,32 @@ mod tests {
             "should re-fetch tags, got {events:?}"
         );
         assert!(
+            events.iter().any(|e| matches!(e, Event::TagTreeRequested)),
+            "should re-fetch the tag tree, got {events:?}"
+        );
+        assert!(
             events
                 .iter()
                 .any(|e| matches!(e, Event::TagsStatsRequested)),
             "should re-fetch tag stats, got {events:?}"
+        );
+    }
+
+    /// A tag mutation re-fires `TagTreeRequested` so the sidebar tree stays fresh.
+    #[test]
+    fn refresh_tags_chains_tag_tree_requested() {
+        let mut model = authenticated_model();
+        model.notes_filter = Some(NoteBrowserFilter::default());
+        model.browser_filter = Some(CardBrowserFilter::default());
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(Vec::<Tag>::new()).build();
+        let mut command = app.update(Event::NoteTagsChanged(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::TagTreeRequested)),
+            "should re-fetch the tag tree, got {events:?}"
         );
     }
 
