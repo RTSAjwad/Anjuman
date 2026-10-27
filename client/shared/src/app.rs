@@ -29,7 +29,7 @@ use anjuman_contracts::notes::{
 use anjuman_contracts::reviews::{FlagResponse, ReviewResponse, SetFlag, SubmitReview};
 use anjuman_contracts::MessageResponse;
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
-use anjuman_contracts::tags::{AddTags, RemoveTags, Tag, TagNode};
+use anjuman_contracts::tags::{AddTags, RemoveTags, Tag, TagNode, UnusedTagsResponse};
 
 /// The base URL of the Anjuman server.
 ///
@@ -121,6 +121,9 @@ pub struct Model {
     pub tags: Vec<Tag>,
     /// The distinct tag namespace as a `::` tree (from `GET /tags/tree`).
     pub tag_tree: Vec<TagNode>,
+    /// Number of unused (orphan) tags, from `GET /tags/stats`. Gates the sidebar's
+    /// "Clear Unused Tags" affordance.
+    pub unused_tags: i64,
     /// A human-readable error from the last tag-list fetch, if any.
     pub tags_error: Option<String>,
     /// A human-readable error from the last card action (bury/suspend/
@@ -223,6 +226,8 @@ pub enum Event {
     /// Clear unused tags (remove `tags` rows no note references) — the sidebar's
     /// "Clear Unused Tags" affordance (teacher/admin).
     ClearUnusedTags,
+    /// Fetch the number of unused (orphan) tags, for gating "Clear Unused Tags".
+    TagsStatsRequested,
     /// Fetch the school's note types (for the card-browser note-type filter).
     NoteTypesRequested,
     /// Fetch notes with a filter (page/filter/sort), the note analog of
@@ -480,6 +485,12 @@ pub enum Event {
 
     #[serde(skip)]
     #[facet(skip)]
+    TagsStatsResult(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<UnusedTagsResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
     CardsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<CardBrowserPage>>),
 
     #[serde(skip)]
@@ -588,6 +599,9 @@ pub struct ViewModel {
     pub tags: Vec<TagView>,
     /// The distinct tag namespace as a `::` tree (for the sidebar).
     pub tag_tree: Vec<TagNodeView>,
+    /// True when there are unused (orphan) tags — gates the "Clear Unused Tags"
+    /// affordance.
+    pub has_unused_tags: bool,
     /// A human-readable error from the last tag-list fetch, if any.
     pub tags_error: Option<String>,
     /// A human-readable error from the last card action (bury/suspend/
@@ -1096,7 +1110,7 @@ fn refresh_deck_counts() -> Command<Effect, Event> {
 /// Re-fetch the distinct tag namespace (`GET /tags`) so the sidebar's filter
 /// tree reflects newly-created tags after a note save/tag mutation.
 fn refresh_tags() -> Command<Effect, Event> {
-    Command::event(Event::TagsRequested)
+    Command::event(Event::TagsRequested).and(Command::event(Event::TagsStatsRequested))
 }
 
 /// Re-sync `browser_selected` to the matching card in `browser_cards` (the single
@@ -1780,6 +1794,29 @@ impl crux_core::App for Anjuman {
             }
 
             Event::TagsResult(Err(e)) => {
+                model.tags_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::TagsStatsRequested => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                Http::get(format!("{API_URL}/tags/stats"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::TagsStatsResult)
+            }
+
+            Event::TagsStatsResult(Ok(mut response)) => {
+                let stats = response.take_body().expect("tags stats response has a body");
+                model.unused_tags = stats.unused;
+                render::render()
+            }
+
+            Event::TagsStatsResult(Err(e)) => {
                 model.tags_error = Some(e.to_string());
                 render::render()
             }
@@ -2753,6 +2790,7 @@ impl crux_core::App for Anjuman {
                 tags: model.tags.iter().map(TagView::from).collect(),
                 tag_tree: model.tag_tree.iter().map(TagNodeView::from).collect(),
                 tags_error: model.tags_error.clone(),
+                has_unused_tags: model.unused_tags > 0,
                 card_action_error: model.card_action_error.clone(),
                 browser_cards: model.browser_cards.iter().map(CardBrowserView::from).collect(),
                 browser_page: model.browser_page,
@@ -2792,6 +2830,7 @@ impl crux_core::App for Anjuman {
                 tags: Vec::new(),
                 tag_tree: Vec::new(),
                 tags_error: None,
+                has_unused_tags: false,
                 card_action_error: None,
                 browser_cards: Vec::new(),
                 browser_page: 1,
@@ -4330,6 +4369,68 @@ mod tests {
         assert!(
             events.iter().any(|e| matches!(e, Event::TagsRequested)),
             "should re-fetch tags, got {events:?}"
+        );
+    }
+
+    /// `TagsStatsRequested` emits `GET /tags/stats` with the bearer header.
+    #[test]
+    fn tags_stats_requested_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(Event::TagsStatsRequested, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/tags/stats"
+                );
+                let auth = req
+                    .operation
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("authorization"))
+                    .expect("authorization header");
+                assert_eq!(auth.value, "Bearer jwt-token");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `TagsStatsResult(Ok)` sets `has_unused_tags` from the returned count.
+    #[test]
+    fn tags_stats_result_sets_has_unused_tags() {
+        let mut model = authenticated_model();
+
+        let response = ResponseBuilder::ok()
+            .body(UnusedTagsResponse { unused: 3 })
+            .build();
+        let _ = update(Event::TagsStatsResult(Ok(response)), &mut model);
+        let vm = Anjuman.view(&model);
+        assert!(vm.has_unused_tags, "should report unused tags present");
+
+        let response = ResponseBuilder::ok()
+            .body(UnusedTagsResponse { unused: 0 })
+            .build();
+        let _ = update(Event::TagsStatsResult(Ok(response)), &mut model);
+        let vm = Anjuman.view(&model);
+        assert!(!vm.has_unused_tags, "should report no unused tags");
+    }
+
+    /// `refresh_tags` chains `TagsStatsRequested` so the count stays fresh.
+    #[test]
+    fn refresh_tags_chains_tags_stats_requested() {
+        let mut refresh = refresh_tags();
+        let events: Vec<Event> = refresh.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::TagsRequested)),
+            "should re-fetch tags, got {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::TagsStatsRequested)),
+            "should re-fetch tag stats, got {events:?}"
         );
     }
 

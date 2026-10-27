@@ -11,6 +11,14 @@ pub struct Tag {
     pub name: String,
 }
 
+/// Response for `GET /tags/stats`: the number of tag rows no note references
+/// (the orphan tags that "Clear Unused Tags" would remove).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UnusedTagsResponse {
+    pub unused: i64,
+}
+
 /// A node in the `::` tag tree (the sidebar shape). `name` is a single path
 /// segment; a non-empty `children` means it is an interior node. Interior nodes
 /// are *implicit* — they appear even when no tag is literally named that

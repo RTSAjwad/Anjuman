@@ -75,6 +75,17 @@ pub async fn clear_unused_tags(db: &PgPool) -> Result<u64, sqlx::Error> {
     Ok(result.rows_affected())
 }
 
+/// Count tag rows that no note references (the orphans "Clear Unused Tags" would
+/// remove).
+pub async fn count_unused_tags(db: &PgPool) -> Result<i64, sqlx::Error> {
+    let count: Option<i64> = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)"
+    )
+    .fetch_one(db)
+    .await?;
+    Ok(count.unwrap_or(0))
+}
+
 // ---------------------------------------------------------------------------
 // Tree (US-6.4) — the sidebar nesting, `::`-split, with implicit interior nodes.
 // ---------------------------------------------------------------------------

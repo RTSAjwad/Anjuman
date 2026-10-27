@@ -14,7 +14,7 @@ use axum::{
     http::StatusCode,
 };
 
-use anjuman_contracts::tags::{AddTags, RemoveTags, RenameTag, Tag, TagNode};
+use anjuman_contracts::tags::{AddTags, RemoveTags, RenameTag, Tag, TagNode, UnusedTagsResponse};
 use anjuman_contracts::MessageResponse;
 
 use crate::{
@@ -53,6 +53,19 @@ pub async fn tag_tree(
     let names: Vec<String> = all.into_iter().map(|t| t.name).collect();
     let tree = tags::build_tag_tree(names.iter().map(|s| s.as_str()));
     Ok(Json(tree))
+}
+
+/// `GET /tags/stats` — the number of unused (orphan) tags, for gating the
+/// "Clear Unused Tags" affordance.
+pub async fn unused_tags_stats(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<UnusedTagsResponse>, (StatusCode, &'static str)> {
+    let _ = &claims;
+    let unused = tags::count_unused_tags(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    Ok(Json(UnusedTagsResponse { unused }))
 }
 
 /// `POST /notes/{id}/tags` — add tags (by name) to a note.
