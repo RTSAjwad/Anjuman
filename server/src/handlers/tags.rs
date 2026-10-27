@@ -236,15 +236,8 @@ pub async fn find_replace_tags(
         return Err((StatusCode::BAD_REQUEST, "Find string cannot be empty".to_string()));
     }
 
-    // A replacement that would empty an exact tag name is rejected up front: a
-    // tag name can never be empty. (Replacing a *substring* that leaves a
-    // non-empty remainder is fine.)
-    if replace.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Replacement string cannot be empty".to_string(),
-        ));
-    }
+    // Empty `replace` is allowed (deletes the matched substring); a tag whose
+    // name becomes empty is removed by `find_replace_tags` (Anki parity).
 
     let rewritten = tags::find_replace_tags(&state.db, &find, &replace)
         .await

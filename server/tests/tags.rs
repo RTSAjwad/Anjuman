@@ -585,14 +585,16 @@ async fn find_replace_tags_merges_on_collision() {
     assert_eq!(note_b_tags, vec!["alpha"]);
 }
 
-/// An empty find or replace string is rejected.
+/// An empty `find` is rejected; an empty `replace` deletes the matched substring
+/// (and removes a tag whose whole name is emptied) — Anki parity.
 #[tokio::test]
-async fn find_replace_tags_rejects_empty() {
+async fn find_replace_tags_empty_replace_deletes_substring() {
     let _guard = common::db_guard().await;
     let app = common::TestApp::new().await;
     let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
-    let _note = seed_note(&app, teacher_id).await;
+    let note_id = seed_note(&app, teacher_id).await;
 
+    // Empty find is rejected.
     let (s1, _) = send(
         &app,
         "POST",
@@ -603,13 +605,59 @@ async fn find_replace_tags_rejects_empty() {
     .await;
     assert_eq!(s1, StatusCode::BAD_REQUEST);
 
-    let (s2, _) = send(
+    // Seed `bio::cells` + `biology` on the note (two tags, one a substring of the
+    // other) plus a standalone whole-name tag `whole`.
+    let _ = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_id}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["bio::cells", "biology", "whole"] }),
+    )
+    .await;
+
+    // Empty replace deletes the substring "bio": `bio::cells` -> `::cells`,
+    // `biology` -> `logy`. (Both stay non-empty.)
+    let (s2, json) = send(
         &app,
         "POST",
         "/tags/find-replace",
         &token,
-        serde_json::json!({ "find": "x", "replace": "" }),
+        serde_json::json!({ "find": "bio", "replace": "" }),
     )
     .await;
-    assert_eq!(s2, StatusCode::BAD_REQUEST);
+    assert_eq!(s2, StatusCode::OK, "body: {json}");
+
+    let (_, all) = get(&app, "/tags", &token).await;
+    let mut names: Vec<String> = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["::cells", "logy", "whole"]);
+
+    // Empty replace on the whole name removes the tag entirely (`whole` -> "").
+    let (s3, _) = send(
+        &app,
+        "POST",
+        "/tags/find-replace",
+        &token,
+        serde_json::json!({ "find": "whole", "replace": "" }),
+    )
+    .await;
+    assert_eq!(s3, StatusCode::OK);
+
+    let (_, all2) = get(&app, "/tags", &token).await;
+    let names2: Vec<String> = all2
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        !names2.iter().any(|n| n == "whole"),
+        "whole-name tag should be removed: {names2:?}"
+    );
 }

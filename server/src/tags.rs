@@ -195,8 +195,9 @@ async fn merge_tag_into(
 ///
 /// Substring semantics (settled US-6.8 decision): `bio` → `x` also touches
 /// `biology` → `xlogy` and `bio::cells` → `x::cells`, matching Anki's literal
-/// find-and-replace. A replacement that would produce an empty tag name is
-/// rejected by the caller (empty names are invalid).
+/// find-and-replace. Empty `replace` deletes the matched substring; a tag whose
+/// resulting name is empty is removed (a tag can never have an empty name), also
+/// matching Anki.
 pub async fn find_replace_tags(
     db: &PgPool,
     find: &str,
@@ -219,12 +220,19 @@ pub async fn find_replace_tags(
     let mut rewritten: u64 = 0;
     for row in &tags {
         let target = row.name.replace(&find, &replace);
-        // Skip no-ops (e.g. `replace == find`, or `find` not actually a
-        // substring — the latter can't happen given the POSITION filter).
-        if target == row.name || target.is_empty() {
+        // No-op (replace leaves the name unchanged, e.g. `replace == find`).
+        if target == row.name {
             continue;
         }
-        merge_tag_into(&mut tx, row.id, &target).await?;
+        if target.is_empty() {
+            // The whole name matched and the replacement is empty: the tag no
+            // longer exists. Deleting the row cascades its `note_tags` links.
+            sqlx::query!("DELETE FROM tags WHERE id = $1", row.id)
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            merge_tag_into(&mut tx, row.id, &target).await?;
+        }
         rewritten += 1;
     }
 

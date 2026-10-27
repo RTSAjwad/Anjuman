@@ -2426,9 +2426,11 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
       /tags/find-replace` (body `{ find, replace }`) replaces the substring across
       every tag name (substring semantics: `bio` → `x` also touches `biology` and
       `bio::cells`), teacher/admin-gated, one transaction, merge/dedup on
-      collision via `merge_tag_into`. Empty `find`/`replace` are rejected. Tests:
-      `find_replace_tags_rewrites_names`, `find_replace_tags_merges_on_collision`,
-      `find_replace_tags_rejects_empty`.
+      collision via `merge_tag_into`. Empty `find` is rejected; empty `replace` is
+      allowed (deletes the substring, and removes a tag whose whole name is
+      emptied). Tests: `find_replace_tags_rewrites_names`,
+      `find_replace_tags_merges_on_collision`,
+      `find_replace_tags_empty_replace_deletes_substring`.
 
 ### Rename/merge semantics (settled, US-6.7)
 
@@ -2447,9 +2449,9 @@ than erroring. `PATCH /tags/{id}` now implements exactly that (`tags::rename_tag
 
 **US-6.8 settled decision:** find-and-replace is **substring** (not exact-segment)
 — `bio` → `x` touches `biology` and `bio::cells`, matching Anki's literal
-find-and-replace. A replacement producing an empty tag name is rejected (empty
-names are invalid), and collisions merge via the same `merge_tag_into` primitive
-as subtree-rename.
+find-and-replace. An **empty** `replace` deletes the matched substring; a tag
+whose whole name is emptied is removed (a tag can never have an empty name).
+Collisions merge via the same `merge_tag_into` primitive as subtree-rename.
 
 ---
 
