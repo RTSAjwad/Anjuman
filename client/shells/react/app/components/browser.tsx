@@ -417,9 +417,9 @@ function DeckFilterNode({ deck, selected, onSelect, depth }: { deck: DeckSummary
 
   return (
     <li>
-      <div className="flex items-center" style={{ paddingInlineStart: `${depth * 0.75}rem` }}>
+      <div className="flex items-center" style={{ paddingInlineStart: `${depth * 1}rem` }}>
         {hasChildren ? (
-          <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }} className="flex size-5 shrink-0 items-center justify-center">
+          <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }} className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground">
             <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
           </button>
         ) : (
@@ -427,13 +427,16 @@ function DeckFilterNode({ deck, selected, onSelect, depth }: { deck: DeckSummary
         )}
         <button
           onClick={() => onSelect(id)}
-          className={cn("flex flex-1 items-center rounded-sm px-2 py-1.5 text-left text-sm", isSel && "bg-accent text-accent-foreground")}
+          className={cn(
+            "flex flex-1 items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
+            isSel && "bg-accent text-accent-foreground hover:bg-accent",
+          )}
         >
           {deck.title}
         </button>
       </div>
       {hasChildren && open ? (
-        <ul className="flex flex-col">
+        <ul className="ml-[0.625rem] flex flex-col border-l border-border">
           {deck.children.map((c) => (
             <DeckFilterNode key={String(c.id)} deck={c} selected={selected} onSelect={onSelect} depth={depth + 1} />
           ))}
