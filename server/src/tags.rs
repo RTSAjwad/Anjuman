@@ -138,31 +138,7 @@ pub async fn rename_tag_subtree(
         // `old::` remainder.
         let suffix = row.name.strip_prefix(&old).unwrap();
         let target_name = format!("{new}{suffix}");
-
-        // Upsert the target name (merge: reuse an existing row, else create).
-        let target_id: i64 = sqlx::query_scalar!(
-            "INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-            target_name
-        )
-        .fetch_one(&mut *tx)
-        .await?;
-
-        // Move this source row's note links into the target (deduped).
-        sqlx::query!(
-            "INSERT INTO note_tags (note_id, tag_id)
-             SELECT nt.note_id, $2 FROM note_tags nt WHERE nt.tag_id = $1
-             ON CONFLICT (note_id, tag_id) DO NOTHING",
-            row.id,
-            target_id
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        // Remove the now-vacated source row (its links are already moved/deduped;
-        // ON DELETE CASCADE won't remove the freshly-inserted target links).
-        sqlx::query!("DELETE FROM tags WHERE id = $1", row.id)
-            .execute(&mut *tx)
-            .await?;
+        merge_tag_into(&mut tx, row.id, &target_name).await?;
     }
 
     // The surviving row (the merged target for `new`, if one existed).
@@ -173,6 +149,88 @@ pub async fn rename_tag_subtree(
     tx.commit().await?;
 
     Ok(Tag { id: result.id, name: result.name })
+}
+
+/// Collapse a source tag into a target name: upsert the target (reusing an
+/// existing row, else creating it), move the source's `note_tags` links into the
+/// target (deduped by `(note_id, tag_id)`), and delete the now-vacated source row.
+///
+/// This is the shared primitive behind both subtree-rename (US-6.7) and
+/// find-and-replace (US-6.8) — every tag mutation converges on "move links into
+/// the surviving name, drop the vacated row". Operates on the caller's
+/// transaction.
+async fn merge_tag_into(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    source_id: i64,
+    target_name: &str,
+) -> Result<(), sqlx::Error> {
+    let target_id: i64 = sqlx::query_scalar!(
+        "INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+        target_name
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+
+    sqlx::query!(
+        "INSERT INTO note_tags (note_id, tag_id)
+         SELECT nt.note_id, $2 FROM note_tags nt WHERE nt.tag_id = $1
+         ON CONFLICT (note_id, tag_id) DO NOTHING",
+        source_id,
+        target_id
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    sqlx::query!("DELETE FROM tags WHERE id = $1", source_id)
+        .execute(&mut **tx)
+        .await?;
+
+    Ok(())
+}
+
+/// Find-and-replace a substring across every tag name (Anki's tags-manager
+/// "find and replace" — US-6.8). Every tag containing `find` has that substring
+/// replaced by `replace`; collisions converge via the same merge/dedup semantics
+/// as rename (`merge_tag_into`). Returns the number of tags rewritten.
+///
+/// Substring semantics (settled US-6.8 decision): `bio` → `x` also touches
+/// `biology` → `xlogy` and `bio::cells` → `x::cells`, matching Anki's literal
+/// find-and-replace. A replacement that would produce an empty tag name is
+/// rejected by the caller (empty names are invalid).
+pub async fn find_replace_tags(
+    db: &PgPool,
+    find: &str,
+    replace: &str,
+) -> Result<u64, sqlx::Error> {
+    let find = normalize_name(find);
+    let replace = normalize_name(replace);
+
+    let mut tx = db.begin().await?;
+
+    // Names containing the sought substring. `POSITION(find IN name) > 0` is the
+    // parameterised containment test (avoids LIKE-escaping the find needle).
+    let tags = sqlx::query!(
+        "SELECT id, name FROM tags WHERE POSITION($1 IN name) > 0",
+        find
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut rewritten: u64 = 0;
+    for row in &tags {
+        let target = row.name.replace(&find, &replace);
+        // Skip no-ops (e.g. `replace == find`, or `find` not actually a
+        // substring — the latter can't happen given the POSITION filter).
+        if target == row.name || target.is_empty() {
+            continue;
+        }
+        merge_tag_into(&mut tx, row.id, &target).await?;
+        rewritten += 1;
+    }
+
+    tx.commit().await?;
+
+    Ok(rewritten)
 }
 
 /// Escape `%`, `_`, and `\` in a string so it can be used as a literal inside a

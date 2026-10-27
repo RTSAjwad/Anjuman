@@ -2402,11 +2402,12 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
       `Model.tags`/`tag_tree` + `ViewModel` (via `TagView`/`TagNodeView` Facet
       mirrors), events `TagsRequested`/`TagTreeRequested` (+ `TagsResult`/
       `TagTreeResult`), `tags_error`, and clear-on-logout. `shared` update tests.
-- [ ] `US-6.5b` — **Per-note tag CRUD in the client (deferred).** Add/remove tags
-      on a note from the UI. **Deferred**: the client has no notes/browser model
-      yet (the notes screen is ❌ in `docs/support/screens.md`), so there is
-      nothing to hang per-note tag actions on. Do this when the notes/browser
-      screen lands (future stage).
+- [ ] `US-6.5b` — **Per-note tag CRUD in the client.** Add/remove tags on a note
+      from the UI (the server endpoints `POST`/`DELETE /notes/{id}/tags` exist).
+      The notes/browser screen is now ✅ (per `docs/support/screens.md`), so this
+      is no longer blocked; it needs the shell to render the tag tree + per-note
+      tag affordances. Track alongside the "Tagging (list/tree)" shell-coverage
+      row.
 - [x] `US-6.6` — **Leech as per-student state, not a tag.** Done via US-2.20
       (per-student `student_card_states.leech_at`; `TagOnly` marks, `SuspendCard`
       marks + suspends — no tag-system involvement).
@@ -2419,12 +2420,13 @@ scheduling state, not a tag) — so stage 6 is now purely the tag system.
       tag into its own subtree (`foo` → `foo::bar`) is rejected (400). Tests:
       `rename_tag_renames_subtree`, `rename_tag_merges_onto_existing_name`,
       `rename_tag_rejects_move_into_own_subtree`.
-- [ ] `US-6.8` — **Find-and-replace within tags (Anki parity).** Rename a tag
-      *segment* across the matching namespace — replace substring `X` with `Y`
-      inside tag names (exact-segment or substring — decide which, matching
-      Anki's tags-manager "find and replace"). Teacher/admin-gated, batched as a
-      single transaction, with the same subtree/merge semantics as US-6.7.
-      `server/tests/` per criterion.
+- [x] `US-6.8` — **Find-and-replace within tags (Anki parity).** `POST
+      /tags/find-replace` (body `{ find, replace }`) replaces the substring across
+      every tag name (substring semantics: `bio` → `x` also touches `biology` and
+      `bio::cells`), teacher/admin-gated, one transaction, merge/dedup on
+      collision via `merge_tag_into`. Empty `find`/`replace` are rejected. Tests:
+      `find_replace_tags_rewrites_names`, `find_replace_tags_merges_on_collision`,
+      `find_replace_tags_rejects_empty`.
 
 ### Rename/merge semantics (settled, US-6.7)
 
@@ -2441,9 +2443,11 @@ than erroring. `PATCH /tags/{id}` now implements exactly that (`tags::rename_tag
 - **Move-into-own-subtree is rejected** — `foo` → `foo::bar` (target is the tag
   or one of its descendants) is a 400; the subtree rewrite would be undefined.
 
-**One edge left for US-6.8 to confirm:** find-and-replace uses *substring* or
-*exact-segment* replacement (Anki's tags-manager replaces the exact text; decide
-whether `bio` → `x` touches `biology` too).
+**US-6.8 settled decision:** find-and-replace is **substring** (not exact-segment)
+— `bio` → `x` touches `biology` and `bio::cells`, matching Anki's literal
+find-and-replace. A replacement producing an empty tag name is rejected (empty
+names are invalid), and collisions merge via the same `merge_tag_into` primitive
+as subtree-rename.
 
 ---
 
@@ -2659,7 +2663,7 @@ as teachers.
       `check_admin` (admin_users) to thin delegates over
       `permissions::require_teacher_or_admin` / `require_admin`, preserving each
       resource's deny message.
-- [x] Convert the inline `claims.role == Student` deny-gates in `search_users`,
+c th- [x] Convert the inline `claims.role == Student` deny-gates in `search_users`,
       `analytics` (`check_class_access`), `dashboard` to `require_teacher_or_admin`
       / `can_view_analytics` / `can_view_dashboard`. (`study` already used
       `check_deck_studyable` — no change.)

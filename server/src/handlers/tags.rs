@@ -14,7 +14,9 @@ use axum::{
     http::StatusCode,
 };
 
-use anjuman_contracts::tags::{AddTags, RemoveTags, RenameTag, Tag, TagNode, UnusedTagsResponse};
+use anjuman_contracts::tags::{
+    AddTags, FindReplaceTags, RemoveTags, RenameTag, Tag, TagNode, UnusedTagsResponse,
+};
 use anjuman_contracts::MessageResponse;
 
 use crate::{
@@ -216,4 +218,39 @@ pub async fn rename_tag(
         })?;
 
     Ok(Json(renamed))
+}
+
+/// `POST /tags/find-replace` — replace a substring across every tag name (Anki's
+/// tags-manager "find and replace"; US-6.8). Teacher/admin-gated, one
+/// transaction, merge/dedup on collisions.
+pub async fn find_replace_tags(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<FindReplaceTags>,
+) -> Result<Json<MessageResponse>, (StatusCode, String)> {
+    check_teacher_or_admin(&claims).map_err(|(s, m)| (s, m.to_string()))?;
+
+    let find = tags::normalize_name(&body.find);
+    let replace = tags::normalize_name(&body.replace);
+    if find.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Find string cannot be empty".to_string()));
+    }
+
+    // A replacement that would empty an exact tag name is rejected up front: a
+    // tag name can never be empty. (Replacing a *substring* that leaves a
+    // non-empty remainder is fine.)
+    if replace.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Replacement string cannot be empty".to_string(),
+        ));
+    }
+
+    let rewritten = tags::find_replace_tags(&state.db, &find, &replace)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+
+    Ok(Json(MessageResponse {
+        message: format!("Rewrote {rewritten} tag(s)"),
+    }))
 }

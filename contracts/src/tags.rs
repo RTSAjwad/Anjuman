@@ -47,11 +47,20 @@ pub struct RemoveTags {
     pub tags: Vec<String>,
 }
 
-/// Expected JSON body for renaming a tag (its `::` hierarchy may change with the
-/// name). Only the canonical `tags` row is updated; `note_tags` keeps referencing
-/// the same id.
+/// Expected JSON body for renaming a tag. Renaming is by name-prefix: `PATCH
+/// /tags/{id}` resolves the tag's current name and rewrites its whole `::`-subtree
+/// (US-6.7), merging onto an existing target rather than erroring.
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RenameTag {
     pub name: String,
+}
+
+/// Expected JSON body for the bulk find-and-replace (`POST /tags/find-replace`).
+/// Every tag name containing `find` has that substring replaced by `replace`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FindReplaceTags {
+    pub find: String,
+    pub replace: String,
 }

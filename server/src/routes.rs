@@ -176,6 +176,7 @@ pub fn router(state: AppState) -> Router {
         .route("/tags", get(tags::list_tags))
         .route("/tags/tree", get(tags::tag_tree))
         .route("/tags/stats", get(tags::unused_tags_stats))
+        .route("/tags/find-replace", post(tags::find_replace_tags))
         .route("/tags", delete(tags::clear_unused_tags))
         .route("/tags/{id}", patch(tags::rename_tag))
         .route("/notes/{note_id}/tags", post(tags::add_tags))

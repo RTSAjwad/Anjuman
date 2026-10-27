@@ -481,3 +481,135 @@ async fn tag_tree_endpoint_returns_hierarchy() {
         .collect();
     assert_eq!(bio_children, vec!["cells", "mitosis"]);
 }
+
+/// `POST /tags/find-replace` replaces the substring across every tag name,
+/// including `::` descendants (Anki parity — US-6.8).
+#[tokio::test]
+async fn find_replace_tags_rewrites_names() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_id = seed_note(&app, teacher_id).await;
+
+    let _ = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_id}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["bio", "bio::cells", "biology"] }),
+    )
+    .await;
+
+    // Replace "bio" with "life". This is substring semantics: `bio`, `bio::cells`,
+    // and `biology` all contain `bio`.
+    let (status, json) = send(
+        &app,
+        "POST",
+        "/tags/find-replace",
+        &token,
+        serde_json::json!({ "find": "bio", "replace": "life" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+    assert!(json["message"].as_str().unwrap().contains("3"), "3 tags rewritten: {json}");
+
+    let (_, all) = get(&app, "/tags", &token).await;
+    let mut names: Vec<String> = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["life", "life::cells", "lifelogy"]);
+}
+
+/// Find-and-replace merges on collision: replacing `beta` → `alpha` (where
+/// `alpha` already exists) folds `beta`'s note links into `alpha` and drops the
+/// vacated `beta` row.
+#[tokio::test]
+async fn find_replace_tags_merges_on_collision() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let note_a = seed_note(&app, teacher_id).await;
+    let note_b = seed_note(&app, teacher_id).await;
+
+    // note_a gets `alpha`, note_b gets `beta`.
+    let _ = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_a}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["alpha"] }),
+    )
+    .await;
+    let _ = send(
+        &app,
+        "POST",
+        &format!("/notes/{note_b}/tags"),
+        &token,
+        serde_json::json!({ "tags": ["beta"] }),
+    )
+    .await;
+
+    // `beta` -> `alpha` collides with the existing `alpha`: merge + dedup.
+    let (status, json) = send(
+        &app,
+        "POST",
+        "/tags/find-replace",
+        &token,
+        serde_json::json!({ "find": "beta", "replace": "alpha" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {json}");
+
+    // Only the surviving `alpha` remains.
+    let (_, all) = get(&app, "/tags", &token).await;
+    let names: Vec<String> = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(names, vec!["alpha"], "beta merged into alpha");
+
+    // note_b now reports `alpha` (its `beta` link was merged onto `alpha`).
+    let (_, note_b_json) = get(&app, &format!("/notes/{note_b}"), &token).await;
+    let note_b_tags: Vec<String> = note_b_json["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(note_b_tags, vec!["alpha"]);
+}
+
+/// An empty find or replace string is rejected.
+#[tokio::test]
+async fn find_replace_tags_rejects_empty() {
+    let _guard = common::db_guard().await;
+    let app = common::TestApp::new().await;
+    let (teacher_id, token) = create_user(&app, UserRole::Teacher).await;
+    let _note = seed_note(&app, teacher_id).await;
+
+    let (s1, _) = send(
+        &app,
+        "POST",
+        "/tags/find-replace",
+        &token,
+        serde_json::json!({ "find": "", "replace": "x" }),
+    )
+    .await;
+    assert_eq!(s1, StatusCode::BAD_REQUEST);
+
+    let (s2, _) = send(
+        &app,
+        "POST",
+        "/tags/find-replace",
+        &token,
+        serde_json::json!({ "find": "x", "replace": "" }),
+    )
+    .await;
+    assert_eq!(s2, StatusCode::BAD_REQUEST);
+}
