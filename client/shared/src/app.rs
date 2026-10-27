@@ -29,7 +29,9 @@ use anjuman_contracts::notes::{
 use anjuman_contracts::reviews::{FlagResponse, ReviewResponse, SetFlag, SubmitReview};
 use anjuman_contracts::MessageResponse;
 use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyCounts};
-use anjuman_contracts::tags::{AddTags, RemoveTags, Tag, TagNode, UnusedTagsResponse};
+use anjuman_contracts::tags::{
+    AddTags, FindReplaceTags, RemoveTags, RenameTag, Tag, TagNode, UnusedTagsResponse,
+};
 
 /// The base URL of the Anjuman server.
 ///
@@ -226,6 +228,17 @@ pub enum Event {
     /// Clear unused tags (remove `tags` rows no note references) — the sidebar's
     /// "Clear Unused Tags" affordance (teacher/admin).
     ClearUnusedTags,
+    /// Rename a tag (by id) — the server renames its whole `::`-subtree and
+    /// merges onto an existing target (US-6.7).
+    RenameTag {
+        tag_id: i64,
+        name: String,
+    },
+    /// Find-and-replace a substring across every tag name (US-6.8).
+    FindReplaceTags {
+        find: String,
+        replace: String,
+    },
     /// Fetch the number of unused (orphan) tags, for gating "Clear Unused Tags".
     TagsStatsRequested,
     /// Fetch the school's note types (for the card-browser note-type filter).
@@ -480,6 +493,16 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     ClearUnusedTagsDone(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    RenameTagDone(#[facet(opaque)] crux_http::Result<crux_http::Response<Tag>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    FindReplaceTagsDone(
         #[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>,
     ),
 
@@ -1856,6 +1879,58 @@ impl crux_core::App for Anjuman {
             }
 
             Event::ClearUnusedTagsDone(Err(e)) => {
+                model.tags_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::RenameTag { tag_id, name } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.tags_error = None;
+                let body = RenameTag { name };
+                Http::patch(format!("{API_URL}/tags/{tag_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize rename tag")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::RenameTagDone)
+            }
+
+            Event::RenameTagDone(Ok(_)) => {
+                model.tags_error = None;
+                refresh_tags()
+            }
+
+            Event::RenameTagDone(Err(e)) => {
+                model.tags_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::FindReplaceTags { find, replace } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.tags_error = None;
+                let body = FindReplaceTags { find, replace };
+                Http::post(format!("{API_URL}/tags/find-replace"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize find-replace")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::FindReplaceTagsDone)
+            }
+
+            Event::FindReplaceTagsDone(Ok(_)) => {
+                model.tags_error = None;
+                refresh_tags()
+            }
+
+            Event::FindReplaceTagsDone(Err(e)) => {
                 model.tags_error = Some(e.to_string());
                 render::render()
             }
@@ -4367,6 +4442,102 @@ mod tests {
             })
             .build();
         let mut command = app.update(Event::ClearUnusedTagsDone(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::TagsRequested)),
+            "should re-fetch tags, got {events:?}"
+        );
+    }
+
+    /// `RenameTag` emits `PATCH /tags/{id}` with the `{ name }` body + bearer.
+    #[test]
+    fn rename_tag_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::RenameTag {
+                tag_id: 42,
+                name: "biology".to_string(),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/tags/42"
+                );
+                let body: RenameTag =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.name, "biology");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `RenameTagDone(Ok)` re-fetches the tag namespace (`refresh_tags`).
+    #[test]
+    fn rename_tag_done_refreshes_tags() {
+        let mut model = authenticated_model();
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok()
+            .body(Tag {
+                id: 42,
+                name: "biology".to_string(),
+            })
+            .build();
+        let mut command = app.update(Event::RenameTagDone(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::TagsRequested)),
+            "should re-fetch tags, got {events:?}"
+        );
+    }
+
+    /// `FindReplaceTags` emits `POST /tags/find-replace` with the body + bearer.
+    #[test]
+    fn find_replace_tags_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::FindReplaceTags {
+                find: "bio".to_string(),
+                replace: "life".to_string(),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/tags/find-replace"
+                );
+                let body: FindReplaceTags =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.find, "bio");
+                assert_eq!(body.replace, "life");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `FindReplaceTagsDone(Ok)` re-fetches the tag namespace (`refresh_tags`).
+    #[test]
+    fn find_replace_tags_done_refreshes_tags() {
+        let mut model = authenticated_model();
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok()
+            .body(MessageResponse {
+                message: "Rewrote 3 tag(s)".to_string(),
+            })
+            .build();
+        let mut command = app.update(Event::FindReplaceTagsDone(Ok(response)), &mut model);
 
         let events: Vec<Event> = command.events().collect();
         assert!(

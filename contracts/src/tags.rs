@@ -50,7 +50,7 @@ pub struct RemoveTags {
 /// Expected JSON body for renaming a tag. Renaming is by name-prefix: `PATCH
 /// /tags/{id}` resolves the tag's current name and rewrites its whole `::`-subtree
 /// (US-6.7), merging onto an existing target rather than erroring.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RenameTag {
     pub name: String,
