@@ -141,6 +141,7 @@ type BrowserScreenProps = {
   noteError: string | null;
   noteTypes: NoteTypeView[];
   canManageNotes: boolean;
+  canManageTags: boolean;
   tagTree: TagNodeView[];
   update: (event: Event) => void;
 };
@@ -402,6 +403,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
           noteSelected={props.noteSelected}
           noteTypes={props.noteTypes}
           canManageNotes={props.canManageNotes}
+          canManageTags={props.canManageTags}
           update={update}
         />
       </div>
@@ -932,6 +934,7 @@ function NoteDetailsPanel({
   noteSelected,
   noteTypes,
   canManageNotes,
+  canManageTags,
   update,
 }: {
   route: "Cards" | "Notes";
@@ -939,6 +942,7 @@ function NoteDetailsPanel({
   noteSelected: NoteView | null;
   noteTypes: NoteTypeView[];
   canManageNotes: boolean;
+  canManageTags: boolean;
   update: (e: Event) => void;
 }) {
   // Derive the note under selection for the active mode (cards select their
@@ -1052,7 +1056,7 @@ function NoteDetailsPanel({
           tags={note.tags}
           onAdd={addTag}
           onRemove={removeTag}
-          disabled={!canManageNotes}
+          disabled={!canManageTags}
         />
       </div>
     </aside>

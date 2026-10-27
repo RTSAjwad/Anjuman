@@ -80,6 +80,7 @@ export function BrowserScreen() {
       noteError={view.notes_error}
       noteTypes={view.note_types}
       canManageNotes={view.permissions.can_manage_notes}
+      canManageTags={view.permissions.can_manage_tags}
       tagTree={view.tag_tree}
       update={update}
     />
