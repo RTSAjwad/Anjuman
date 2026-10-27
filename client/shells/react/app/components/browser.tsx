@@ -417,6 +417,14 @@ const cardColumns: ColumnDef<BrowserTableFeatures, CardBrowserView>[] = [
   { accessorKey: "position", header: "Position", cell: ({ getValue }) => (getValue() as bigint | null)?.toString() ?? "" },
   { accessorKey: "state", header: "State" },
   {
+    id: "buried_suspended",
+    header: "Buried/Suspended",
+    cell: ({ row }) => {
+      const status = row.original.suspended ? "Suspended" : row.original.buried ? "Buried" : "";
+      return <span>{status}</span>;
+    },
+  },
+  {
     id: "flag",
     header: "Flag",
     cell: ({ row }) => <FlagSwatch flag={row.original.flag} />,
