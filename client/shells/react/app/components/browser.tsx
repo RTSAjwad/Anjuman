@@ -19,6 +19,7 @@ import {
   eventCardsRequested,
   eventNotesRequested,
   eventNoteTypesRequested,
+  eventTagsRequested,
   eventBrowserSelectCard,
   eventNoteBrowserSelectNote,
   eventBrowserSuspendCard,
@@ -136,11 +137,12 @@ type BrowserScreenProps = {
   noteError: string | null;
   noteTypes: NoteTypeView[];
   canManageNotes: boolean;
+  tagSuggestions: string[];
   update: (event: Event) => void;
 };
 
 export function BrowserScreen(props: BrowserScreenProps) {
-  const { route, update } = props;
+  const { route, update, tagSuggestions } = props;
 
   // Hoisted filter state — shared by the sidebar and pagination (mirrors the
   // Leptos `BrowserState`). A change always refetches page 1.
@@ -156,9 +158,15 @@ export function BrowserScreen(props: BrowserScreenProps) {
     suspended: false,
     buried: false,
   });
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
 
-  function buildCardFilter(page: number, f: FilterState = filter, status = statusFilter): CardBrowserFilter {
+  function buildCardFilter(
+    page: number,
+    f: FilterState = filter,
+    status = statusFilter,
+    tags: string[] = selectedTags,
+  ): CardBrowserFilter {
     return new CardBrowserFilterCtor(
       f.deck === "" || f.deck === "0" ? [] : [BigInt(f.deck)],
       f.noteType === "" || f.noteType === "0" ? [] : [BigInt(f.noteType)],
@@ -168,25 +176,31 @@ export function BrowserScreen(props: BrowserScreenProps) {
         ...(status.suspended ? ["suspended"] : []),
         ...(status.buried ? ["buried"] : []),
       ],
+      tags,
       f.flag === "" ? [] : [BigInt(f.flag)],
       f.sort,
       BigInt(page),
       BigInt(50),
     );
   }
-  function buildNoteFilter(page: number, f: FilterState = filter): NoteBrowserFilter {
+  function buildNoteFilter(
+    page: number,
+    f: FilterState = filter,
+    tags: string[] = selectedTags,
+  ): NoteBrowserFilter {
     return new NoteBrowserFilterCtor(
       f.deck === "" || f.deck === "0" ? [] : [BigInt(f.deck)],
       f.noteType === "" || f.noteType === "0" ? [] : [BigInt(f.noteType)],
       f.query.trim() === "" ? null : f.query.trim(),
+      tags,
       f.sort,
       BigInt(page),
       BigInt(50),
     );
   }
-  function apply(page: number, f: FilterState = filter, status = statusFilter) {
-    if (route === "Cards") update(eventCardsRequested(buildCardFilter(page, f, status)));
-    else update(eventNotesRequested(buildNoteFilter(page, f)));
+  function apply(page: number, f: FilterState = filter, status = statusFilter, tags = selectedTags) {
+    if (route === "Cards") update(eventCardsRequested(buildCardFilter(page, f, status, tags)));
+    else update(eventNotesRequested(buildNoteFilter(page, f, tags)));
   }
 
   // Fetch the current view's data. Re-fires whenever the route changes (Cards ↔
@@ -195,6 +209,7 @@ export function BrowserScreen(props: BrowserScreenProps) {
     if (!initialized) {
       setInitialized(true);
       update(eventNoteTypesRequested());
+      update(eventTagsRequested());
     }
     apply(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,6 +232,13 @@ export function BrowserScreen(props: BrowserScreenProps) {
     const next = { ...statusFilter, [key]: !statusFilter[key] };
     setStatusFilter(next);
     apply(1, filter, next);
+  }
+  function toggleTag(name: string) {
+    const next = selectedTags.includes(name)
+      ? selectedTags.filter((t) => t !== name)
+      : [...selectedTags, name];
+    setSelectedTags(next);
+    apply(1, filter, statusFilter, next);
   }
 
   const page = route === "Cards" ? Number(props.cardPage) : Number(props.notePage);
@@ -256,6 +278,17 @@ export function BrowserScreen(props: BrowserScreenProps) {
                 label={label}
                 active={filter.sort === v}
                 onSelect={() => toggleSort(v)}
+              />
+            ))}
+          </FilterNode>
+
+          <FilterNode label="Tag">
+            {() => tagSuggestions.map((name) => (
+              <FilterNode
+                key={name}
+                label={name}
+                active={selectedTags.includes(name)}
+                onSelect={() => toggleTag(name)}
               />
             ))}
           </FilterNode>
