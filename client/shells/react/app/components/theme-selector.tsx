@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuTrigger,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -33,7 +34,9 @@ export function ThemeSelector() {
         }
       />
       <DropdownMenuContent align="start" className="w-40">
-        <DropdownMenuLabel>Theme</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuRadioGroup
           value={theme}
           onValueChange={(v) => setTheme(v as "light" | "dark" | "system")}
