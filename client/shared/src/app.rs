@@ -159,6 +159,13 @@ pub struct Model {
     pub notes_filter: Option<NoteBrowserFilter>,
     /// A human-readable error from the last notes fetch, if any.
     pub notes_error: Option<String>,
+    /// The note id currently being deleted, so `NoteDeleted(Ok)` can tell whether
+    /// the deletion hit the in-study note (to advance/close the study loop).
+    pub pending_note_delete: Option<i64>,
+    /// The full note backing the in-study card, fetched on demand
+    /// (`NoteDetailRequested`) so the shell can prefill a Duplicate-Note dialog
+    /// (note type id, fields, tags, deck).
+    pub study_note: Option<NoteResponse>,
 }
 
 /// Authentication state.
@@ -298,6 +305,13 @@ pub enum Event {
     /// Set the current card's flag (0-7; 0 clears the flag).
     FlagCard {
         flag: i32,
+    },
+    /// Reset the current card's scheduling back to "new" (Anki "Forget"); then
+    /// re-advances the study loop (the card is likely no longer the due card).
+    ResetCard,
+    /// Fetch the full note backing the in-study card (for Duplicate-Note prefill).
+    NoteDetailRequested {
+        note_id: i64,
     },
     /// Fetch the card browser (US-4.12) with the given filter.
     CardsRequested {
@@ -464,6 +478,10 @@ pub enum Event {
 
     #[serde(skip)]
     #[facet(skip)]
+    ResetCardDone(#[facet(opaque)] crux_http::Result<crux_http::Response<CardModResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
     FlagDone(#[facet(opaque)] crux_http::Result<crux_http::Response<FlagResponse>>),
 
     #[serde(skip)]
@@ -481,6 +499,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     NoteSaved(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteDetailResult(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -651,6 +673,9 @@ pub struct ViewModel {
     pub notes_total: i64,
     /// The note currently selected in the browser, for the editor/actions.
     pub notes_selected: Option<NoteView>,
+    /// The full note backing the in-study card, once fetched (`NoteDetailRequested`),
+    /// so the shell can prefill a Duplicate-Note dialog.
+    pub study_note: Option<NoteView>,
     /// A human-readable error from the last notes fetch/action, if any.
     pub notes_error: Option<String>,
 }
@@ -815,6 +840,8 @@ fn clear_deck_selection(model: &mut Model) {
     model.deck_options = None;
     model.deck_options_error = None;
     model.card_action_error = None;
+    model.study_note = None;
+    model.pending_note_delete = None;
 }
 
 /// A shell-facing browser card (a Facet mirror of the wire `CardBrowserResponse`).
@@ -1613,6 +1640,8 @@ impl crux_core::App for Anjuman {
                 model.notes_filter = None;
                 model.notes_error = None;
                 model.notes_selected = None;
+                model.study_note = None;
+                model.pending_note_delete = None;
                 model.route = CurrentRoute::DeckList;
                 let clear = crux_kv::KeyValue::delete(TOKEN_KEY).then_send(Event::TokenDeleted);
                 render::render().and(clear)
@@ -2109,6 +2138,7 @@ impl crux_core::App for Anjuman {
                     Auth::Unauthenticated => return render::render(),
                 };
                 model.notes_error = None;
+                model.pending_note_delete = Some(note_id);
                 Http::delete(format!("{API_URL}/notes/{note_id}"))
                     .header("authorization", format!("Bearer {token}"))
                     .expect_json()
@@ -2118,7 +2148,25 @@ impl crux_core::App for Anjuman {
 
             Event::NoteDeleted(Ok(_)) => {
                 model.notes_error = None;
-                refresh_notes(model).and(refresh_browser(model))
+                // If the deleted note was the one being studied, the current card
+                // is gone — advance/close the study loop rather than leave it
+                // dangling. Re-fetch the study endpoint (which clears the card if
+                // nothing is now due).
+                let deleted_note = model.pending_note_delete.take();
+                let studying_deleted = deleted_note
+                    .zip(model.current_card.as_ref().map(|c| c.note_id))
+                    .map(|(d, cur)| d == cur)
+                    .unwrap_or(false);
+                if studying_deleted {
+                    model.current_card = None;
+                    model.study_note = None;
+                    render::render()
+                        .and(Command::event(Event::StartStudy))
+                        .and(refresh_notes(model))
+                        .and(refresh_browser(model))
+                } else {
+                    refresh_notes(model).and(refresh_browser(model))
+                }
             }
 
             Event::NoteDeleted(Err(e)) => {
@@ -2167,6 +2215,30 @@ impl crux_core::App for Anjuman {
             }
 
             Event::NoteTagsChanged(Err(e)) => {
+                model.notes_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteDetailRequested { note_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.notes_error = None;
+                Http::get(format!("{API_URL}/notes/{note_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteDetailResult)
+            }
+
+            Event::NoteDetailResult(Ok(mut response)) => {
+                model.study_note = Some(response.take_body().expect("note detail has a body"));
+                model.notes_error = None;
+                render::render()
+            }
+
+            Event::NoteDetailResult(Err(e)) => {
                 model.notes_error = Some(e.to_string());
                 render::render()
             }
@@ -2404,6 +2476,23 @@ impl crux_core::App for Anjuman {
                     .then_send(Event::FlagDone)
             }
 
+            Event::ResetCard => {
+                let Some(card) = &model.current_card else {
+                    return render::render();
+                };
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                let card_id = card.card_id;
+                model.card_action_error = None;
+                Http::post(format!("{API_URL}/cards/{card_id}/reset"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::ResetCardDone)
+            }
+
             // After a card-level bury/suspend/reschedule, the affected card is no
             // longer due (bury/suspend) or has moved (reschedule) — advance by
             // re-fetching the next due card from the study endpoint.
@@ -2433,6 +2522,19 @@ impl crux_core::App for Anjuman {
             }
 
             Event::RescheduleDone(Err(e)) => {
+                model.card_action_error = Some(e.to_string());
+                render::render()
+            }
+
+            // Reset moves the card back to "new", so it is no longer the due card
+            // (the reset card now sits at the end of the new-card queue). Re-fetch
+            // the study loop to advance.
+            Event::ResetCardDone(Ok(_)) => {
+                model.card_action_error = None;
+                render::render().and(Command::event(Event::StartStudy))
+            }
+
+            Event::ResetCardDone(Err(e)) => {
                 model.card_action_error = Some(e.to_string());
                 render::render()
             }
@@ -2920,6 +3022,7 @@ impl crux_core::App for Anjuman {
                 notes_per_page: model.notes_per_page,
                 notes_total: model.notes_total,
                 notes_selected: model.notes_selected.as_ref().map(NoteView::from),
+                study_note: model.study_note.as_ref().map(NoteView::from),
                 notes_error: model.notes_error.clone(),
             },
             Auth::Unauthenticated => ViewModel {
@@ -2960,6 +3063,7 @@ impl crux_core::App for Anjuman {
                 notes_per_page: 50,
                 notes_total: 0,
                 notes_selected: None,
+                study_note: None,
                 notes_error: None,
             },
         }
@@ -4898,6 +5002,107 @@ mod tests {
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
+    }
+
+    /// `ResetCard` emits `POST /cards/{id}/reset` using the current card id.
+    #[test]
+    fn reset_card_emits_post() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+        let effects = update(Event::ResetCard, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/cards/42/reset"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `ResetCard` with no current card is a no-op (no request).
+    #[test]
+    fn reset_card_no_current_card_is_noop() {
+        let mut model = study_ready_model();
+        let effects = update(Event::ResetCard, &mut model);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// `ResetCardDone(Ok)` re-fetches the study loop (`StartStudy`).
+    #[test]
+    fn reset_card_done_refreshes_study() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42));
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(card_mod_response()).build();
+        let mut command = app.update(Event::ResetCardDone(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::StartStudy)),
+            "should re-fetch study, got {events:?}"
+        );
+    }
+
+    /// `NoteDetailRequested` emits `GET /notes/{id}` with the bearer header.
+    #[test]
+    fn note_detail_requested_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(Event::NoteDetailRequested { note_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/notes/7"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteDetailResult(Ok)` populates `study_note` and the view's `study_note`.
+    #[test]
+    fn note_detail_result_populates_study_note() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(note(7)).build();
+        let _ = update(Event::NoteDetailResult(Ok(response)), &mut model);
+
+        assert!(model.study_note.is_some());
+        let vm = Anjuman.view(&model);
+        assert!(vm.study_note.is_some());
+        assert_eq!(vm.study_note.as_ref().unwrap().id, 7);
+    }
+
+    /// Deleting the in-study note advances/closes the study loop (`StartStudy`).
+    #[test]
+    fn note_delete_studied_note_advances_study() {
+        let mut model = study_ready_model();
+        model.current_card = Some(study_card(42)); // note_id = 1
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok()
+            .body(MessageResponse {
+                message: "ok".to_string(),
+            })
+            .build();
+
+        // Fire the delete, then the completion.
+        let mut cmd = app.update(Event::NoteDelete { note_id: 1 }, &mut model);
+        let _: Vec<Event> = cmd.events().collect();
+        let mut cmd2 = app.update(Event::NoteDeleted(Ok(response)), &mut model);
+        let events: Vec<Event> = cmd2.events().collect();
+
+        assert!(
+            events.iter().any(|e| matches!(e, Event::StartStudy)),
+            "should advance the study loop, got {events:?}"
+        );
+        assert!(model.current_card.is_none(), "current card cleared while re-fetching");
     }
 
     /// `FlagCard { flag }` emits `PATCH /cards/{id}/flag` with a `SetFlag` body.
