@@ -17,6 +17,7 @@ import {
 } from "shared_types/app";
 import type { Event } from "shared_types/app";
 import { cn } from "~/lib/utils";
+import { useTheme } from "~/lib/theme-provider";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Input } from "~/components/ui/input";
@@ -130,6 +131,8 @@ function StudyDone({ update }: { update: (event: Event) => void }) {
 // "Show answer" / answer buttons pinned to the bottom.
 function StudyCard({ card, update }: { card: StudyCardView; update: (event: Event) => void }) {
   const [revealed, setRevealed] = useState(false);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
 
   const intervals = useMemo(() => card.predicted_interval ?? new Map(), [card.predicted_interval]);
   const intervalFor = (r: number): string => {
@@ -138,14 +141,14 @@ function StudyCard({ card, update }: { card: StudyCardView; update: (event: Even
   };
 
   const srcdoc = useMemo(
-    () => cardHtml(revealed ? card.back : card.front, card.styling),
-    [revealed, card.back, card.front, card.styling],
+    () => cardHtml(revealed ? card.back : card.front, card.styling, isDark),
+    [revealed, card.back, card.front, card.styling, isDark],
   );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <iframe
-        className="w-full min-h-0 flex-1 border-none bg-white"
+        className="w-full min-h-0 flex-1 border-none bg-white dark:bg-gray-950"
         sandbox=""
         srcDoc={srcdoc}
         title="Study card"
@@ -322,8 +325,20 @@ export function StudyControls({
   );
 }
 
-function cardHtml(body: string, styling: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>${styling}</style></head><body>${body}</body></html>`;
+// Built-in night-mode base (Anki parity). Applied on top of the author's
+// `styling` so every card gets a dark canvas + light foreground when the app is
+// dark, even if the note type defines no `.nightMode` rule. Only LaTeX and
+// drawings are inverted — never arbitrary images.
+const NIGHT_MODE_BASE = `
+body.nightMode { background-color: #1f1f1f; color: #e5e5e5; }
+.nightMode .latex { filter: invert(100%); }
+.nightMode img.drawing { filter: invert(1) hue-rotate(180deg); }
+`;
+
+function cardHtml(body: string, styling: string, nightMode: boolean): string {
+  const htmlClass = nightMode ? ' class="nightMode"' : "";
+  const nightCss = nightMode ? `<style>${NIGHT_MODE_BASE}</style>` : "";
+  return `<!DOCTYPE html><html${htmlClass}><head><meta charset="utf-8" /><style>${styling}</style>${nightCss}</head><body>${body}</body></html>`;
 }
 
 // Anki interval-unit notation: <1m → "Ns", minutes, hours, days, months, years.

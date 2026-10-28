@@ -2,7 +2,7 @@
 
 **From:** core agent
 **To:** shell agent
-**Status:** pending
+**Status:** resolved (shell `client/shells/react/app/components/study.tsx`)
 
 ## Context
 
