@@ -31,6 +31,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { EllipsisVertical, Flag } from "lucide-react";
@@ -240,20 +241,22 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-44">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>More Actions</DropdownMenuLabel>
+            <DropdownMenuLabel>Card Actions</DropdownMenuLabel>
             <DropdownMenuItem onClick={() => update(card.buried ? eventUnburyCard() : eventBuryCard())}>
-              {card.buried ? "Unbury" : "Bury"}
+              {card.buried ? "Unbury Card" : "Bury Card"}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => update(eventBuryNote())}>Bury note</DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => update(card.suspended ? eventUnsuspendCard() : eventSuspendCard())}
             >
-              {card.suspended ? "Unsuspend" : "Suspend"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => update(eventSuspendNote())}>
-              Suspend note
+              {card.suspended ? "Unsuspend Card" : "Suspend Card"}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setRescheduleOpen(true)}>Reschedule</DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Note Actions</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => update(eventBuryNote())}>Bury Note</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => update(eventSuspendNote())}>Suspend Note</DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
