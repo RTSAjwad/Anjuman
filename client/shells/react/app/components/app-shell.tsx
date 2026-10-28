@@ -92,6 +92,24 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
     onEvent: update,
   });
 
+  // Study-screen duplicate: once `view.study_note` arrives after the user picked
+  // "Duplicate Note", prefill + open the create-note dialog. (Must be above the
+  // auth guard so the hook count stays stable across the login/logout flip.)
+  useEffect(() => {
+    if (!pendingDuplicate) return;
+    const n = view.study_note;
+    if (!n) return;
+    setPrefill({
+      noteTypeId: String(n.note_type_id),
+      deckId: n.deck_id === null ? "" : String(n.deck_id),
+      fields: Object.fromEntries(n.fields),
+      tags: [...n.tags],
+    });
+    setAddNoteOpen(true);
+    setPendingDuplicate(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.study_note, pendingDuplicate]);
+
   if (!authenticated) {
     return <LoginScreen />;
   }
@@ -131,20 +149,6 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
     update(eventNoteDetailRequested(view.current_card.note_id));
     setPendingDuplicate(true);
   }
-  useEffect(() => {
-    if (!pendingDuplicate) return;
-    const n = view.study_note;
-    if (!n) return;
-    setPrefill({
-      noteTypeId: String(n.note_type_id),
-      deckId: n.deck_id === null ? "" : String(n.deck_id),
-      fields: Object.fromEntries(n.fields),
-      tags: [...n.tags],
-    });
-    setAddNoteOpen(true);
-    setPendingDuplicate(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view.study_note, pendingDuplicate]);
 
   const hasSelection =
     route === "Cards" ? view.browser_selected !== null : view.notes_selected !== null;
