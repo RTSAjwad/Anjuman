@@ -148,7 +148,8 @@ function StudyCard({ card, update }: { card: StudyCardView; update: (event: Even
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <iframe
-        className="w-full min-h-0 flex-1 border-none bg-white dark:bg-gray-950"
+        className="w-full min-h-0 flex-1 border-none"
+        style={{ backgroundColor: isDark ? NIGHT_MODE_CANVAS : "#ffffff" }}
         sandbox=""
         srcDoc={srcdoc}
         title="Study card"
@@ -325,6 +326,12 @@ export function StudyControls({
   );
 }
 
+// The night-mode canvas color. Shared between the card's own body/.card background
+// and the <iframe> host background so the pre-paint chrome colour matches exactly —
+// avoiding a dark-flash during the iframe reload between cards.
+const NIGHT_MODE_CANVAS = "#1f1f1f";
+const NIGHT_MODE_FG = "#e5e5e5";
+
 // Built-in night-mode base (Anki parity). Applied on top of the author's
 // `styling` so every card gets a dark canvas + light foreground when the app is
 // dark, even if the note type defines no `.nightMode` rule. Only LaTeX and
@@ -335,8 +342,8 @@ export function StudyControls({
 // doesn't stay white — while an author's explicit `.card.nightMode` /
 // `.nightMode …` override (higher specificity) still wins.
 const NIGHT_MODE_BASE = `
-body.nightMode { background-color: #1f1f1f; color: #e5e5e5; }
-body.nightMode .card { background-color: #1f1f1f; color: #e5e5e5; }
+body.nightMode { background-color: ${NIGHT_MODE_CANVAS}; color: ${NIGHT_MODE_FG}; }
+body.nightMode .card { background-color: ${NIGHT_MODE_CANVAS}; color: ${NIGHT_MODE_FG}; }
 .nightMode .latex { filter: invert(100%); }
 .nightMode img.drawing { filter: invert(1) hue-rotate(180deg); }
 `;
