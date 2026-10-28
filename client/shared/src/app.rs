@@ -733,6 +733,20 @@ impl CardBrowserFilter {
             per_page: if self.per_page > 0 { self.per_page } else { 50 },
         }
     }
+
+    /// True when `other` is the same filter except for its page number. The core
+    /// uses this to reset to page 1 when the *filter* changes (vs. honoring the
+    /// page when only pagination changed) — so no shell has to remember to do it.
+    fn same_filter(&self, other: &Self) -> bool {
+        self.deck_ids == other.deck_ids
+            && self.note_type_ids == other.note_type_ids
+            && self.q == other.q
+            && self.states == other.states
+            && self.statuses == other.statuses
+            && self.tags == other.tags
+            && self.flags == other.flags
+            && self.sort == other.sort
+    }
 }
 
 /// The shell-facing note-browser filter (US-4.13, widened for the merged
@@ -768,6 +782,16 @@ impl NoteBrowserFilter {
             page: if self.page > 0 { self.page } else { 1 },
             per_page: if self.per_page > 0 { self.per_page } else { 50 },
         }
+    }
+
+    /// True when `other` is the same filter except for its page number. See
+    /// `CardBrowserFilter::same_filter`.
+    fn same_filter(&self, other: &Self) -> bool {
+        self.deck_ids == other.deck_ids
+            && self.note_type_ids == other.note_type_ids
+            && self.q == other.q
+            && self.tags == other.tags
+            && self.sort == other.sort
     }
 }
 
@@ -1975,6 +1999,11 @@ impl crux_core::App for Anjuman {
                     Auth::Authenticated { token, .. } => token.clone(),
                     Auth::Unauthenticated => return render::render(),
                 };
+                // Reset to page 1 when the non-page filter changes (core-owned).
+                let filter = match model.notes_filter.as_ref() {
+                    Some(prev) if prev.same_filter(&filter) => filter,
+                    _ => NoteBrowserFilter { page: 1, ..filter },
+                };
                 model.notes_filter = Some(filter.clone());
                 model.notes_error = None;
                 let query = filter.to_wire_query();
@@ -2430,6 +2459,14 @@ impl crux_core::App for Anjuman {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
                     Auth::Unauthenticated => return render::render(),
+                };
+                // The core owns "filter change → page 1": if the non-page filter
+                // fields differ from the last fetch, reset to page 1 regardless of
+                // what the shell sent. Only pure pagination keeps the requested
+                // page. (Mirrors the shell's prior convention, now enforced here.)
+                let filter = match model.browser_filter.as_ref() {
+                    Some(prev) if prev.same_filter(&filter) => filter,
+                    _ => CardBrowserFilter { page: 1, ..filter },
                 };
                 model.browser_filter = Some(filter.clone());
                 model.browser_error = None;
@@ -4994,7 +5031,7 @@ mod tests {
             tags: vec!["biology".to_string()],
             flags: vec![1, 3],
             sort: "due_at".to_string(),
-            page: 2,
+            page: 1,
             per_page: 25,
         };
         let effects = update(Event::CardsRequested { filter }, &mut model);
@@ -5012,8 +5049,77 @@ mod tests {
                 assert!(url.contains("tag=biology"), "url = {url}");
                 assert!(url.contains("flag=1,3"), "url = {url}");
                 assert!(url.contains("sort=due_at"), "url = {url}");
-                assert!(url.contains("page=2"), "url = {url}");
+                assert!(url.contains("page=1"), "url = {url}");
                 assert!(url.contains("per_page=25"), "url = {url}");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// Pure pagination (same filter, different page) keeps the requested page.
+    #[test]
+    fn cards_requested_honors_page_when_filter_unchanged() {
+        let mut model = authenticated_model();
+        // Seed a prior filter equal to the incoming non-page fields.
+        model.browser_filter = Some(CardBrowserFilter {
+            deck_ids: vec![1],
+            q: Some("DNA".to_string()),
+            sort: "created_at".to_string(),
+            page: 1,
+            per_page: 25,
+            ..CardBrowserFilter::default()
+        });
+
+        let filter = CardBrowserFilter {
+            deck_ids: vec![1],
+            q: Some("DNA".to_string()),
+            sort: "created_at".to_string(),
+            page: 3,
+            per_page: 25,
+            ..CardBrowserFilter::default()
+        };
+        let effects = update(Event::CardsRequested { filter }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert!(req.operation.url.to_string().contains("page=3"));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A non-page filter change resets to page 1 regardless of the sent page.
+    #[test]
+    fn cards_requested_resets_page_on_filter_change() {
+        let mut model = authenticated_model();
+        model.browser_filter = Some(CardBrowserFilter {
+            deck_ids: vec![1],
+            q: Some("DNA".to_string()),
+            sort: "created_at".to_string(),
+            page: 1,
+            per_page: 25,
+            ..CardBrowserFilter::default()
+        });
+
+        // Same page=1 but a *different* filter (deck 1 -> deck 2): the shell
+        // (or a buggy shell) sends page=5; the core must force page 1.
+        let filter = CardBrowserFilter {
+            deck_ids: vec![2],
+            q: Some("DNA".to_string()),
+            sort: "created_at".to_string(),
+            page: 5,
+            per_page: 25,
+            ..CardBrowserFilter::default()
+        };
+        let effects = update(Event::CardsRequested { filter }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert!(
+                    req.operation.url.to_string().contains("page=1"),
+                    "page should reset to 1, url = {}",
+                    req.operation.url
+                );
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
@@ -5564,7 +5670,7 @@ mod tests {
             q: Some("hola".to_string()),
             tags: vec!["biology".to_string()],
             sort: "created_at".to_string(),
-            page: 2,
+            page: 1,
             per_page: 25,
         };
         let effects = update(Event::NotesRequested { filter }, &mut model);
@@ -5578,11 +5684,73 @@ mod tests {
                 assert!(url.contains("note_type_id=1"), "url = {url}");
                 assert!(url.contains("q=hola"), "url = {url}");
                 assert!(url.contains("tag=biology"), "url = {url}");
-                assert!(url.contains("page=2"), "url = {url}");
+                assert!(url.contains("page=1"), "url = {url}");
             }
             other => panic!("expected one Http effect, got {other:?}"),
         }
         assert_eq!(model.notes_filter.as_ref().map(|f| f.deck_ids.clone()), Some(vec![5]));
+    }
+
+    /// Pure pagination (same filter, different page) keeps the requested page.
+    #[test]
+    fn notes_requested_honors_page_when_filter_unchanged() {
+        let mut model = authenticated_model();
+        model.notes_filter = Some(NoteBrowserFilter {
+            deck_ids: vec![5],
+            sort: "created_at".to_string(),
+            page: 1,
+            per_page: 25,
+            ..NoteBrowserFilter::default()
+        });
+
+        let filter = NoteBrowserFilter {
+            deck_ids: vec![5],
+            sort: "created_at".to_string(),
+            page: 3,
+            per_page: 25,
+            ..NoteBrowserFilter::default()
+        };
+        let effects = update(Event::NotesRequested { filter }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert!(req.operation.url.to_string().contains("page=3"));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// A non-page filter change resets to page 1 regardless of the sent page.
+    #[test]
+    fn notes_requested_resets_page_on_filter_change() {
+        let mut model = authenticated_model();
+        model.notes_filter = Some(NoteBrowserFilter {
+            deck_ids: vec![5],
+            sort: "created_at".to_string(),
+            page: 1,
+            per_page: 25,
+            ..NoteBrowserFilter::default()
+        });
+
+        let filter = NoteBrowserFilter {
+            deck_ids: vec![9],
+            sort: "created_at".to_string(),
+            page: 5,
+            per_page: 25,
+            ..NoteBrowserFilter::default()
+        };
+        let effects = update(Event::NotesRequested { filter }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert!(
+                    req.operation.url.to_string().contains("page=1"),
+                    "page should reset to 1, url = {}",
+                    req.operation.url
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
     }
 
     /// `NotesResult(Ok)` populates the page fields and flattens fields + tags into
