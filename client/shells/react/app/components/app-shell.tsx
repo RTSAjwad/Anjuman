@@ -53,6 +53,7 @@ import { AddNoteDialog } from "./add-note-dialog";
 import type { NotePrefill } from "./add-note-dialog";
 import { StudyCountBadges, StudyControls } from "./study";
 import { LoginScreen } from "./login-screen";
+import { ThemeSelector } from "./theme-selector";
 
 export function AppShell() {
   return (
@@ -294,6 +295,9 @@ function AppSidebar({
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <ThemeSelector />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger

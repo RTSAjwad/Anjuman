@@ -9,8 +9,22 @@ import {
 
 import type { Route } from "./+types/root";
 import { CoreProvider } from "./lib/core-provider.client";
+import { ThemeProvider } from "./lib/theme-provider";
 import { TooltipProvider } from "./components/ui/tooltip";
 import "./app.css";
+
+// Inline before hydration to apply the persisted/system theme and avoid a flash
+// of the wrong theme. Mirrors the theme-provider's STORAGE_KEY + resolution.
+const themeInitScript = `
+(() => {
+  try {
+    var stored = localStorage.getItem('anjuman-theme');
+    var dark = stored === 'dark' || (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) document.documentElement.classList.add('dark');
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  } catch (e) {}
+})();
+`;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +32,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <Meta />
         <Links />
       </head>
@@ -41,9 +56,11 @@ export function HydrateFallback() {
 export default function App() {
   return (
     <CoreProvider>
-      <TooltipProvider>
-        <Outlet />
-      </TooltipProvider>
+      <ThemeProvider>
+        <TooltipProvider>
+          <Outlet />
+        </TooltipProvider>
+      </ThemeProvider>
     </CoreProvider>
   );
 }
