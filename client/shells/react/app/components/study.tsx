@@ -336,9 +336,9 @@ body.nightMode { background-color: #1f1f1f; color: #e5e5e5; }
 `;
 
 function cardHtml(body: string, styling: string, nightMode: boolean): string {
-  const htmlClass = nightMode ? ' class="nightMode"' : "";
+  const bodyClass = nightMode ? ' class="nightMode"' : "";
   const nightCss = nightMode ? `<style>${NIGHT_MODE_BASE}</style>` : "";
-  return `<!DOCTYPE html><html${htmlClass}><head><meta charset="utf-8" /><style>${styling}</style>${nightCss}</head><body>${body}</body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>${styling}</style>${nightCss}</head><body${bodyClass}>${body}</body></html>`;
 }
 
 // Anki interval-unit notation: <1m → "Ns", minutes, hours, days, months, years.
