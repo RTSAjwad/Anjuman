@@ -329,8 +329,14 @@ export function StudyControls({
 // `styling` so every card gets a dark canvas + light foreground when the app is
 // dark, even if the note type defines no `.nightMode` rule. Only LaTeX and
 // drawings are inverted — never arbitrary images.
+//
+// `body.nightMode .card` (specificity 0,1,1) beats the seed note type's plain
+// `.card { background-color: white; color: black }` (0,1,0) so the default card
+// doesn't stay white — while an author's explicit `.card.nightMode` /
+// `.nightMode …` override (higher specificity) still wins.
 const NIGHT_MODE_BASE = `
 body.nightMode { background-color: #1f1f1f; color: #e5e5e5; }
+body.nightMode .card { background-color: #1f1f1f; color: #e5e5e5; }
 .nightMode .latex { filter: invert(100%); }
 .nightMode img.drawing { filter: invert(1) hue-rotate(180deg); }
 `;
