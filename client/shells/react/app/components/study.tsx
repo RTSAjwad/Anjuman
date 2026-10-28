@@ -11,6 +11,9 @@ import {
   eventUnburyCard,
   eventRescheduleCard,
   eventFlagCard,
+  eventResetCard,
+  eventNoteDelete,
+  eventNoteDetailRequested,
 } from "shared_types/app";
 import type { Event } from "shared_types/app";
 import { cn } from "~/lib/utils";
@@ -186,11 +189,22 @@ function AnswerButton({
   );
 }
 
-// Study-card actions (bury/suspend card+note, reschedule) as a "⋮" dropdown, plus
-// a flag select next to it. Reschedule opens a dialog for the day offset.
-export function StudyControls({ card, update }: { card: StudyCardView; update: (event: Event) => void }) {
+// Study-card actions (bury/suspend card+note, reset, reschedule) as a "⋮" dropdown,
+// plus a flag select next to it. Reschedule opens a dialog for the day offset.
+export function StudyControls({
+  card,
+  canManageNotes,
+  update,
+  onDuplicateNote,
+}: {
+  card: StudyCardView;
+  canManageNotes: boolean;
+  update: (event: Event) => void;
+  onDuplicateNote: () => void;
+}) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [days, setDays] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const flag = String(card.flag);
 
@@ -201,6 +215,11 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
       setDays("");
       setRescheduleOpen(false);
     }
+  }
+
+  function confirmDeleteNote() {
+    update(eventNoteDelete(card.note_id));
+    setDeleteOpen(false);
   }
 
   return (
@@ -251,12 +270,15 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
               {card.suspended ? "Unsuspend Card" : "Suspend Card"}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setRescheduleOpen(true)}>Reschedule</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => update(eventResetCard())}>Reset Card</DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuLabel>Note Actions</DropdownMenuLabel>
             <DropdownMenuItem onClick={() => update(eventBuryNote())}>Bury Note</DropdownMenuItem>
             <DropdownMenuItem onClick={() => update(eventSuspendNote())}>Suspend Note</DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicateNote} disabled={!canManageNotes}>Duplicate Note</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDeleteOpen(true)} disabled={!canManageNotes}>Delete Note</DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -278,6 +300,21 @@ export function StudyControls({ card, update }: { card: StudyCardView; update: (
               Cancel
             </Button>
             <Button onClick={confirmReschedule}>Reschedule</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete note</DialogTitle>
+            <DialogDescription>
+              This deletes the note and all of its cards. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteNote}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

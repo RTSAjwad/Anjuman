@@ -6,6 +6,7 @@ import {
   eventShowDeckList,
   eventShowCards,
   eventShowNotes,
+  eventNoteDetailRequested,
 } from "shared_types/app";
 import {
   Sidebar,
@@ -21,7 +22,7 @@ import {
   SidebarTrigger,
 } from "./ui/sidebar";
 import { Separator } from "./ui/separator";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -74,6 +75,7 @@ function Layout() {
 function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => void }) {
   const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [prefill, setPrefill] = useState<NotePrefill | null>(null);
+  const [pendingDuplicate, setPendingDuplicate] = useState(false);
 
   const route = view.route.kind;
   const canManageNotes = view.permissions.can_manage_notes;
@@ -121,6 +123,28 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
     }
     setAddNoteOpen(true);
   }
+
+  // Study-screen duplicate: fetch the in-study note's full payload, then open the
+  // prefill dialog once `view.study_note` arrives.
+  function openDuplicateStudyNote() {
+    if (!view.current_card) return;
+    update(eventNoteDetailRequested(view.current_card.note_id));
+    setPendingDuplicate(true);
+  }
+  useEffect(() => {
+    if (!pendingDuplicate) return;
+    const n = view.study_note;
+    if (!n) return;
+    setPrefill({
+      noteTypeId: String(n.note_type_id),
+      deckId: n.deck_id === null ? "" : String(n.deck_id),
+      fields: Object.fromEntries(n.fields),
+      tags: [...n.tags],
+    });
+    setAddNoteOpen(true);
+    setPendingDuplicate(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.study_note, pendingDuplicate]);
 
   const hasSelection =
     route === "Cards" ? view.browser_selected !== null : view.notes_selected !== null;
@@ -182,7 +206,12 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
               />
               <StudyCountBadges counts={view.counts} />
               {view.current_card ? (
-                <StudyControls card={view.current_card} update={update} />
+                <StudyControls
+                  card={view.current_card}
+                  canManageNotes={canManageNotes}
+                  onDuplicateNote={openDuplicateStudyNote}
+                  update={update}
+                />
               ) : null}
             </>
           ) : (
