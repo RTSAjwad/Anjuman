@@ -2,7 +2,7 @@
 
 **From:** shell agent
 **To:** core agent
-**Status:** pending
+**Status:** resolved (commit `099cda4`)
 
 ## Context
 
@@ -14,88 +14,79 @@ The study screen's "⋮" dropdown is being reorganised into two sections:
   **Delete Note**.
 
 The re-section, label renames, and the existing Bury/Suspend/Reschedule card+note
-items are **shell-only** and already done. The three *new* items below need core
-support the shell does not have.
+items are **shell-only** and already done. The three *new* items needed core
+support, now implemented.
 
-## What already exists
+## Resulting core surface (consume this)
 
-- `POST /cards/{card_id}/reset` — `server/src/handlers/card_mod.rs::reset` (resets
-  a card's scheduling back to "new", preserving flag + row).
-- `Event::BrowserResetCard { card_id }` — browser-path only; its completion
-  `BrowserResetDone` refreshes the **browser**, not the study loop.
-- `Event::NoteDelete { note_id }` — generic; but its completion `NoteDeleted`
-  refreshes **browser lists**, not the in-flight study session.
-- `StudyCardView` already carries `card_id`, `note_id`, `front`, `back`, `state`,
-  `step_index`, `flag`, `suspended`, `buried` (so the shell can pass ids and render
-  current card/note toggle state).
+All changes are in `client/shared/src/app.rs` (no `contracts/`/`server/` change).
 
-## The gaps
+### 1. Reset Card (study context) — done
 
-### 1. Reset Card (study context)
+- `Event::ResetCard` (unit) → `POST /cards/{card_id}/reset` using the current
+  card id. No-op when `current_card` is `None`.
+- `Event::ResetCardDone(Result<Response<CardModResponse>>)` → on `Ok`, re-fetches
+  the study loop (`StartStudy`), so the reset card (now "new"/no longer due)
+  advances correctly. On `Err`, sets `card_action_error`.
 
-No study-context reset event. `BrowserResetCard` is wrong here: it completes via
-`BrowserResetDone`, which refreshes the browser rather than re-fetching the study
-loop's current card. A study-screen "Reset Card" must reset the card and then
-advance/refresh the study session consistently (the card becomes "new" and is likely
-no longer the due card).
+### 2. Duplicate Note — done via a note fetch (NOT a `StudyCard` enrichment)
 
-**Ask:** add `Event::ResetCard` (unit; operates on `model.current_card.card_id`
-exactly like the existing `BuryCard`/`SuspendCard`), wired to
-`POST /cards/{card_id}/reset`, with a completion (e.g. `ResetCardDone`) that
-re-fetches the study card/state (mirror how the other study card actions refresh —
-please reuse whatever `BuryCard`/`SuspendCard` do on completion so the study loop
-advances/re-renders correctly).
+**Decision:** the original "no wire DTO change via recommendation (b)" assumption
+was **wrong** — `StudyCard` (the wire type) carries `card_id`, `note_id`, `front`,
+`back`, `styling`, and scheduling fields only; it has **no** `note_type_id`,
+`fields`, `tags`, or `deck_id`, so those cannot be surfaced on `StudyCardView`
+without a contracts + server change.
 
-### 2. Duplicate Note
+Instead, the core exposes a fetch of the full note:
 
-No study-context duplicate, and `StudyCardView` lacks the note fields needed to
-prefill a create dialog (`note_type_id`, fields, tags, deck). Duplicate Note means
-"open the create-note dialog prefilled with the current note's fields/note-type/
-deck/tags".
+- `Event::NoteDetailRequested { note_id }` → `GET /notes/{note_id}`.
+- `Event::NoteDetailResult(Result<Response<NoteResponse>>)` → populates
+  `ViewModel.study_note: Option<NoteView>`.
 
-**Ask:** either
-- (a) expose `Event::NoteDuplicate { note_id }` that the shell fires, and the core
-  opens/re-populates the create-note path (but the create dialog itself is shell
-  state, so this doesn't cleanly map), or more simply
-- (b) surface the current card's full note (`note_type_id`, `fields`, `tags`,
-  `deck_id`) on `StudyCardView` (or a new `study_note` ViewModel field) so the shell
-  can reuse its existing `AddNoteDialog` prefill logic (which already handles
-  duplicate in the browser via `NoteView` fields/tags/deck).
+`NoteView` already carries `note_type_id`, `note_type_name`, `fields`
+(`HashMap<String,String>`), `tags: Vec<String>`, and `deck_id: Option<i64>` — the
+full prefill payload. The shell fires `NoteDetailRequested { note_id: card.note_id }`
+when the user picks "Duplicate Note", then prefills its existing `AddNoteDialog`
+from `view.study_note`.
 
-**Recommendation:** (b) — add the note fields the shell's existing duplicate-prefill
-needs, so no new event is required; the shell reuses its current duplicate flow.
+### 3. Delete Note (study context) — done (advance/close)
 
-### 3. Delete Note (study context)
+- `Event::NoteDelete { note_id }` now records `Model.pending_note_delete`.
+- `Event::NoteDeleted(Ok)` detects whether the deleted note was the in-study note;
+  if so it clears `current_card` + `study_note` and chains `StartStudy` (advance or
+  close the study loop — if the deck is now empty, `StartStudy` returns
+  `next_card == None`, so the shell shows "nothing due"). It also still refreshes
+  the browser lists as before.
 
-`Event::NoteDelete { note_id }` exists, but `NoteDeleted` refreshes browser lists
-only — it does not handle the case where the deleted note is the one currently being
-studied. If the user deletes the in-study note, the study screen must advance to the
-next card (or close) rather than leave a dangling current card.
+---
 
-**Ask:** decide the semantics and wire them. Recommended: when `NoteDelete` targets
-`model.current_card.note_id`, after `NoteDeleted(Ok)` re-fetch the study card (or
-`CloseDeck` if the deck is now empty). If simpler and acceptable, restrict Delete
-Note to the browser only and document that study-context delete is out of scope —
-but the requester asked for it in the study dropdown, so prefer wiring it.
+## Reset paths
+
+`study_note` and `pending_note_delete` are cleared on logout and on
+`clear_deck_selection` (leaving study / opening a deck resets them).
+
+## Tests
+
+Named per criterion, in `client/shared/src/app.rs`:
+
+- `reset_card_emits_post`
+- `reset_card_no_current_card_is_noop`
+- `reset_card_done_refreshes_study`
+- `note_detail_requested_emits_get`
+- `note_detail_result_populates_study_note`
+- `note_delete_studied_note_advances_study`
 
 ## Not changing
 
-- No `contracts/` change expected for `ResetCard` (endpoint exists). Duplicate may
-  need an `StudyCardView` field addition (core-local `ViewModel`/`StudyCardView`);
-  no wire DTO change if using recommendation (b).
-- No `server/` change (reset endpoint exists; note delete exists).
+- No `contracts/` change (the reset endpoint already exists; `NoteResponse` already
+  carries the duplicate-prefill fields).
+- No `server/` change (reset + note fetch/delete endpoints already exist).
 
-## Validation (DoD)
+## Open items / notes for the shell
 
-- `cargo test -p shared` green, with tests named after each criterion, e.g.:
-  - `reset_card_emits_post_to_cards_reset`
-  - `study_note_delete_advances_or_closes` (or `note_delete_refreshes_study`, per
-    the chosen semantics)
-  - (if duplicate via (b)) `study_card_carries_note_prefill_fields`
-- OpenAPI still generates (no new wire DTO unless you add one).
-
-## Not my scope
-
-The shell's re-section (Card Actions / Note Actions) + label renames is already
-done. I'll wire the three new items once the core surface lands. Please confirm
-which option you choose for Duplicate Note (a vs. b) and the Delete-Note semantics.
+- Duplicate Note is fetched on demand (`NoteDetailRequested`) rather than being
+  pre-attached to `StudyCardView`. If you'd prefer the note fields attached
+  directly to the study card (one fewer round-trip), that is a follow-up that
+  *does* cross `contracts/` + `server/` — file a new carve-out if you want it.
+- The shell should fire `NoteDetailRequested` only when the "Duplicate Note"
+  action is invoked (not on every study card render), to avoid a redundant fetch.
