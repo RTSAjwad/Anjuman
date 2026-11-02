@@ -4,7 +4,6 @@ import * as React from "react"
 import { cn } from "cn"
 import { XIcon } from "lucide-react"
 import { Badge } from "~/components/ui/badge"
-import { Textarea } from "~/components/ui/textarea"
 
 // A self-built chip input for note tags (shadcn doesn't ship one). Chips are
 // rendered as removable Badges; typing + Enter commits a new chip, Backspace on
@@ -48,7 +47,7 @@ export function ChipInput({
     setValue("")
   }
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault()
       commit(value)
@@ -63,7 +62,7 @@ export function ChipInput({
     <div className={cn("flex flex-col gap-1.5", className)}>
       <div
         className={cn(
-          "flex min-h-9 flex-wrap items-start gap-1.5 rounded-lg border border-input px-2 py-1",
+          "flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-input px-2 py-1",
           "focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
           disabled && "pointer-events-none opacity-50",
         )}
@@ -83,15 +82,14 @@ export function ChipInput({
             )}
           </Badge>
         ))}
-        <Textarea
+        <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
           disabled={disabled}
           placeholder={tags.length === 0 ? placeholder : undefined}
           aria-label={ariaLabel ?? "Tag"}
-          rows={1}
-          className="min-h-7 flex-1 resize-none border-0 bg-transparent px-0 py-0 text-sm shadow-none outline-none focus-visible:ring-0"
+          className="h-6 min-w-16 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
       </div>
     </div>
