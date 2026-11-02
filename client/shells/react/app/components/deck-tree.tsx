@@ -31,6 +31,14 @@ import {
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { Label } from "~/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { ChevronRight, EllipsisVertical } from "lucide-react";
 
 // The fixed grid for header + every row. The title column flexes; the three
@@ -38,6 +46,35 @@ import { ChevronRight, EllipsisVertical } from "lucide-react";
 // column with its children's regardless of nesting depth (indentation lives in
 // the title cell only).
 const ROW_GRID = "[grid-template-columns:minmax(0,1fr)_4rem_4rem_4rem_2.5rem]";
+
+// Flatten the tree into { id, path } with `::`-joined ancestor paths (matching the
+// other deck pickers).
+function flatDecks(decks: DeckSummary[]): { id: bigint; path: string }[] {
+  const out: { id: bigint; path: string }[] = [];
+  function walk(ds: DeckSummary[], path: string[]) {
+    for (const d of ds) {
+      const next = [...path, d.title];
+      out.push({ id: d.id, path: next.join("::") });
+      walk(d.children, next);
+    }
+  }
+  walk(decks, []);
+  return out;
+}
+
+// Collect the ids of a deck and all its descendants (to exclude them as move
+// targets, preventing cycles client-side; the server also rejects them).
+function selfAndDescendantIds(deck: DeckSummary): bigint[] {
+  const ids = [deck.id];
+  function walk(ds: DeckSummary[]) {
+    for (const d of ds) {
+      ids.push(d.id);
+      walk(d.children);
+    }
+  }
+  walk(deck.children);
+  return ids;
+}
 
 type DeckTreeProps = {
   decks: DeckSummary[];
@@ -47,6 +84,7 @@ type DeckTreeProps = {
   onOpenOptions: (deckId: bigint) => void;
   onDeleteDeck: (deckId: bigint, cascade: boolean) => void;
   onUpdateDeck: (deckId: bigint, title: string, description: string | null) => void;
+  onMoveDeck: (deckId: bigint, parentId: bigint | null) => void;
 };
 
 export function DeckTree({
@@ -57,12 +95,15 @@ export function DeckTree({
   onOpenOptions,
   onDeleteDeck,
   onUpdateDeck,
+  onMoveDeck,
 }: DeckTreeProps) {
   const [deleteTarget, setDeleteTarget] = useState<DeckSummary | null>(null);
   const [cascade, setCascade] = useState(false);
   const [editTarget, setEditTarget] = useState<DeckSummary | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [moveTarget, setMoveTarget] = useState<DeckSummary | null>(null);
+  const [moveParentId, setMoveParentId] = useState("");
 
   function openDelete(deck: DeckSummary) {
     setDeleteTarget(deck);
@@ -86,6 +127,17 @@ export function DeckTree({
     if (!editTarget || title === "") return;
     onUpdateDeck(editTarget.id, title, editDescription.trim() === "" ? "" : editDescription.trim());
     setEditTarget(null);
+  }
+
+  function openMove(deck: DeckSummary) {
+    setMoveTarget(deck);
+    setMoveParentId("");
+  }
+
+  function confirmMove() {
+    if (!moveTarget) return;
+    onMoveDeck(moveTarget.id, moveParentId === "" ? null : BigInt(moveParentId));
+    setMoveTarget(null);
   }
 
   if (error) {
@@ -134,6 +186,7 @@ export function DeckTree({
               onOpenOptions={onOpenOptions}
               onDeleteDeck={openDelete}
               onEditDeck={openEdit}
+              onMoveDeck={openMove}
             />
           ))}
         </div>
@@ -211,6 +264,52 @@ export function DeckTree({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={moveTarget !== null} onOpenChange={(v) => { if (!v) setMoveTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Move deck</DialogTitle>
+            <DialogDescription>
+              {moveTarget ? (
+                <>Choose a new parent for <span className="font-medium">{moveTarget.title}</span>.</>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Parent</Label>
+            <Select
+              items={[
+                { value: "", label: "Top / root" },
+                ...flatDecks(decks)
+                  .filter((d) => moveTarget && !selfAndDescendantIds(moveTarget).includes(d.id))
+                  .map((d) => ({ value: String(d.id), label: d.path })),
+              ]}
+              value={moveParentId}
+              onValueChange={(v) => { if (v !== null) setMoveParentId(v) }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Top / root" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="">Top / root</SelectItem>
+                  {flatDecks(decks)
+                    .filter((d) => moveTarget && !selfAndDescendantIds(moveTarget).includes(d.id))
+                    .map((d) => (
+                      <SelectItem key={String(d.id)} value={String(d.id)}>{d.path}</SelectItem>
+                    ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoveTarget(null)}>Cancel</Button>
+            <Button onClick={confirmMove}>Move</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -223,9 +322,10 @@ type DeckRowProps = {
   onOpenOptions: (deckId: bigint) => void;
   onDeleteDeck: (deck: DeckSummary) => void;
   onEditDeck: (deck: DeckSummary) => void;
+  onMoveDeck: (deck: DeckSummary) => void;
 };
 
-function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDeleteDeck, onEditDeck }: DeckRowProps) {
+function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDeleteDeck, onEditDeck, onMoveDeck }: DeckRowProps) {
   const [open, setOpen] = useState(false);
   const hasChildren = deck.children.length > 0;
 
@@ -312,6 +412,11 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
                 Edit
               </DropdownMenuItem>
               <DropdownMenuItem
+                onClick={(e) => { e.stopPropagation(); onMoveDeck(deck); }}
+              >
+                Move
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 variant="destructive"
                 onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck); }}
               >
@@ -343,6 +448,7 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
               onOpenOptions={onOpenOptions}
               onDeleteDeck={onDeleteDeck}
               onEditDeck={onEditDeck}
+              onMoveDeck={onMoveDeck}
             />
           ))}
         </div>
