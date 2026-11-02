@@ -49,14 +49,14 @@ pub struct UserDetail {
 }
 
 /// Query parameters for `GET /users/search`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SearchQuery {
     pub q: String,
 }
 
 /// A single user search result (no `school_id`; scoped to the caller's school).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SearchResult {
     pub id: i64,

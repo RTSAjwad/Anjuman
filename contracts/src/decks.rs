@@ -115,7 +115,7 @@ pub struct DeleteDeckQuery {
 }
 
 /// Expected JSON body for sharing a deck with a collaborator.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ShareDeck {
     /// The teacher to share the deck with.
@@ -123,7 +123,7 @@ pub struct ShareDeck {
 }
 
 /// Expected JSON body for transferring deck ownership.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TransferOwner {
     /// The teacher who will become the new owner.
@@ -194,7 +194,7 @@ fn default_studyable() -> bool {
 }
 
 /// A collaborator on a shared deck.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CollaboratorResponse {
     pub user_id: i64,
@@ -205,7 +205,7 @@ pub struct CollaboratorResponse {
 }
 
 /// A deck together with its collaborators and linked classes.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeckDetailResponse {
     pub deck: DeckResponse,
@@ -214,7 +214,7 @@ pub struct DeckDetailResponse {
 }
 
 /// A minimal class reference.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ClassInfo {
     pub id: i64,

@@ -20,7 +20,11 @@ use anjuman_contracts::cards::{
     CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, MoveCardBody,
     MoveCardResponse, NoteModResponse, RepositionBody, RepositionResponse, RescheduleBody,
 };
-use anjuman_contracts::decks::{CreateDeck, DeckCountsResponse, DeckResponse, DeleteDeckQuery, LimitMode, SetDeckOptions, UpdateDeck};
+use anjuman_contracts::decks::{
+    ClassInfo, CollaboratorResponse, CreateDeck, DeckCountsResponse, DeckDetailResponse,
+    DeckResponse, DeleteDeckQuery, LimitMode, SetDeckOptions, ShareDeck, TransferOwner,
+    UpdateDeck,
+};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::notes::{
@@ -32,6 +36,7 @@ use anjuman_contracts::study::{StudyAdvance, StudyAdvanceBody, StudyCard, StudyC
 use anjuman_contracts::tags::{
     AddTags, FindReplaceTags, RemoveTags, RenameTag, Tag, TagNode, UnusedTagsResponse,
 };
+use anjuman_contracts::users::{SearchQuery, SearchResult};
 
 /// The base URL of the Anjuman server.
 ///
@@ -96,6 +101,15 @@ pub struct Model {
     /// `decks.is_empty()` — a user with zero decks is still "loaded". Reset to
     /// false on `Logout` and while a fresh `DecksRequested` is in flight.
     pub decks_loaded: bool,
+    /// The governance detail (owner + collaborators + classes) of the deck whose
+    /// manage-collaborators dialog is open, from `GET /decks/{id}`.
+    pub deck_detail: Option<DeckDetailResponse>,
+    /// A human-readable error from the last deck-detail fetch, if any.
+    pub deck_detail_error: Option<String>,
+    /// School users returned by `GET /users/search` (the share/transfer picker).
+    pub user_search: Vec<SearchResult>,
+    /// A human-readable error from the last user search, if any.
+    pub user_search_error: Option<String>,
     /// The deck the user has opened to study (null until one is selected).
     pub selected_deck: Option<DeckSummary>,
     /// Which sub-view of the selected deck is showing (Study or Options).
@@ -224,6 +238,30 @@ pub enum Event {
     DeckMove {
         deck_id: i64,
         parent_id: Option<i64>,
+    },
+    /// Fetch a deck's governance detail (owner + collaborators + classes) for the
+    /// manage-collaborators dialog.
+    DeckDetailRequested {
+        deck_id: i64,
+    },
+    /// Share a deck with a teacher (adds a collaborator).
+    DeckShare {
+        deck_id: i64,
+        user_id: i64,
+    },
+    /// Remove a collaborator from a deck.
+    DeckUnshare {
+        deck_id: i64,
+        user_id: i64,
+    },
+    /// Transfer deck ownership to another teacher.
+    DeckTransferOwner {
+        deck_id: i64,
+        user_id: i64,
+    },
+    /// Search the school's teachers/admins (for the share/transfer picker).
+    UsersSearchRequested {
+        q: String,
     },
     /// Fetch the authoritative per-deck due counts (`GET /decks/counts`) — fired
     /// after a browser action that changes scheduling, so deck-list badges stay
@@ -471,6 +509,32 @@ pub enum Event {
 
     #[serde(skip)]
     #[facet(skip)]
+    DeckDetailResult(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<DeckDetailResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckShared(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<CollaboratorResponse>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckUnshared(#[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckOwnerTransferred(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    UsersSearchResult(
+        #[facet(opaque)] crux_http::Result<crux_http::Response<Vec<SearchResult>>>,
+    ),
+
+    #[serde(skip)]
+    #[facet(skip)]
     DecksCountsResult(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckCountsResponse>>),
 
     #[serde(skip)]
@@ -667,6 +731,15 @@ pub struct ViewModel {
     /// True once the decks fetch has *settled* (success or error), so the shell
     /// can distinguish "still loading" from "loaded, but zero decks".
     pub decks_loaded: bool,
+    /// The governance detail of the deck whose manage-collaborators dialog is
+    /// open (owner + collaborators + classes), or `None` when no dialog is open.
+    pub deck_detail: Option<DeckDetailView>,
+    /// A human-readable error from the last deck-detail fetch, if any.
+    pub deck_detail_error: Option<String>,
+    /// School users returned by `GET /users/search` (the share/transfer picker).
+    pub user_search: Vec<UserSearchView>,
+    /// A human-readable error from the last user search, if any.
+    pub user_search_error: Option<String>,
     /// The card currently shown during study, or `None` when nothing is due
     /// (study not started, or the deck is finished).
     pub current_card: Option<StudyCardView>,
@@ -1141,6 +1214,95 @@ pub struct DeckSummary {
     pub children: Vec<DeckSummary>,
 }
 
+/// A collaborator on a deck (Facet mirror of `CollaboratorResponse`), for the
+/// manage-collaborators dialog. `shared_at` is pre-formatted to a string.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct CollaboratorView {
+    pub user_id: i64,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    /// `shared_at` as a pre-formatted `%Y-%m-%d %H:%M` (UTC) string.
+    pub shared_at: String,
+}
+
+impl From<&CollaboratorResponse> for CollaboratorView {
+    fn from(c: &CollaboratorResponse) -> Self {
+        CollaboratorView {
+            user_id: c.user_id,
+            email: c.email.clone(),
+            first_name: c.first_name.clone(),
+            last_name: c.last_name.clone(),
+            shared_at: c.shared_at.format("%Y-%m-%d %H:%M").to_string(),
+        }
+    }
+}
+
+/// A class a deck is assigned to (Facet mirror of `ClassInfo`).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct ClassInfoView {
+    pub id: i64,
+    pub name: String,
+}
+
+impl From<&ClassInfo> for ClassInfoView {
+    fn from(c: &ClassInfo) -> Self {
+        ClassInfoView {
+            id: c.id,
+            name: c.name.clone(),
+        }
+    }
+}
+
+/// The deck governance detail shown in the manage-collaborators dialog: the
+/// owner (name/email/id), its collaborators, and its linked classes.
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct DeckDetailView {
+    pub deck_id: i64,
+    pub owner_user_id: i64,
+    pub owner_email: String,
+    pub owner_first_name: String,
+    pub owner_last_name: String,
+    pub collaborators: Vec<CollaboratorView>,
+    pub classes: Vec<ClassInfoView>,
+}
+
+impl From<&DeckDetailResponse> for DeckDetailView {
+    fn from(d: &DeckDetailResponse) -> Self {
+        DeckDetailView {
+            deck_id: d.deck.id,
+            owner_user_id: d.deck.created_by,
+            owner_email: d.deck.owner_email.clone(),
+            owner_first_name: d.deck.owner_first_name.clone(),
+            owner_last_name: d.deck.owner_last_name.clone(),
+            collaborators: d.collaborators.iter().map(CollaboratorView::from).collect(),
+            classes: d.classes.iter().map(ClassInfoView::from).collect(),
+        }
+    }
+}
+
+/// A school user returned by `GET /users/search` (Facet mirror of `SearchResult`,
+/// omitting `role` — the shell only needs id/name/email for the share/transfer
+/// picker).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct UserSearchView {
+    pub id: i64,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+}
+
+impl From<&SearchResult> for UserSearchView {
+    fn from(u: &SearchResult) -> Self {
+        UserSearchView {
+            id: u.id,
+            email: u.email.clone(),
+            first_name: u.first_name.clone(),
+            last_name: u.last_name.clone(),
+        }
+    }
+}
+
 /// Build the nested deck tree from the flat `GET /decks` response.
 ///
 /// Children are attached to their parent by `parent_id` (decks whose
@@ -1222,6 +1384,17 @@ fn refresh_browser(model: &Model) -> Command<Effect, Event> {
 /// badges stay in sync (the server is the single source of truth for counts).
 fn refresh_deck_counts() -> Command<Effect, Event> {
     Command::event(Event::DecksCountsRequested)
+}
+
+/// Re-fetch the deck-detail for the deck whose manage-collaborators dialog is
+/// open (no-op if none is selected).
+fn refresh_deck_detail(model: &Model) -> Command<Effect, Event> {
+    let Some(detail) = &model.deck_detail else {
+        return render::render();
+    };
+    render::render().and(Command::event(Event::DeckDetailRequested {
+        deck_id: detail.deck.id,
+    }))
 }
 
 /// Re-fetch the distinct tag namespace (`GET /tags`) and its `::`-tree shape
@@ -1662,6 +1835,10 @@ impl crux_core::App for Anjuman {
                 model.decks.clear();
                 model.decks_error = None;
                 model.decks_loaded = false;
+                model.deck_detail = None;
+                model.deck_detail_error = None;
+                model.user_search.clear();
+                model.user_search_error = None;
                 model.selected_deck = None;
                 model.selected_deck_view = DeckView::Study;
                 model.current_card = None;
@@ -3120,6 +3297,135 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::DeckDetailRequested { deck_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.deck_detail_error = None;
+                Http::get(format!("{API_URL}/decks/{deck_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckDetailResult)
+            }
+
+            Event::DeckDetailResult(Ok(mut response)) => {
+                model.deck_detail = Some(response.take_body().expect("deck detail has a body"));
+                model.deck_detail_error = None;
+                render::render()
+            }
+
+            Event::DeckDetailResult(Err(e)) => {
+                model.deck_detail_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::DeckShare { deck_id, user_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.deck_detail_error = None;
+                let body = ShareDeck { user_id };
+                Http::post(format!("{API_URL}/decks/{deck_id}/share"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize share deck")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckShared)
+            }
+
+            Event::DeckShared(Ok(_)) => {
+                model.deck_detail_error = None;
+                // Refresh the detail so the new collaborator appears.
+                refresh_deck_detail(model)
+            }
+
+            Event::DeckShared(Err(e)) => {
+                model.deck_detail_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::DeckUnshare { deck_id, user_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.deck_detail_error = None;
+                Http::delete(format!("{API_URL}/decks/{deck_id}/share/{user_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckUnshared)
+            }
+
+            Event::DeckUnshared(Ok(_)) => {
+                model.deck_detail_error = None;
+                refresh_deck_detail(model)
+            }
+
+            Event::DeckUnshared(Err(e)) => {
+                model.deck_detail_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::DeckTransferOwner { deck_id, user_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.deck_detail_error = None;
+                let body = TransferOwner { user_id };
+                Http::patch(format!("{API_URL}/decks/{deck_id}/owner"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize transfer owner")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckOwnerTransferred)
+            }
+
+            Event::DeckOwnerTransferred(Ok(_)) => {
+                model.deck_detail_error = None;
+                // Ownership changed → refresh both the detail and the deck list
+                // (owner identity is shown in the list).
+                refresh_deck_detail(model).and(Command::event(Event::DecksRequested))
+            }
+
+            Event::DeckOwnerTransferred(Err(e)) => {
+                model.deck_detail_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::UsersSearchRequested { q } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.user_search_error = None;
+                let query = SearchQuery { q };
+                Http::get(format!("{API_URL}/users/search"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .query(&query)
+                    .expect("serialize user search")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::UsersSearchResult)
+            }
+
+            Event::UsersSearchResult(Ok(mut response)) => {
+                model.user_search = response.take_body().expect("user search has a body");
+                model.user_search_error = None;
+                render::render()
+            }
+
+            Event::UsersSearchResult(Err(e)) => {
+                model.user_search_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::DecksCountsRequested => {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
@@ -3190,6 +3496,10 @@ impl crux_core::App for Anjuman {
                 route: model.route,
                 decks_error: model.decks_error.clone(),
                 decks_loaded: model.decks_loaded,
+                deck_detail: model.deck_detail.as_ref().map(DeckDetailView::from),
+                deck_detail_error: model.deck_detail_error.clone(),
+                user_search: model.user_search.iter().map(UserSearchView::from).collect(),
+                user_search_error: model.user_search_error.clone(),
                 current_card,
                 counts,
                 study_error: model.study_error.clone(),
@@ -3231,6 +3541,10 @@ impl crux_core::App for Anjuman {
                 route: model.route,
                 decks_error: model.decks_error.clone(),
                 decks_loaded: model.decks_loaded,
+                deck_detail: None,
+                deck_detail_error: None,
+                user_search: Vec::new(),
+                user_search_error: None,
                 current_card: None,
                 counts: StudyCountsView::default(),
                 study_error: None,
@@ -3530,6 +3844,37 @@ mod tests {
             relearning_count: Some(0),
             total_count: Some(9),
             studyable: true,
+        }
+    }
+
+    fn collaborator(user_id: i64, email: &str) -> CollaboratorResponse {
+        CollaboratorResponse {
+            user_id,
+            email: email.to_string(),
+            first_name: "First".to_string(),
+            last_name: "Last".to_string(),
+            shared_at: Utc::now(),
+        }
+    }
+
+    fn deck_detail(id: i64) -> DeckDetailResponse {
+        DeckDetailResponse {
+            deck: deck(id, "Biology 101"),
+            collaborators: vec![collaborator(2, "c@b.c")],
+            classes: vec![ClassInfo {
+                id: 5,
+                name: "Bio class".to_string(),
+            }],
+        }
+    }
+
+    fn search_result(id: i64, email: &str) -> SearchResult {
+        SearchResult {
+            id,
+            email: email.to_string(),
+            first_name: "First".to_string(),
+            last_name: "Last".to_string(),
+            role: UserRole::Teacher,
         }
     }
 
@@ -3978,6 +4323,193 @@ mod tests {
         let _ = update(Event::DeckMoved(Err(err)), &mut model);
         assert!(model.decks_error.is_some());
         assert!(Anjuman.view(&model).decks_error.is_some());
+    }
+
+    /// `DeckDetailRequested` emits `GET /decks/{id}` with the bearer header.
+    #[test]
+    fn deck_detail_requested_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(Event::DeckDetailRequested { deck_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/7"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckDetailResult(Ok)` populates the view's owner + collaborators + classes.
+    #[test]
+    fn deck_detail_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(deck_detail(7)).build();
+        let _ = update(Event::DeckDetailResult(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+        let detail = vm.deck_detail.expect("deck_detail");
+        assert_eq!(detail.owner_user_id, 1);
+        assert_eq!(detail.collaborators.len(), 1);
+        assert_eq!(detail.collaborators[0].email, "c@b.c");
+        assert_eq!(detail.classes.len(), 1);
+        assert_eq!(detail.classes[0].name, "Bio class");
+    }
+
+    /// `DeckShare` emits `POST /decks/{id}/share` with a `ShareDeck` body.
+    #[test]
+    fn deck_share_emits_post_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckShare {
+                deck_id: 7,
+                user_id: 2,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/7/share"
+                );
+                let body: ShareDeck =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.user_id, 2);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckShared(Ok)` re-fetches the deck detail.
+    #[test]
+    fn deck_shared_refreshes_detail() {
+        let mut model = authenticated_model();
+        model.deck_detail = Some(deck_detail(7));
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(collaborator(3, "d@b.c")).build();
+        let mut command = app.update(Event::DeckShared(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DeckDetailRequested { .. })),
+            "should re-fetch detail, got {events:?}"
+        );
+    }
+
+    /// `DeckUnshare` emits `DELETE /decks/{id}/share/{user_id}`.
+    #[test]
+    fn deck_unshare_emits_delete() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckUnshare {
+                deck_id: 7,
+                user_id: 2,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "DELETE");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/7/share/2"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckTransferOwner` emits `PATCH /decks/{id}/owner` with a `TransferOwner` body.
+    #[test]
+    fn deck_transfer_owner_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckTransferOwner {
+                deck_id: 7,
+                user_id: 2,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/7/owner"
+                );
+                let body: TransferOwner =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.user_id, 2);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckOwnerTransferred(Ok)` re-fetches detail + deck list.
+    #[test]
+    fn deck_owner_transferred_refreshes() {
+        let mut model = authenticated_model();
+        model.deck_detail = Some(deck_detail(7));
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(deck(7, "Biology 101")).build();
+        let mut command = app.update(Event::DeckOwnerTransferred(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DeckDetailRequested { .. })),
+            "should re-fetch detail, got {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DecksRequested)),
+            "should re-fetch decks, got {events:?}"
+        );
+    }
+
+    /// `UsersSearchRequested` emits `GET /users/search?q=…` with the bearer header.
+    #[test]
+    fn users_search_requested_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::UsersSearchRequested {
+                q: "ada".to_string(),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                let url = req.operation.url.to_string();
+                assert!(url.starts_with("http://127.0.0.1:3000/users/search"), "url = {url}");
+                assert!(url.contains("q=ada"), "url = {url}");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `UsersSearchResult(Ok)` populates the picker list (id + name + email).
+    #[test]
+    fn users_search_result_populates_view() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok()
+            .body(vec![search_result(2, "c@b.c")])
+            .build();
+        let _ = update(Event::UsersSearchResult(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+        assert_eq!(vm.user_search.len(), 1);
+        assert_eq!(vm.user_search[0].id, 2);
+        assert_eq!(vm.user_search[0].email, "c@b.c");
     }
 
     /// A canned deck list populates the model and is exposed in the view.
