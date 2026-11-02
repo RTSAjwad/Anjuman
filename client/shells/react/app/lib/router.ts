@@ -14,6 +14,7 @@ import {
   eventShowDeckList,
   eventShowCards,
   eventShowNotes,
+  eventShowNoteTypes,
   eventOpenDeck,
   eventOpenDeckOptions,
 } from "shared_types/app";
@@ -31,6 +32,8 @@ export function routeToHash(
       return "#/cards";
     case "Notes":
       return "#/notes";
+    case "NoteTypes":
+      return "#/note-types";
     case "Study":
       return selectedDeckId === null
         ? "#/decks"
@@ -57,6 +60,9 @@ export function hashToEvent(hash: string): Event {
   }
   if (segments.length === 1 && segments[0] === "notes") {
     return eventShowNotes();
+  }
+  if (segments.length === 1 && segments[0] === "note-types") {
+    return eventShowNoteTypes();
   }
   if (
     segments.length === 3 &&

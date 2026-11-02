@@ -9,6 +9,7 @@ import { DeckCollaboratorsDialog } from "./deck-collaborators-dialog";
 import { StudyScreen as StudyScreenView } from "./study";
 import { DeckOptionsScreen as DeckOptionsView } from "./deck-options";
 import { BrowserScreen as BrowserView } from "./browser";
+import { NoteTypesScreen as NoteTypesScreenView } from "./note-types";
 
 export function DeckListScreen() {
   const { view, update } = useCore();
@@ -39,6 +40,21 @@ export function DeckListScreen() {
         onOpenChange={(v) => { if (!v) setManageDeckId(null); }}
       />
     </div>
+  );
+}
+
+export function NoteTypesScreen() {
+  const { view, update } = useCore();
+  if (view === null) return null;
+
+  return (
+    <NoteTypesScreenView
+      noteTypes={view.note_types}
+      selected={view.selected_note_type}
+      error={view.note_types_error}
+      canManage={view.permissions.can_manage_note_types}
+      update={update}
+    />
   );
 }
 

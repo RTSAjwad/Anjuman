@@ -6,6 +6,7 @@ import {
   eventShowDeckList,
   eventShowCards,
   eventShowNotes,
+  eventShowNoteTypes,
   eventNoteDetailRequested,
 } from "shared_types/app";
 import {
@@ -47,6 +48,7 @@ import {
   StudyScreen,
   DeckOptionsScreen,
   BrowserScreen,
+  NoteTypesScreen,
 } from "./screens";
 import { CardActions, NoteActions } from "./browser";
 import { AddNoteDialog } from "./add-note-dialog";
@@ -83,6 +85,7 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
   const canManageNotes = view.permissions.can_manage_notes;
   const canManageTags = view.permissions.can_manage_tags;
   const canManageDecks = view.permissions.can_manage_decks;
+  const canManageNoteTypes = view.permissions.can_manage_note_types;
   const hasUnusedTags = view.has_unused_tags;
   const authenticated = view.authenticated;
 
@@ -163,8 +166,10 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
         email={view.email}
         route={route}
         canManageNotes={canManageNotes}
+        canManageNoteTypes={canManageNoteTypes}
         onShowDeckList={() => update(eventShowDeckList())}
         onShowCards={() => update(eventShowCards())}
+        onShowNoteTypes={() => update(eventShowNoteTypes())}
         onLogout={() => update(eventLogout())}
       />
       <SidebarInset className="min-w-0 flex-1">
@@ -226,6 +231,14 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
                 />
               ) : null}
             </>
+          ) : route === "NoteTypes" ? (
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Note types</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
           ) : (
             <DeckBreadcrumb
               decks={view.decks}
@@ -258,16 +271,20 @@ function AppSidebar({
   email,
   route,
   canManageNotes,
+  canManageNoteTypes,
   onShowDeckList,
   onShowCards,
+  onShowNoteTypes,
   onLogout,
 }: {
   displayName: string;
   email: string;
   route: string;
   canManageNotes: boolean;
+  canManageNoteTypes: boolean;
   onShowDeckList: () => void;
   onShowCards: () => void;
+  onShowNoteTypes: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -296,6 +313,18 @@ function AppSidebar({
                   <span>Browser</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {canManageNoteTypes ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={onShowNoteTypes}
+                    isActive={route === "NoteTypes"}
+                    tooltip="Note types"
+                  >
+                    <TableIcon />
+                    <span>Note types</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ) : null}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -398,6 +427,8 @@ function Screen({ route }: { route: string }) {
       return <StudyScreen />;
     case "DeckOptions":
       return <DeckOptionsScreen />;
+    case "NoteTypes":
+      return <NoteTypesScreen />;
     default:
       return <DeckListScreen />;
   }
