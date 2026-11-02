@@ -27,6 +27,10 @@ use anjuman_contracts::decks::{
 };
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
+use anjuman_contracts::note_types::Template;
+use anjuman_contracts::note_types::{
+    CreateNoteType, CreateTemplate, ReorderTemplates, UpdateNoteType, UpdateTemplate,
+};
 use anjuman_contracts::notes::{
     CreateNote, ListNotesQuery, NoteBrowserPage, NoteResponse, UpdateNote,
 };
@@ -78,6 +82,7 @@ pub enum CurrentRoute {
     Notes,
     Study,
     DeckOptions,
+    NoteTypes,
 }
 
 /// The entire application state.
@@ -161,6 +166,8 @@ pub struct Model {
     pub note_types: Vec<NoteTypeResponse>,
     /// A human-readable error from the last note-types fetch, if any.
     pub note_types_error: Option<String>,
+    /// The note type currently open in the note-type editor (full detail).
+    pub selected_note_type: Option<NoteTypeResponse>,
     /// The notes browser result set (from `GET /notes`).
     pub notes: Vec<NoteResponse>,
     /// Notes page info (page/per-page/total).
@@ -315,6 +322,56 @@ pub enum Event {
     TagsStatsRequested,
     /// Fetch the school's note types (for the card-browser note-type filter).
     NoteTypesRequested,
+    /// Fetch a single note type's full detail (for the note-type editor).
+    NoteTypeSelect {
+        note_type_id: i64,
+    },
+    /// Create a new note type from scratch.
+    NoteTypeCreate {
+        name: String,
+        field_names: Vec<String>,
+    },
+    /// Clone (duplicate) an existing note type and its templates.
+    NoteTypeClone {
+        note_type_id: i64,
+    },
+    /// Update a note type's name/field names/sort field/styling (all optional).
+    NoteTypeUpdate {
+        note_type_id: i64,
+        name: Option<String>,
+        field_names: Option<Vec<String>>,
+        sort_field: Option<String>,
+        styling: Option<String>,
+    },
+    /// Delete a note type (and its templates/notes/cards).
+    NoteTypeDelete {
+        note_type_id: i64,
+    },
+    /// Append a template to the selected note type.
+    NoteTypeTemplateCreate {
+        note_type_id: i64,
+        name: String,
+        front_pattern: String,
+        back_pattern: String,
+    },
+    /// Edit a template's name/patterns.
+    NoteTypeTemplateUpdate {
+        note_type_id: i64,
+        template_id: i64,
+        name: Option<String>,
+        front_pattern: Option<String>,
+        back_pattern: Option<String>,
+    },
+    /// Delete a template (and its cards).
+    NoteTypeTemplateDelete {
+        note_type_id: i64,
+        template_id: i64,
+    },
+    /// Reorder the selected note type's templates.
+    NoteTypeTemplatesReorder {
+        note_type_id: i64,
+        template_ids: Vec<i64>,
+    },
     /// Fetch notes with a filter (page/filter/sort), the note analog of
     /// `CardsRequested`.
     NotesRequested {
@@ -460,6 +517,8 @@ pub enum Event {
     ShowCards,
     /// Navigate to the notes browser (top-level nav — clears any open deck).
     ShowNotes,
+    /// Navigate to the note-type editor (top-level nav — clears any open deck).
+    ShowNoteTypes,
 
     // --- Core-local completion events (never cross the FFI boundary) ---
 
@@ -594,6 +653,30 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     NoteTypesResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<NoteTypeResponse>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteTypeResult(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteTypeResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteTypeCreated(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteTypeResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteTypeCloned(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteTypeResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteTypeUpdated(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteTypeResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteTypeDeleted(#[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    NoteTypeTemplateChanged(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteTypeResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -781,6 +864,8 @@ pub struct ViewModel {
     pub note_types: Vec<NoteTypeView>,
     /// A human-readable error from the last note-types fetch, if any.
     pub note_types_error: Option<String>,
+    /// The note type open in the note-type editor (full detail), if any.
+    pub selected_note_type: Option<NoteTypeView>,
     /// The notes browser results to render (US-4.13).
     pub notes: Vec<NoteView>,
     /// Notes page info.
@@ -1052,14 +1137,43 @@ impl From<&CardBrowserResponse> for CardBrowserView {
     }
 }
 
-/// A shell-facing note type for pickers (a Facet mirror of the wire
-/// `NoteTypeResponse`, carrying the fields a picker + editor needs).
+/// A card template within a note type (Facet mirror of the wire `Template`).
+#[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
+pub struct TemplateView {
+    pub id: i64,
+    pub ord: i64,
+    pub name: String,
+    pub front_pattern: String,
+    pub back_pattern: String,
+}
+
+impl From<&Template> for TemplateView {
+    fn from(t: &Template) -> Self {
+        TemplateView {
+            id: t.id,
+            ord: t.ord,
+            name: t.name.clone(),
+            front_pattern: t.front_pattern.clone(),
+            back_pattern: t.back_pattern.clone(),
+        }
+    }
+}
+
+/// A shell-facing note type (a Facet mirror of the wire `NoteTypeResponse`,
+/// carrying the full editor surface: fields, sort field, styling, templates,
+/// and note count).
 #[derive(Serialize, Deserialize, Facet, Default, Clone, PartialEq, Eq, Debug)]
 pub struct NoteTypeView {
     pub id: i64,
     pub name: String,
     /// The note type's field names, in order (drives the note editor inputs).
     pub field_names: Vec<String>,
+    /// The sort field (empty = fall back to the first field, Anki default).
+    pub sort_field: String,
+    /// The shared styling CSS block (per note type).
+    pub styling: String,
+    pub templates: Vec<TemplateView>,
+    pub note_count: i64,
 }
 
 impl From<&NoteTypeResponse> for NoteTypeView {
@@ -1068,6 +1182,10 @@ impl From<&NoteTypeResponse> for NoteTypeView {
             id: n.id,
             name: n.name.clone(),
             field_names: n.field_names.clone(),
+            sort_field: n.sort_field.clone(),
+            styling: n.styling.clone(),
+            templates: n.templates.iter().map(TemplateView::from).collect(),
+            note_count: n.note_count,
         }
     }
 }
@@ -1395,6 +1513,20 @@ fn refresh_deck_detail(model: &Model) -> Command<Effect, Event> {
     render::render().and(Command::event(Event::DeckDetailRequested {
         deck_id: detail.deck.id,
     }))
+}
+
+/// Refresh the note-type list, and re-select the currently-open note type so its
+/// detail stays in sync after a mutation (no-op if none is selected).
+fn refresh_note_types_and_detail(model: &Model) -> Command<Effect, Event> {
+    let list = Command::event(Event::NoteTypesRequested);
+    match model.selected_note_type.as_ref() {
+        Some(nt) => render::render()
+            .and(Command::event(Event::NoteTypeSelect {
+                note_type_id: nt.id,
+            }))
+            .and(list),
+        None => render::render().and(list),
+    }
 }
 
 /// Re-fetch the distinct tag namespace (`GET /tags`) and its `::`-tree shape
@@ -1856,6 +1988,7 @@ impl crux_core::App for Anjuman {
                 model.browser_error = None;
                 model.note_types.clear();
                 model.note_types_error = None;
+                model.selected_note_type = None;
                 model.notes.clear();
                 model.notes_filter = None;
                 model.notes_error = None;
@@ -1925,6 +2058,15 @@ impl crux_core::App for Anjuman {
                 model.route = CurrentRoute::Notes;
                 model.notes_error = None;
                 render::render()
+            }
+
+            Event::ShowNoteTypes => {
+                // Top-level nav: leave any open deck and open the note-type editor.
+                clear_deck_selection(model);
+                model.route = CurrentRoute::NoteTypes;
+                model.note_types_error = None;
+                model.selected_note_type = None;
+                render::render().and(Command::event(Event::NoteTypesRequested))
             }
 
             Event::DeckOptionsRequested { deck_id } => {
@@ -2239,6 +2381,264 @@ impl crux_core::App for Anjuman {
             }
 
             Event::NoteTypesResult(Err(e)) => {
+                model.note_types_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteTypeSelect { note_type_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                Http::get(format!("{API_URL}/note-types/{note_type_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypeResult)
+            }
+
+            Event::NoteTypeResult(Ok(mut response)) => {
+                model.selected_note_type =
+                    Some(response.take_body().expect("note type has a body"));
+                model.note_types_error = None;
+                render::render()
+            }
+
+            Event::NoteTypeResult(Err(e)) => {
+                model.note_types_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteTypeCreate {
+                name,
+                field_names,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                let body = CreateNoteType {
+                    name,
+                    field_names,
+                    sort_field: String::new(),
+                    styling: String::new(),
+                };
+                Http::post(format!("{API_URL}/note-types"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize create note type")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypeCreated)
+            }
+
+            Event::NoteTypeCreated(Ok(mut response)) => {
+                model.note_types_error = None;
+                // Select the freshly created type, then refresh the list.
+                let nt = response.take_body().expect("note type has a body");
+                let id = nt.id;
+                model.selected_note_type = Some(nt);
+                render::render()
+                    .and(Command::event(Event::NoteTypeSelect { note_type_id: id }))
+                    .and(Command::event(Event::NoteTypesRequested))
+            }
+
+            Event::NoteTypeCreated(Err(e)) => {
+                model.note_types_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteTypeClone { note_type_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                Http::post(format!("{API_URL}/note-types/{note_type_id}/clone"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypeCloned)
+            }
+
+            Event::NoteTypeCloned(Ok(mut response)) => {
+                model.note_types_error = None;
+                let nt = response.take_body().expect("note type has a body");
+                let id = nt.id;
+                model.selected_note_type = Some(nt);
+                render::render()
+                    .and(Command::event(Event::NoteTypeSelect { note_type_id: id }))
+                    .and(Command::event(Event::NoteTypesRequested))
+            }
+
+            Event::NoteTypeCloned(Err(e)) => {
+                model.note_types_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteTypeUpdate {
+                note_type_id,
+                name,
+                field_names,
+                sort_field,
+                styling,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                let body = UpdateNoteType {
+                    name,
+                    field_names,
+                    sort_field,
+                    styling,
+                };
+                Http::patch(format!("{API_URL}/note-types/{note_type_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize update note type")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypeUpdated)
+            }
+
+            Event::NoteTypeUpdated(Ok(mut response)) => {
+                model.selected_note_type =
+                    Some(response.take_body().expect("note type has a body"));
+                model.note_types_error = None;
+                refresh_note_types_and_detail(model)
+            }
+
+            Event::NoteTypeUpdated(Err(e)) => {
+                model.note_types_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteTypeDelete { note_type_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                Http::delete(format!("{API_URL}/note-types/{note_type_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypeDeleted)
+            }
+
+            Event::NoteTypeDeleted(Ok(_)) => {
+                model.selected_note_type = None;
+                model.note_types_error = None;
+                render::render().and(Command::event(Event::NoteTypesRequested))
+            }
+
+            Event::NoteTypeDeleted(Err(e)) => {
+                model.note_types_error = Some(e.to_string());
+                render::render()
+            }
+
+            Event::NoteTypeTemplateCreate {
+                note_type_id,
+                name,
+                front_pattern,
+                back_pattern,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                let body = CreateTemplate {
+                    name,
+                    front_pattern,
+                    back_pattern,
+                };
+                Http::post(format!("{API_URL}/note-types/{note_type_id}/templates"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize create template")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypeTemplateChanged)
+            }
+
+            Event::NoteTypeTemplateUpdate {
+                note_type_id,
+                template_id,
+                name,
+                front_pattern,
+                back_pattern,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                let body = UpdateTemplate {
+                    name,
+                    front_pattern,
+                    back_pattern,
+                };
+                Http::patch(format!(
+                    "{API_URL}/note-types/{note_type_id}/templates/{template_id}"
+                ))
+                .header("authorization", format!("Bearer {token}"))
+                .body_json(&body)
+                .expect("serialize update template")
+                .expect_json()
+                .build()
+                .then_send(Event::NoteTypeTemplateChanged)
+            }
+
+            Event::NoteTypeTemplateDelete {
+                note_type_id,
+                template_id,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                Http::delete(format!(
+                    "{API_URL}/note-types/{note_type_id}/templates/{template_id}"
+                ))
+                .header("authorization", format!("Bearer {token}"))
+                .expect_json()
+                .build()
+                .then_send(Event::NoteTypeTemplateChanged)
+            }
+
+            Event::NoteTypeTemplatesReorder {
+                note_type_id,
+                template_ids,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.note_types_error = None;
+                let body = ReorderTemplates { template_ids };
+                Http::patch(format!("{API_URL}/note-types/{note_type_id}/templates/order"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize reorder templates")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::NoteTypeTemplateChanged)
+            }
+
+            Event::NoteTypeTemplateChanged(Ok(mut response)) => {
+                model.selected_note_type =
+                    Some(response.take_body().expect("note type has a body"));
+                model.note_types_error = None;
+                refresh_note_types_and_detail(model)
+            }
+
+            Event::NoteTypeTemplateChanged(Err(e)) => {
                 model.note_types_error = Some(e.to_string());
                 render::render()
             }
@@ -3520,6 +3920,7 @@ impl crux_core::App for Anjuman {
                 browser_error: model.browser_error.clone(),
                 note_types: model.note_types.iter().map(NoteTypeView::from).collect(),
                 note_types_error: model.note_types_error.clone(),
+                selected_note_type: model.selected_note_type.as_ref().map(NoteTypeView::from),
                 notes: model.notes.iter().map(NoteView::from).collect(),
                 notes_page: model.notes_page,
                 notes_per_page: model.notes_per_page,
@@ -3565,6 +3966,7 @@ impl crux_core::App for Anjuman {
                 browser_error: None,
                 note_types: Vec::new(),
                 note_types_error: None,
+                selected_note_type: None,
                 notes: Vec::new(),
                 notes_page: 1,
                 notes_per_page: 50,
@@ -3974,6 +4376,19 @@ mod tests {
             styling: String::new(),
             templates: vec![],
             note_count: 0,
+        }
+    }
+
+    fn note_type_with_template(id: i64, name: &str) -> NoteTypeResponse {
+        NoteTypeResponse {
+            templates: vec![Template {
+                id: 100,
+                ord: 0,
+                name: "Card 1".to_string(),
+                front_pattern: "{{Front}}".to_string(),
+                back_pattern: "{{Front}}<hr>{{Back}}".to_string(),
+            }],
+            ..note_type(id, name)
         }
     }
 
@@ -6871,7 +7286,7 @@ mod tests {
     fn note_types_result_populates_view() {
         let mut model = authenticated_model();
         let response = ResponseBuilder::ok()
-            .body(vec![note_type(1, "Basic"), note_type(2, "Reversed")])
+            .body(vec![note_type(1, "Basic"), note_type_with_template(2, "Reversed")])
             .build();
         let _ = update(Event::NoteTypesResult(Ok(response)), &mut model);
 
@@ -6882,6 +7297,219 @@ mod tests {
         assert_eq!(vm.note_types[0].name, "Basic");
         assert_eq!(vm.note_types[1].name, "Reversed");
         assert_eq!(vm.note_types[0].field_names, vec!["Front".to_string(), "Back".to_string()]);
+        // The second note type carries a template, mirrored into the view.
+        assert_eq!(vm.note_types[1].templates.len(), 1);
+        assert_eq!(vm.note_types[1].templates[0].name, "Card 1");
+    }
+
+    /// `NoteTypeSelect` emits `GET /note-types/{id}`.
+    #[test]
+    fn note_type_select_emits_get() {
+        let mut model = authenticated_model();
+        let effects = update(Event::NoteTypeSelect { note_type_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "GET");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/note-types/7"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteTypeResult(Ok)` populates `selected_note_type` and the view.
+    #[test]
+    fn note_type_result_populates_selected() {
+        let mut model = authenticated_model();
+        let response = ResponseBuilder::ok().body(note_type_with_template(7, "Basic")).build();
+        let _ = update(Event::NoteTypeResult(Ok(response)), &mut model);
+
+        let vm = Anjuman.view(&model);
+        let sel = vm.selected_note_type.expect("selected_note_type");
+        assert_eq!(sel.id, 7);
+        assert_eq!(sel.templates.len(), 1);
+    }
+
+    /// `NoteTypeCreate` emits `POST /note-types` with a `CreateNoteType` body.
+    #[test]
+    fn note_type_create_emits_post_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteTypeCreate {
+                name: "Cloze".to_string(),
+                field_names: vec!["Text".to_string()],
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/note-types");
+                let body: CreateNoteType =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.name, "Cloze");
+                assert_eq!(body.field_names, vec!["Text".to_string()]);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteTypeClone` emits `POST /note-types/{id}/clone`.
+    #[test]
+    fn note_type_clone_emits_post() {
+        let mut model = authenticated_model();
+        let effects = update(Event::NoteTypeClone { note_type_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/note-types/7/clone"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteTypeUpdate` emits `PATCH /note-types/{id}` with an `UpdateNoteType` body.
+    #[test]
+    fn note_type_update_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteTypeUpdate {
+                note_type_id: 7,
+                name: Some("Renamed".to_string()),
+                field_names: None,
+                sort_field: Some("Front".to_string()),
+                styling: None,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/note-types/7"
+                );
+                let body: UpdateNoteType =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.name.as_deref(), Some("Renamed"));
+                assert_eq!(body.sort_field.as_deref(), Some("Front"));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteTypeDelete` emits `DELETE /note-types/{id}`.
+    #[test]
+    fn note_type_delete_emits_delete() {
+        let mut model = authenticated_model();
+        let effects = update(Event::NoteTypeDelete { note_type_id: 7 }, &mut model);
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "DELETE");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/note-types/7"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteTypeTemplateCreate` emits `POST /note-types/{id}/templates` with a body.
+    #[test]
+    fn note_type_template_create_emits_post_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteTypeTemplateCreate {
+                note_type_id: 7,
+                name: "Card 1".to_string(),
+                front_pattern: "{{Front}}".to_string(),
+                back_pattern: "{{Front}}<hr>{{Back}}".to_string(),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/note-types/7/templates"
+                );
+                let body: CreateTemplate =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.name, "Card 1");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteTypeTemplatesReorder` emits `PATCH /note-types/{id}/templates/order`.
+    #[test]
+    fn note_type_templates_reorder_emits_patch() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::NoteTypeTemplatesReorder {
+                note_type_id: 7,
+                template_ids: vec![2, 1],
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/note-types/7/templates/order"
+                );
+                let body: ReorderTemplates =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.template_ids, vec![2, 1]);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `NoteTypeTemplateChanged(Ok)` re-fetches the list + re-selects the detail.
+    #[test]
+    fn note_type_template_changed_refreshes() {
+        let mut model = authenticated_model();
+        model.selected_note_type = Some(note_type(7, "Basic"));
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(note_type_with_template(7, "Basic")).build();
+        let mut command = app.update(Event::NoteTypeTemplateChanged(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(events.iter().any(|e| matches!(e, Event::NoteTypesRequested)));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::NoteTypeSelect { .. }))
+        );
+    }
+
+    /// `ShowNoteTypes` sets the route and clears any open deck.
+    #[test]
+    fn show_note_types_sets_route() {
+        let mut model = authenticated_model();
+        model.decks = vec![deck(1, "Spanish")];
+        model.selected_deck = Some(find_deck(&model.decks.clone(), 1).unwrap());
+
+        let _ = update(Event::ShowNoteTypes, &mut model);
+        assert_eq!(model.route, CurrentRoute::NoteTypes);
+        assert!(model.selected_deck.is_none());
     }
 
     // --------------------------------------------------------------------
