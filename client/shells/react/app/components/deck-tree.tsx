@@ -14,6 +14,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -242,7 +243,9 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
               <EllipsisVertical />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              <DropdownMenuLabel>{deck.title}</DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{deck.title}</DropdownMenuLabel>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => onOpenOptions(deck.id)}
