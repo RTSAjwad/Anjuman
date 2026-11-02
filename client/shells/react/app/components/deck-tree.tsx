@@ -28,6 +28,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { Textarea } from "~/components/ui/textarea";
+import { Label } from "~/components/ui/label";
 import { ChevronRight, EllipsisVertical } from "lucide-react";
 
 // The fixed grid for header + every row. The title column flexes; the three
@@ -43,6 +46,7 @@ type DeckTreeProps = {
   onOpenDeck: (deckId: bigint) => void;
   onOpenOptions: (deckId: bigint) => void;
   onDeleteDeck: (deckId: bigint, cascade: boolean) => void;
+  onUpdateDeck: (deckId: bigint, title: string, description: string | null) => void;
 };
 
 export function DeckTree({
@@ -52,9 +56,13 @@ export function DeckTree({
   onOpenDeck,
   onOpenOptions,
   onDeleteDeck,
+  onUpdateDeck,
 }: DeckTreeProps) {
   const [deleteTarget, setDeleteTarget] = useState<DeckSummary | null>(null);
   const [cascade, setCascade] = useState(false);
+  const [editTarget, setEditTarget] = useState<DeckSummary | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
   function openDelete(deck: DeckSummary) {
     setDeleteTarget(deck);
@@ -65,6 +73,19 @@ export function DeckTree({
     if (!deleteTarget) return;
     onDeleteDeck(deleteTarget.id, cascade);
     setDeleteTarget(null);
+  }
+
+  function openEdit(deck: DeckSummary) {
+    setEditTarget(deck);
+    setEditTitle(deck.title);
+    setEditDescription("");
+  }
+
+  function confirmEdit() {
+    const title = editTitle.trim();
+    if (!editTarget || title === "") return;
+    onUpdateDeck(editTarget.id, title, editDescription.trim() === "" ? "" : editDescription.trim());
+    setEditTarget(null);
   }
 
   if (error) {
@@ -112,6 +133,7 @@ export function DeckTree({
               onOpenDeck={onOpenDeck}
               onOpenOptions={onOpenOptions}
               onDeleteDeck={openDelete}
+              onEditDeck={openEdit}
             />
           ))}
         </div>
@@ -160,6 +182,35 @@ export function DeckTree({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={editTarget !== null} onOpenChange={(v) => { if (!v) setEditTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit deck</DialogTitle>
+            <DialogDescription>Rename the deck or update its description.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Title</Label>
+              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Deck title" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Description</Label>
+              <Textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Leave empty to clear"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
+            <Button onClick={confirmEdit} disabled={editTitle.trim() === ""}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -171,9 +222,10 @@ type DeckRowProps = {
   onOpenDeck: (deckId: bigint) => void;
   onOpenOptions: (deckId: bigint) => void;
   onDeleteDeck: (deck: DeckSummary) => void;
+  onEditDeck: (deck: DeckSummary) => void;
 };
 
-function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDeleteDeck }: DeckRowProps) {
+function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDeleteDeck, onEditDeck }: DeckRowProps) {
   const [open, setOpen] = useState(false);
   const hasChildren = deck.children.length > 0;
 
@@ -255,6 +307,11 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
                 Options
               </DropdownMenuItem>
               <DropdownMenuItem
+                onClick={(e) => { e.stopPropagation(); onEditDeck(deck); }}
+              >
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 variant="destructive"
                 onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck); }}
               >
@@ -285,6 +342,7 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
               onOpenDeck={onOpenDeck}
               onOpenOptions={onOpenOptions}
               onDeleteDeck={onDeleteDeck}
+              onEditDeck={onEditDeck}
             />
           ))}
         </div>
