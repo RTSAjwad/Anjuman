@@ -11,7 +11,23 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "~/components/ui/collapsible";
-import { ChevronRight, Settings } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
+import { ChevronRight, EllipsisVertical } from "lucide-react";
 
 // The fixed grid for header + every row. The title column flexes; the three
 // count columns and the action column are fixed so a parent's badges stay in
@@ -22,11 +38,34 @@ const ROW_GRID = "[grid-template-columns:minmax(0,1fr)_4rem_4rem_4rem_2.5rem]";
 type DeckTreeProps = {
   decks: DeckSummary[];
   error?: string | null;
+  canManageDecks: boolean;
   onOpenDeck: (deckId: bigint) => void;
   onOpenOptions: (deckId: bigint) => void;
+  onDeleteDeck: (deckId: bigint, cascade: boolean) => void;
 };
 
-export function DeckTree({ decks, error, onOpenDeck, onOpenOptions }: DeckTreeProps) {
+export function DeckTree({
+  decks,
+  error,
+  canManageDecks,
+  onOpenDeck,
+  onOpenOptions,
+  onDeleteDeck,
+}: DeckTreeProps) {
+  const [deleteTarget, setDeleteTarget] = useState<DeckSummary | null>(null);
+  const [cascade, setCascade] = useState(false);
+
+  function openDelete(deck: DeckSummary) {
+    setDeleteTarget(deck);
+    setCascade(false);
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    onDeleteDeck(deleteTarget.id, cascade);
+    setDeleteTarget(null);
+  }
+
   if (error) {
     return (
       <Card>
@@ -46,44 +85,94 @@ export function DeckTree({ decks, error, onOpenDeck, onOpenOptions }: DeckTreePr
   }
 
   return (
-    <Card className="min-w-[36rem] max-w-3xl !gap-0 !py-0">
-      <div
-        role="row"
-        className={cn(
-          "grid items-center gap-2 border-b px-3 py-1.5 text-xs font-medium text-muted-foreground",
-          ROW_GRID,
-        )}
-      >
-        <span>Deck</span>
-        <span className="text-center">New</span>
-        <span className="text-center">Learn</span>
-        <span className="text-center">Due</span>
-        <span aria-hidden="true" />
-      </div>
+    <>
+      <Card className="min-w-[36rem] max-w-3xl !gap-0 !py-0">
+        <div
+          role="row"
+          className={cn(
+            "grid items-center gap-2 border-b px-3 py-1.5 text-xs font-medium text-muted-foreground",
+            ROW_GRID,
+          )}
+        >
+          <span>Deck</span>
+          <span className="text-center">New</span>
+          <span className="text-center">Learn</span>
+          <span className="text-center">Due</span>
+          <span aria-hidden="true" />
+        </div>
 
-      <div role="tree" className="flex flex-col">
-        {decks.map((deck) => (
-          <DeckRow
-            key={String(deck.id)}
-            deck={deck}
-            depth={0}
-            onOpenDeck={onOpenDeck}
-            onOpenOptions={onOpenOptions}
-          />
-        ))}
-      </div>
-    </Card>
+        <div role="tree" className="flex flex-col">
+          {decks.map((deck) => (
+            <DeckRow
+              key={String(deck.id)}
+              deck={deck}
+              depth={0}
+              canManageDecks={canManageDecks}
+              onOpenDeck={onOpenDeck}
+              onOpenOptions={onOpenOptions}
+              onDeleteDeck={openDelete}
+            />
+          ))}
+        </div>
+      </Card>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete deck</DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.title ? (
+                <>
+                  Delete <span className="font-medium">{deleteTarget.title}</span>
+                  {deleteTarget.children.length > 0 ? " and decide what happens to its subdecks." : "?"}
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteTarget && deleteTarget.children.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="cascade"
+                  checked={!cascade}
+                  onChange={() => setCascade(false)}
+                />
+                Delete deck only (subdecks move to the top level)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="cascade"
+                  checked={cascade}
+                  onChange={() => setCascade(true)}
+                />
+                Delete deck and subdecks
+              </label>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
 type DeckRowProps = {
   deck: DeckSummary;
   depth: number;
+  canManageDecks: boolean;
   onOpenDeck: (deckId: bigint) => void;
   onOpenOptions: (deckId: bigint) => void;
+  onDeleteDeck: (deck: DeckSummary) => void;
 };
 
-function DeckRow({ deck, depth, onOpenDeck, onOpenOptions }: DeckRowProps) {
+function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDeleteDeck }: DeckRowProps) {
   const [open, setOpen] = useState(false);
   const hasChildren = deck.children.length > 0;
 
@@ -139,15 +228,36 @@ function DeckRow({ deck, depth, onOpenDeck, onOpenOptions }: DeckRowProps) {
       <CountBadge value={deck.learning_count} kind="learn" />
       <CountBadge value={deck.review_count} kind="due" />
       <div className="flex justify-end">
-        {deck.studyable ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Deck options for ${deck.title}`}
-            onClick={() => onOpenOptions(deck.id)}
-          >
-            <Settings />
-          </Button>
+        {canManageDecks ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Actions for ${deck.title}`}
+                />
+              }
+            >
+              <EllipsisVertical />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              <DropdownMenuLabel>{deck.title}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => onOpenOptions(deck.id)}
+                disabled={!deck.studyable}
+              >
+                Options
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onDeleteDeck(deck)}
+              >
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
     </div>
@@ -167,8 +277,10 @@ function DeckRow({ deck, depth, onOpenDeck, onOpenOptions }: DeckRowProps) {
               key={String(child.id)}
               deck={child}
               depth={depth + 1}
+              canManageDecks={canManageDecks}
               onOpenDeck={onOpenDeck}
               onOpenOptions={onOpenOptions}
+              onDeleteDeck={onDeleteDeck}
             />
           ))}
         </div>

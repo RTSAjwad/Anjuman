@@ -2,7 +2,7 @@
 // the browser is still a placeholder pending its port.
 
 import { useCore } from "../lib/core-provider.client";
-import { eventOpenDeck, eventOpenDeckOptions } from "shared_types/app";
+import { eventOpenDeck, eventOpenDeckOptions, eventDeckDelete } from "shared_types/app";
 import { DeckTree } from "./deck-tree";
 import { StudyScreen as StudyScreenView } from "./study";
 import { DeckOptionsScreen as DeckOptionsView } from "./deck-options";
@@ -16,8 +16,10 @@ export function DeckListScreen() {
       <DeckTree
         decks={view?.decks ?? []}
         error={view?.decks_error ?? null}
+        canManageDecks={view?.permissions.can_manage_decks ?? false}
         onOpenDeck={(id) => update(eventOpenDeck(id))}
         onOpenOptions={(id) => update(eventOpenDeckOptions(id))}
+        onDeleteDeck={(id, cascade) => update(eventDeckDelete(id, cascade))}
       />
     </div>
   );
