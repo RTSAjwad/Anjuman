@@ -54,6 +54,7 @@ import type { NotePrefill } from "./add-note-dialog";
 import { StudyCountBadges, StudyControls } from "./study";
 import { LoginScreen } from "./login-screen";
 import { ThemeSelector } from "./theme-selector";
+import { CreateDeck } from "./deck-create-dialog";
 
 export function AppShell() {
   return (
@@ -81,6 +82,7 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
   const route = view.route.kind;
   const canManageNotes = view.permissions.can_manage_notes;
   const canManageTags = view.permissions.can_manage_tags;
+  const canManageDecks = view.permissions.can_manage_decks;
   const hasUnusedTags = view.has_unused_tags;
   const authenticated = view.authenticated;
 
@@ -169,13 +171,18 @@ function ShellView({ view, update }: { view: ViewModel; update: (e: Event) => vo
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
           <SidebarTrigger />
           {route === "DeckList" ? (
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Decks</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            <>
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>Decks</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+              {canManageDecks ? (
+                <CreateDeck decks={view.decks} update={update} />
+              ) : null}
+            </>
           ) : route === "Cards" || route === "Notes" ? (
             <>
               <BrowserTabs
