@@ -18,7 +18,12 @@ import { Input } from "~/components/ui/input"
 import { Textarea } from "~/components/ui/textarea"
 import { Label } from "~/components/ui/label"
 import { cn } from "~/lib/utils"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "~/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -68,44 +73,20 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      {/* Sidebar: note types as parents, templates as children */}
+      {/* Sidebar: note types as parents (chevron), templates as children */}
       <aside className="w-64 shrink-0 overflow-y-auto border-r p-3">
         {canManage ? <CreateNoteTypeDialog update={update} /> : null}
         {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
-        <ul className="mt-3 flex flex-col gap-0.5">
+        <ul className="mt-3 flex flex-col">
           {noteTypes.map((nt) => (
-            <li key={String(nt.id)}>
-              <button
-                type="button"
-                onClick={() => selectNoteType(nt)}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                  selected?.id === nt.id && "bg-accent text-accent-foreground hover:bg-accent",
-                )}
-              >
-                <span className="truncate">{nt.name}</span>
-                <span className="text-xs text-muted-foreground">{Number(nt.note_count)}</span>
-              </button>
-              {nt.templates.length > 0 ? (
-                <ul className="ml-4 flex flex-col gap-0.5 border-l border-border pl-2">
-                  {nt.templates.map((t) => (
-                    <li key={String(t.id)}>
-                      <button
-                        type="button"
-                        onClick={() => selectTemplate(nt, t.id)}
-                        className={cn(
-                          "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted",
-                          selected?.id === nt.id && selectedTemplateId === t.id && "bg-accent text-accent-foreground hover:bg-accent",
-                        )}
-                      >
-                        <ChevronRight className="size-3 text-muted-foreground" />
-                        <span className="truncate">{t.name}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </li>
+            <NoteTypeTreeNode
+              key={String(nt.id)}
+              noteType={nt}
+              selectedId={selected?.id ?? null}
+              selectedTemplateId={selectedTemplateId}
+              onSelectNoteType={selectNoteType}
+              onSelectTemplate={selectTemplate}
+            />
           ))}
         </ul>
       </aside>
@@ -134,6 +115,76 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
         )}
       </section>
     </div>
+  )
+}
+
+// A note type node in the sidebar: chevron on the parent (when it has templates),
+// children indented and collapsible — mirroring the browser filter tree.
+function NoteTypeTreeNode({
+  noteType,
+  selectedId,
+  selectedTemplateId,
+  onSelectNoteType,
+  onSelectTemplate,
+}: {
+  noteType: NoteTypeView;
+  selectedId: bigint | null;
+  selectedTemplateId: bigint | null;
+  onSelectNoteType: (nt: NoteTypeView) => void;
+  onSelectTemplate: (nt: NoteTypeView, templateId: bigint) => void;
+}) {
+  const [open, setOpen] = useState(true)
+  const hasChildren = noteType.templates.length > 0
+  const isSelected = selectedId === noteType.id
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <li className="flex flex-col">
+        <div className="flex items-center">
+          {hasChildren ? (
+            <CollapsibleTrigger
+              onClick={(e) => e.stopPropagation()}
+              className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+            </CollapsibleTrigger>
+          ) : (
+            <span className="size-5 shrink-0" />
+          )}
+          <button
+            type="button"
+            onClick={() => onSelectNoteType(noteType)}
+            className={cn(
+              "flex flex-1 items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
+              isSelected && "bg-accent text-accent-foreground hover:bg-accent",
+            )}
+          >
+            <span className="truncate">{noteType.name}</span>
+            <span className="text-xs text-muted-foreground">{Number(noteType.note_count)}</span>
+          </button>
+        </div>
+        {hasChildren ? (
+          <CollapsibleContent>
+            <ul className="ml-2.5 flex flex-col border-l border-border pl-1">
+              {noteType.templates.map((t) => (
+                <li key={String(t.id)}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectTemplate(noteType, t.id)}
+                    className={cn(
+                      "flex w-full items-center rounded-sm px-2 py-1 text-left text-sm hover:bg-muted",
+                      isSelected && selectedTemplateId === t.id && "bg-accent text-accent-foreground hover:bg-accent",
+                    )}
+                  >
+                    <span className="truncate">{t.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        ) : null}
+      </li>
+    </Collapsible>
   )
 }
 
