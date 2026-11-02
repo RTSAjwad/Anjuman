@@ -24,7 +24,7 @@ impl Default for LimitMode {
 }
 
 /// Expected JSON body for creating a deck.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateDeck {
     pub title: String,

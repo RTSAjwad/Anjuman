@@ -20,7 +20,7 @@ use anjuman_contracts::cards::{
     CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, MoveCardBody,
     MoveCardResponse, NoteModResponse, RepositionBody, RepositionResponse, RescheduleBody,
 };
-use anjuman_contracts::decks::{DeckCountsResponse, DeckResponse, SetDeckOptions};
+use anjuman_contracts::decks::{CreateDeck, DeckCountsResponse, DeckResponse, LimitMode, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::notes::{
@@ -198,6 +198,12 @@ pub enum Event {
     Logout,
     /// Fetch the signed-in user's decks (fired after a successful login/restore).
     DecksRequested,
+    /// Create a new deck (teacher/admin). `parent_id: None` = root deck.
+    DeckCreate {
+        title: String,
+        description: Option<String>,
+        parent_id: Option<i64>,
+    },
     /// Fetch the authoritative per-deck due counts (`GET /decks/counts`) — fired
     /// after a browser action that changes scheduling, so deck-list badges stay
     /// in sync without a full `GET /decks` round-trip.
@@ -425,6 +431,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     DecksResult(#[facet(opaque)] crux_http::Result<crux_http::Response<Vec<DeckResponse>>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckCreated(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -2927,6 +2937,45 @@ impl crux_core::App for Anjuman {
                     .then_send(Event::DecksResult)
             }
 
+            Event::DeckCreate {
+                title,
+                description,
+                parent_id,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.decks_error = None;
+                let body = CreateDeck {
+                    title,
+                    description,
+                    parent_id,
+                    new_per_day_mode: LimitMode::default(),
+                    review_per_day_mode: LimitMode::default(),
+                    new_per_day_override: None,
+                    review_per_day_override: None,
+                };
+                Http::post(format!("{API_URL}/decks"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize create deck")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckCreated)
+            }
+
+            Event::DeckCreated(Ok(_)) => {
+                model.decks_error = None;
+                // Refresh the deck list so the new deck (and its nesting) appears.
+                render::render().and(Command::event(Event::DecksRequested))
+            }
+
+            Event::DeckCreated(Err(e)) => {
+                model.decks_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::DecksCountsRequested => {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
@@ -3487,6 +3536,59 @@ mod tests {
         let mut model = Model::default();
         let effects = update(Event::DecksRequested, &mut model);
         assert!(!effects.iter().any(|e| matches!(e, Effect::Http(_))));
+    }
+
+    /// `DeckCreate` emits `POST /decks` with a `CreateDeck` body + bearer header.
+    #[test]
+    fn deck_create_emits_post_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckCreate {
+                title: "Biology 101".to_string(),
+                description: Some("Intro".to_string()),
+                parent_id: Some(7),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "POST");
+                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/decks");
+                let body: CreateDeck =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.title, "Biology 101");
+                assert_eq!(body.description.as_deref(), Some("Intro"));
+                assert_eq!(body.parent_id, Some(7));
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckCreated(Ok)` re-fetches the deck list (`DecksRequested`).
+    #[test]
+    fn deck_created_refreshes_decks() {
+        let mut model = authenticated_model();
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(deck(1, "Spanish")).build();
+        let mut command = app.update(Event::DeckCreated(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DecksRequested)),
+            "should re-fetch decks, got {events:?}"
+        );
+    }
+
+    /// `DeckCreated(Err)` surfaces the error on `decks_error`.
+    #[test]
+    fn deck_created_error_surfaces() {
+        let mut model = authenticated_model();
+        let err = crux_http::testing::rejection::<DeckResponse>(400, "bad parent").unwrap_err();
+        let _ = update(Event::DeckCreated(Err(err)), &mut model);
+        assert!(model.decks_error.is_some());
+        assert!(Anjuman.view(&model).decks_error.is_some());
     }
 
     /// A canned deck list populates the model and is exposed in the view.
