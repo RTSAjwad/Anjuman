@@ -90,11 +90,11 @@ pub struct SetDeckOptions {
 }
 
 /// Query parameters for `DELETE /decks/{id}`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeleteDeckQuery {
     /// If true, also delete all descendant decks recursively.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cascade: Option<bool>,
 }
 

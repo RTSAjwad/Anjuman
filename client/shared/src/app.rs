@@ -20,7 +20,7 @@ use anjuman_contracts::cards::{
     CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, MoveCardBody,
     MoveCardResponse, NoteModResponse, RepositionBody, RepositionResponse, RescheduleBody,
 };
-use anjuman_contracts::decks::{CreateDeck, DeckCountsResponse, DeckResponse, LimitMode, SetDeckOptions};
+use anjuman_contracts::decks::{CreateDeck, DeckCountsResponse, DeckResponse, DeleteDeckQuery, LimitMode, SetDeckOptions};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::notes::{
@@ -203,6 +203,13 @@ pub enum Event {
         title: String,
         description: Option<String>,
         parent_id: Option<i64>,
+    },
+    /// Delete a deck (teacher/admin, deck owner). When `cascade` is true, the
+    /// deck and all its descendants are deleted; otherwise children are
+    /// re-parented to the root and only the deck is removed.
+    DeckDelete {
+        deck_id: i64,
+        cascade: bool,
     },
     /// Fetch the authoritative per-deck due counts (`GET /decks/counts`) — fired
     /// after a browser action that changes scheduling, so deck-list badges stay
@@ -435,6 +442,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     DeckCreated(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckDeleted(#[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -2976,6 +2987,38 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::DeckDelete { deck_id, cascade } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.decks_error = None;
+                // Only send the `cascade` query param when it is true (the server
+                // defaults to false, i.e. re-parent children to the root).
+                let query = DeleteDeckQuery {
+                    cascade: cascade.then_some(true),
+                };
+                Http::delete(format!("{API_URL}/decks/{deck_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .query(&query)
+                    .expect("serialize delete deck query")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckDeleted)
+            }
+
+            Event::DeckDeleted(Ok(_)) => {
+                model.decks_error = None;
+                // Refresh the deck list so the deletion (and any re-parenting of
+                // children) is reflected.
+                render::render().and(Command::event(Event::DecksRequested))
+            }
+
+            Event::DeckDeleted(Err(e)) => {
+                model.decks_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::DecksCountsRequested => {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
@@ -3587,6 +3630,85 @@ mod tests {
         let mut model = authenticated_model();
         let err = crux_http::testing::rejection::<DeckResponse>(400, "bad parent").unwrap_err();
         let _ = update(Event::DeckCreated(Err(err)), &mut model);
+        assert!(model.decks_error.is_some());
+        assert!(Anjuman.view(&model).decks_error.is_some());
+    }
+
+    /// `DeckDelete` (non-cascade) emits `DELETE /decks/{id}` without a `cascade`
+    /// query param.
+    #[test]
+    fn deck_delete_emits_delete_without_cascade() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckDelete {
+                deck_id: 7,
+                cascade: false,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "DELETE");
+                let url = req.operation.url.to_string();
+                assert!(url.starts_with("http://127.0.0.1:3000/decks/7"), "url = {url}");
+                assert!(!url.contains("cascade"), "non-cascade should omit the param: {url}");
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckDelete` with `cascade: true` sends `?cascade=true`.
+    #[test]
+    fn deck_delete_cascade_emits_query() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckDelete {
+                deck_id: 7,
+                cascade: true,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "DELETE");
+                let url = req.operation.url.to_string();
+                assert!(
+                    url.contains("cascade=true"),
+                    "cascade delete should include the param: {url}"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckDeleted(Ok)` re-fetches the deck list (`DecksRequested`).
+    #[test]
+    fn deck_deleted_refreshes_decks() {
+        let mut model = authenticated_model();
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok()
+            .body(MessageResponse {
+                message: "Deck deleted".to_string(),
+            })
+            .build();
+        let mut command = app.update(Event::DeckDeleted(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DecksRequested)),
+            "should re-fetch decks, got {events:?}"
+        );
+    }
+
+    /// `DeckDeleted(Err)` surfaces the error on `decks_error`.
+    #[test]
+    fn deck_deleted_error_surfaces() {
+        let mut model = authenticated_model();
+        let err = crux_http::testing::rejection::<MessageResponse>(403, "not owner").unwrap_err();
+        let _ = update(Event::DeckDeleted(Err(err)), &mut model);
         assert!(model.decks_error.is_some());
         assert!(Anjuman.view(&model).decks_error.is_some());
     }
