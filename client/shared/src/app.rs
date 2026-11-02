@@ -218,6 +218,13 @@ pub enum Event {
         title: String,
         description: Option<String>,
     },
+    /// Move a deck under a new parent (or to the root). `parent_id: None` moves
+    /// it to the root; `Some(id)` moves it under that deck. The server rejects
+    /// cycles (moving a deck under its own descendant).
+    DeckMove {
+        deck_id: i64,
+        parent_id: Option<i64>,
+    },
     /// Fetch the authoritative per-deck due counts (`GET /decks/counts`) — fired
     /// after a browser action that changes scheduling, so deck-list badges stay
     /// in sync without a full `GET /decks` round-trip.
@@ -457,6 +464,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     DeckUpdated(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckMoved(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -3072,6 +3083,43 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::DeckMove { deck_id, parent_id } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.decks_error = None;
+                // `DeckMove` always reparents: `None` → root (`parent_id = null`),
+                // `Some(id)` → that deck. Only the parent field is touched.
+                let body = UpdateDeck {
+                    title: None,
+                    description: None,
+                    parent_id: Some(parent_id),
+                    new_per_day_mode: None,
+                    review_per_day_mode: None,
+                    new_per_day_override: None,
+                    review_per_day_override: None,
+                };
+                Http::patch(format!("{API_URL}/decks/{deck_id}/rename"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize move deck")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckMoved)
+            }
+
+            Event::DeckMoved(Ok(_)) => {
+                model.decks_error = None;
+                // Refresh the deck list so the re-parenting is reflected.
+                render::render().and(Command::event(Event::DecksRequested))
+            }
+
+            Event::DeckMoved(Err(e)) => {
+                model.decks_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::DecksCountsRequested => {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
@@ -3847,6 +3895,87 @@ mod tests {
         let mut model = authenticated_model();
         let err = crux_http::testing::rejection::<DeckResponse>(400, "empty title").unwrap_err();
         let _ = update(Event::DeckUpdated(Err(err)), &mut model);
+        assert!(model.decks_error.is_some());
+        assert!(Anjuman.view(&model).decks_error.is_some());
+    }
+
+    /// `DeckMove` with a parent emits `PATCH /decks/{id}/rename` carrying only
+    /// `parent_id` (some id), leaving title/description unchanged.
+    #[test]
+    fn deck_move_to_parent_emits_patch() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckMove {
+                deck_id: 7,
+                parent_id: Some(3),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/7/rename"
+                );
+                let body: UpdateDeck =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.parent_id, Some(Some(3)));
+                assert_eq!(body.title, None);
+                assert_eq!(body.description, None);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckMove` with `parent_id: None` serializes `parent_id: null` (move to
+    /// root).
+    #[test]
+    fn deck_move_to_root_serializes_null_parent() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckMove {
+                deck_id: 7,
+                parent_id: None,
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                let raw = String::from_utf8(req.operation.body.clone()).expect("utf8 body");
+                assert!(
+                    raw.contains("\"parent_id\":null"),
+                    "move-to-root should serialize parent_id as null, got: {raw}"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckMoved(Ok)` re-fetches the deck list (`DecksRequested`).
+    #[test]
+    fn deck_moved_refreshes_decks() {
+        let mut model = authenticated_model();
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(deck(7, "Biology 101")).build();
+        let mut command = app.update(Event::DeckMoved(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DecksRequested)),
+            "should re-fetch decks, got {events:?}"
+        );
+    }
+
+    /// `DeckMoved(Err)` surfaces the error on `decks_error`.
+    #[test]
+    fn deck_moved_error_surfaces() {
+        let mut model = authenticated_model();
+        let err = crux_http::testing::rejection::<DeckResponse>(400, "cycle").unwrap_err();
+        let _ = update(Event::DeckMoved(Err(err)), &mut model);
         assert!(model.decks_error.is_some());
         assert!(Anjuman.view(&model).decks_error.is_some());
     }
