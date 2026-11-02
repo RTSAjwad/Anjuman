@@ -50,6 +50,7 @@ import {
 } from "shared_types/app";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
+import { Textarea } from "~/components/ui/textarea";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Toggle } from "~/components/ui/toggle";
@@ -1191,7 +1192,7 @@ function NoteDetailsPanel({
         {fieldNames.map((name) => (
           <div key={name} className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">{name}</Label>
-            <Input
+            <Textarea
               value={edits.get(name) ?? ""}
               onChange={(e) => setField(name, e.target.value)}
               disabled={!canManageNotes}
