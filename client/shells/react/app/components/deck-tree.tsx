@@ -237,6 +237,7 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
                   variant="ghost"
                   size="icon-sm"
                   aria-label={`Actions for ${deck.title}`}
+                  onClick={(e) => e.stopPropagation()}
                 />
               }
             >
@@ -248,14 +249,14 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => onOpenOptions(deck.id)}
+                onClick={(e) => { e.stopPropagation(); onOpenOptions(deck.id); }}
                 disabled={!deck.studyable}
               >
                 Options
               </DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
-                onClick={() => onDeleteDeck(deck)}
+                onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck); }}
               >
                 Delete
               </DropdownMenuItem>
