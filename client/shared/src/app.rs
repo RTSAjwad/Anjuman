@@ -20,7 +20,7 @@ use anjuman_contracts::cards::{
     CardBrowserPage, CardBrowserQuery, CardBrowserResponse, CardModResponse, MoveCardBody,
     MoveCardResponse, NoteModResponse, RepositionBody, RepositionResponse, RescheduleBody,
 };
-use anjuman_contracts::decks::{CreateDeck, DeckCountsResponse, DeckResponse, DeleteDeckQuery, LimitMode, SetDeckOptions};
+use anjuman_contracts::decks::{CreateDeck, DeckCountsResponse, DeckResponse, DeleteDeckQuery, LimitMode, SetDeckOptions, UpdateDeck};
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::notes::{
@@ -210,6 +210,13 @@ pub enum Event {
     DeckDelete {
         deck_id: i64,
         cascade: bool,
+    },
+    /// Update a deck's details (title + description). `description: None` means
+    /// "clear"; an empty-string description is also treated as "clear".
+    DeckUpdate {
+        deck_id: i64,
+        title: String,
+        description: Option<String>,
     },
     /// Fetch the authoritative per-deck due counts (`GET /decks/counts`) — fired
     /// after a browser action that changes scheduling, so deck-list badges stay
@@ -446,6 +453,10 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     DeckDeleted(#[facet(opaque)] crux_http::Result<crux_http::Response<MessageResponse>>),
+
+    #[serde(skip)]
+    #[facet(skip)]
+    DeckUpdated(#[facet(opaque)] crux_http::Result<crux_http::Response<DeckResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -3019,6 +3030,48 @@ impl crux_core::App for Anjuman {
                 render::render()
             }
 
+            Event::DeckUpdate {
+                deck_id,
+                title,
+                description,
+            } => {
+                let token = match &model.auth {
+                    Auth::Authenticated { token, .. } => token.clone(),
+                    Auth::Unauthenticated => return render::render(),
+                };
+                model.decks_error = None;
+                // `description: None` or an empty string both mean "clear" (the
+                // server stores `NULL`), preserving the partial-update "leave
+                // unchanged vs clear" distinction via the nested option.
+                let body = UpdateDeck {
+                    title: Some(title),
+                    description: description.map(|d| if d.is_empty() { None } else { Some(d) }),
+                    parent_id: None,
+                    new_per_day_mode: None,
+                    review_per_day_mode: None,
+                    new_per_day_override: None,
+                    review_per_day_override: None,
+                };
+                Http::patch(format!("{API_URL}/decks/{deck_id}/rename"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body_json(&body)
+                    .expect("serialize update deck")
+                    .expect_json()
+                    .build()
+                    .then_send(Event::DeckUpdated)
+            }
+
+            Event::DeckUpdated(Ok(_)) => {
+                model.decks_error = None;
+                // Refresh the deck list so the rename/description is reflected.
+                render::render().and(Command::event(Event::DecksRequested))
+            }
+
+            Event::DeckUpdated(Err(e)) => {
+                model.decks_error = Some(e.to_string());
+                render::render()
+            }
+
             Event::DecksCountsRequested => {
                 let token = match &model.auth {
                     Auth::Authenticated { token, .. } => token.clone(),
@@ -3709,6 +3762,91 @@ mod tests {
         let mut model = authenticated_model();
         let err = crux_http::testing::rejection::<MessageResponse>(403, "not owner").unwrap_err();
         let _ = update(Event::DeckDeleted(Err(err)), &mut model);
+        assert!(model.decks_error.is_some());
+        assert!(Anjuman.view(&model).decks_error.is_some());
+    }
+
+    /// `DeckUpdate` emits `PATCH /decks/{id}/rename` with an `UpdateDeck` body
+    /// (title + description).
+    #[test]
+    fn deck_update_emits_patch_with_body() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckUpdate {
+                deck_id: 7,
+                title: "Biology 101".to_string(),
+                description: Some("Intro course".to_string()),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                assert_eq!(req.operation.method.as_str(), "PATCH");
+                assert_eq!(
+                    req.operation.url.as_str(),
+                    "http://127.0.0.1:3000/decks/7/rename"
+                );
+                let body: UpdateDeck =
+                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
+                assert_eq!(body.title.as_deref(), Some("Biology 101"));
+                assert_eq!(body.description, Some(Some("Intro course".to_string())));
+                // parent + daily-limit fields are absent (leave unchanged).
+                assert_eq!(body.parent_id, None);
+                assert_eq!(body.new_per_day_mode, None);
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// An empty-string `description` serializes as an explicit `null` ("clear").
+    #[test]
+    fn deck_update_empty_description_clears() {
+        let mut model = authenticated_model();
+        let effects = update(
+            Event::DeckUpdate {
+                deck_id: 7,
+                title: "Biology 101".to_string(),
+                description: Some(String::new()),
+            },
+            &mut model,
+        );
+
+        match effects.as_slice() {
+            [Effect::Http(req)] => {
+                // Serialized JSON body has `"description":null` (Some(None)).
+                let raw = String::from_utf8(req.operation.body.clone()).expect("utf8 body");
+                assert!(
+                    raw.contains("\"description\":null"),
+                    "empty description should clear (null), got: {raw}"
+                );
+            }
+            other => panic!("expected one Http effect, got {other:?}"),
+        }
+    }
+
+    /// `DeckUpdated(Ok)` re-fetches the deck list (`DecksRequested`).
+    #[test]
+    fn deck_updated_refreshes_decks() {
+        let mut model = authenticated_model();
+
+        let app = Anjuman::default();
+        let response = ResponseBuilder::ok().body(deck(7, "Biology 101")).build();
+        let mut command = app.update(Event::DeckUpdated(Ok(response)), &mut model);
+
+        let events: Vec<Event> = command.events().collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::DecksRequested)),
+            "should re-fetch decks, got {events:?}"
+        );
+    }
+
+    /// `DeckUpdated(Err)` surfaces the error on `decks_error`.
+    #[test]
+    fn deck_updated_error_surfaces() {
+        let mut model = authenticated_model();
+        let err = crux_http::testing::rejection::<DeckResponse>(400, "empty title").unwrap_err();
+        let _ = update(Event::DeckUpdated(Err(err)), &mut model);
         assert!(model.decks_error.is_some());
         assert!(Anjuman.view(&model).decks_error.is_some());
     }

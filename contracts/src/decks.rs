@@ -56,25 +56,41 @@ where
 }
 
 /// Fields that can be updated on a deck. All fields are optional.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateDeck {
     pub title: Option<String>,
     /// Move the deck to a new parent. Omit the field to leave parent unchanged.
     /// Include with any value (even null) to move the deck — null means root.
-    #[serde(default, deserialize_with = "deserialize_some_option")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_some_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub parent_id: Option<Option<i64>>,
     /// Update the deck description. Omit the field to leave unchanged.
     /// Include with `null` to clear the description.
-    #[serde(default, deserialize_with = "deserialize_some_option")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_some_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub description: Option<Option<String>>,
     /// Per-deck daily-limit override mode/values (see `LimitMode`). Omitting a
     /// mode leaves it unchanged; omitting an override value leaves it unchanged.
     pub new_per_day_mode: Option<LimitMode>,
     pub review_per_day_mode: Option<LimitMode>,
-    #[serde(default, deserialize_with = "deserialize_some_option")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_some_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub new_per_day_override: Option<Option<i64>>,
-    #[serde(default, deserialize_with = "deserialize_some_option")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_some_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub review_per_day_override: Option<Option<i64>>,
 }
 
