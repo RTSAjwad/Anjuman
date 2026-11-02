@@ -85,6 +85,7 @@ type DeckTreeProps = {
   onDeleteDeck: (deckId: bigint, cascade: boolean) => void;
   onUpdateDeck: (deckId: bigint, title: string, description: string | null) => void;
   onMoveDeck: (deckId: bigint, parentId: bigint | null) => void;
+  onManageDeck: (deckId: bigint) => void;
 };
 
 export function DeckTree({
@@ -96,6 +97,7 @@ export function DeckTree({
   onDeleteDeck,
   onUpdateDeck,
   onMoveDeck,
+  onManageDeck,
 }: DeckTreeProps) {
   const [deleteTarget, setDeleteTarget] = useState<DeckSummary | null>(null);
   const [cascade, setCascade] = useState(false);
@@ -187,6 +189,7 @@ export function DeckTree({
               onDeleteDeck={openDelete}
               onEditDeck={openEdit}
               onMoveDeck={openMove}
+              onManageDeck={onManageDeck}
             />
           ))}
         </div>
@@ -323,9 +326,10 @@ type DeckRowProps = {
   onDeleteDeck: (deck: DeckSummary) => void;
   onEditDeck: (deck: DeckSummary) => void;
   onMoveDeck: (deck: DeckSummary) => void;
+  onManageDeck: (deckId: bigint) => void;
 };
 
-function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDeleteDeck, onEditDeck, onMoveDeck }: DeckRowProps) {
+function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDeleteDeck, onEditDeck, onMoveDeck, onManageDeck }: DeckRowProps) {
   const [open, setOpen] = useState(false);
   const hasChildren = deck.children.length > 0;
 
@@ -417,6 +421,11 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
                 Move
               </DropdownMenuItem>
               <DropdownMenuItem
+                onClick={(e) => { e.stopPropagation(); onManageDeck(deck.id); }}
+              >
+                Manage
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 variant="destructive"
                 onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck); }}
               >
@@ -449,6 +458,7 @@ function DeckRow({ deck, depth, canManageDecks, onOpenDeck, onOpenOptions, onDel
               onDeleteDeck={onDeleteDeck}
               onEditDeck={onEditDeck}
               onMoveDeck={onMoveDeck}
+              onManageDeck={onManageDeck}
             />
           ))}
         </div>

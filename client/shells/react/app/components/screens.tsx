@@ -1,15 +1,18 @@
 // Screen components. The deck list, study, and deck options are real (Phase 3);
 // the browser is still a placeholder pending its port.
 
+import { useState } from "react";
 import { useCore } from "../lib/core-provider.client";
 import { eventOpenDeck, eventOpenDeckOptions, eventDeckDelete, eventDeckUpdate, eventDeckMove } from "shared_types/app";
 import { DeckTree } from "./deck-tree";
+import { DeckCollaboratorsDialog } from "./deck-collaborators-dialog";
 import { StudyScreen as StudyScreenView } from "./study";
 import { DeckOptionsScreen as DeckOptionsView } from "./deck-options";
 import { BrowserScreen as BrowserView } from "./browser";
 
 export function DeckListScreen() {
   const { view, update } = useCore();
+  const [manageDeckId, setManageDeckId] = useState<bigint | null>(null);
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -22,6 +25,18 @@ export function DeckListScreen() {
         onDeleteDeck={(id, cascade) => update(eventDeckDelete(id, cascade))}
         onUpdateDeck={(id, title, description) => update(eventDeckUpdate(id, title, description))}
         onMoveDeck={(id, parentId) => update(eventDeckMove(id, parentId))}
+        onManageDeck={(id) => setManageDeckId(id)}
+      />
+      <DeckCollaboratorsDialog
+        deckId={manageDeckId}
+        canManageDecks={view?.permissions.can_manage_decks ?? false}
+        deckDetail={view?.deck_detail ?? null}
+        deckDetailError={view?.deck_detail_error ?? null}
+        userSearch={view?.user_search ?? []}
+        userSearchError={view?.user_search_error ?? null}
+        update={update}
+        open={manageDeckId !== null}
+        onOpenChange={(v) => { if (!v) setManageDeckId(null); }}
       />
     </div>
   );
