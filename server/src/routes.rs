@@ -136,6 +136,7 @@ pub fn router(state: AppState) -> Router {
         )
         // Note Types
         .route("/note-types", get(note_types_handler::list_note_types))
+        .route("/note-types", post(note_types_handler::create_note_type))
         .route("/note-types/{id}", get(note_types_handler::get_note_type))
         .route(
             "/note-types/{id}/clone",

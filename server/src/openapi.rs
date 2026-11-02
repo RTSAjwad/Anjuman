@@ -35,7 +35,8 @@ use anjuman_contracts::decks::{
 };
 use anjuman_contracts::health::Health;
 use anjuman_contracts::note_types::{
-    CreateTemplate, NoteTypeResponse, ReorderTemplates, Template, UpdateNoteType, UpdateTemplate,
+    CreateNoteType, CreateTemplate, NoteTypeResponse, ReorderTemplates, Template,
+    UpdateNoteType, UpdateTemplate,
 };
 use anjuman_contracts::notes::{CardSummary, CreateNote, NoteResponse, UpdateNote};
 use anjuman_contracts::preferences::{UpdatePreferences, UserPreferences};
@@ -113,6 +114,7 @@ impl Modify for SecurityAddon {
         deck_study,
         deck_study_advance,
         list_note_types,
+        create_note_type,
         clone_note_type,
         get_note_type,
         update_note_type,
@@ -711,6 +713,21 @@ fn deck_study_advance() {}
     )
 )]
 fn list_note_types() {}
+
+#[utoipa::path(
+    post,
+    path = "/note-types",
+    tag = "note-types",
+    operation_id = "createNoteType",
+    security(("bearerAuth" = [])),
+    request_body = CreateNoteType,
+    responses(
+        (status = 201, description = "Note type created", body = NoteTypeResponse),
+        (status = 403, description = "Only teachers and admins can manage note types", body = MessageResponse),
+        (status = 409, description = "A note type with that name already exists", body = MessageResponse)
+    )
+)]
+fn create_note_type() {}
 
 #[utoipa::path(
     post,
