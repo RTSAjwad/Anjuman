@@ -28,9 +28,7 @@ use anjuman_contracts::decks::{
 use anjuman_contracts::deck_options::{DeckOptions, UpdateDeckOptions};
 use anjuman_contracts::note_types::NoteTypeResponse;
 use anjuman_contracts::note_types::Template;
-use anjuman_contracts::note_types::{
-    CreateNoteType, CreateTemplate, ReorderTemplates, UpdateNoteType, UpdateTemplate,
-};
+use anjuman_contracts::note_types::{CreateTemplate, ReorderTemplates, UpdateNoteType, UpdateTemplate};
 use anjuman_contracts::notes::{
     CreateNote, ListNotesQuery, NoteBrowserPage, NoteResponse, UpdateNote,
 };
@@ -326,12 +324,8 @@ pub enum Event {
     NoteTypeSelect {
         note_type_id: i64,
     },
-    /// Create a new note type from scratch.
-    NoteTypeCreate {
-        name: String,
-        field_names: Vec<String>,
-    },
-    /// Clone (duplicate) an existing note type and its templates.
+    /// Clone (duplicate) an existing note type and its templates (Anki's
+    /// "Add note type": there is no create-from-scratch).
     NoteTypeClone {
         note_type_id: i64,
     },
@@ -657,10 +651,6 @@ pub enum Event {
     #[serde(skip)]
     #[facet(skip)]
     NoteTypeResult(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteTypeResponse>>),
-
-    #[serde(skip)]
-    #[facet(skip)]
-    NoteTypeCreated(#[facet(opaque)] crux_http::Result<crux_http::Response<NoteTypeResponse>>),
 
     #[serde(skip)]
     #[facet(skip)]
@@ -2406,46 +2396,6 @@ impl crux_core::App for Anjuman {
             }
 
             Event::NoteTypeResult(Err(e)) => {
-                model.note_types_error = Some(e.to_string());
-                render::render()
-            }
-
-            Event::NoteTypeCreate {
-                name,
-                field_names,
-            } => {
-                let token = match &model.auth {
-                    Auth::Authenticated { token, .. } => token.clone(),
-                    Auth::Unauthenticated => return render::render(),
-                };
-                model.note_types_error = None;
-                let body = CreateNoteType {
-                    name,
-                    field_names,
-                    sort_field: String::new(),
-                    styling: String::new(),
-                };
-                Http::post(format!("{API_URL}/note-types"))
-                    .header("authorization", format!("Bearer {token}"))
-                    .body_json(&body)
-                    .expect("serialize create note type")
-                    .expect_json()
-                    .build()
-                    .then_send(Event::NoteTypeCreated)
-            }
-
-            Event::NoteTypeCreated(Ok(mut response)) => {
-                model.note_types_error = None;
-                // Select the freshly created type, then refresh the list.
-                let nt = response.take_body().expect("note type has a body");
-                let id = nt.id;
-                model.selected_note_type = Some(nt);
-                render::render()
-                    .and(Command::event(Event::NoteTypeSelect { note_type_id: id }))
-                    .and(Command::event(Event::NoteTypesRequested))
-            }
-
-            Event::NoteTypeCreated(Err(e)) => {
                 model.note_types_error = Some(e.to_string());
                 render::render()
             }
@@ -7331,31 +7281,6 @@ mod tests {
         let sel = vm.selected_note_type.expect("selected_note_type");
         assert_eq!(sel.id, 7);
         assert_eq!(sel.templates.len(), 1);
-    }
-
-    /// `NoteTypeCreate` emits `POST /note-types` with a `CreateNoteType` body.
-    #[test]
-    fn note_type_create_emits_post_with_body() {
-        let mut model = authenticated_model();
-        let effects = update(
-            Event::NoteTypeCreate {
-                name: "Cloze".to_string(),
-                field_names: vec!["Text".to_string()],
-            },
-            &mut model,
-        );
-
-        match effects.as_slice() {
-            [Effect::Http(req)] => {
-                assert_eq!(req.operation.method.as_str(), "POST");
-                assert_eq!(req.operation.url.as_str(), "http://127.0.0.1:3000/note-types");
-                let body: CreateNoteType =
-                    serde_json::from_slice(&req.operation.body).expect("body is JSON");
-                assert_eq!(body.name, "Cloze");
-                assert_eq!(body.field_names, vec!["Text".to_string()]);
-            }
-            other => panic!("expected one Http effect, got {other:?}"),
-        }
     }
 
     /// `NoteTypeClone` emits `POST /note-types/{id}/clone`.

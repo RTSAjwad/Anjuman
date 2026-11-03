@@ -2,21 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Expected JSON body for creating a new note type from scratch (`POST
-/// /note-types`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct CreateNoteType {
-    pub name: String,
-    pub field_names: Vec<String>,
-    /// The sort field; empty = fall back to the first field (Anki default).
-    #[serde(default)]
-    pub sort_field: String,
-    /// The shared styling CSS block (per note type); empty = no styling.
-    #[serde(default)]
-    pub styling: String,
-}
-
 /// Fields that can be updated on a note type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

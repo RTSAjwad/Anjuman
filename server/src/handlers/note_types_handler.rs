@@ -1,9 +1,9 @@
 // Note type and card template management.
 //
-// New note types can be created from scratch (`POST /note-types`) or by cloning
-// an existing note type (which copies its templates). Built-in note types are
-// seeded. Templates are managed independently via their own CRUD endpoints,
-// keyed by a stable template id.
+// Note types are not hand-crafted from scratch: new note types are created by
+// cloning an existing note type (which copies its templates), matching Anki.
+// Built-in note types are seeded. Templates are managed independently via their
+// own CRUD endpoints, keyed by a stable template id.
 
 use axum::{
     Json,
@@ -14,8 +14,7 @@ use axum::{
 use chrono::Utc;
 
 use anjuman_contracts::note_types::{
-    CreateNoteType, CreateTemplate, NoteTypeResponse, ReorderTemplates, UpdateNoteType,
-    UpdateTemplate,
+    CreateTemplate, NoteTypeResponse, ReorderTemplates, UpdateNoteType, UpdateTemplate,
 };
 use anjuman_contracts::MessageResponse;
 
@@ -128,61 +127,6 @@ pub async fn get_note_type(
         .map_err(|_| (StatusCode::NOT_FOUND, "Note type not found"))?;
 
     Ok(Json(to_response(&state.db, nt).await?))
-}
-
-/// `POST /note-types` — Create a new (empty-template) note type from scratch.
-pub async fn create_note_type(
-    AuthUser(claims): AuthUser,
-    State(state): State<AppState>,
-    Json(body): Json<CreateNoteType>,
-) -> Result<(StatusCode, Json<NoteTypeResponse>), (StatusCode, String)> {
-    check_teacher_or_admin(&claims).map_err(|(s, m)| (s, m.to_string()))?;
-
-    if body.name.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Name cannot be empty".to_string()));
-    }
-    if body.field_names.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "At least one field is required".to_string(),
-        ));
-    }
-
-    let field_names_json = sqlx::types::Json(body.field_names.clone());
-    let result = sqlx::query!(
-        "INSERT INTO note_types (school_id, name, field_names, sort_field, styling, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
-        claims.school_id,
-        body.name,
-        field_names_json as _,
-        body.sort_field,
-        body.styling,
-        claims.sub,
-        Utc::now(),
-    )
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
-            (StatusCode::CONFLICT, "A note type with that name already exists".to_string())
-        } else {
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
-        }
-    })?;
-
-    let nt = note_types::get_note_type(&state.db, result.id)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to fetch created note type".to_string(),
-            )
-        })?;
-
-    let resp = to_response(&state.db, nt)
-        .await
-        .map_err(|(s, m)| (s, m.to_string()))?;
-
-    Ok((StatusCode::CREATED, Json(resp)))
 }
 
 /// `POST /note-types/{id}/clone` — Clone an existing note type (and its

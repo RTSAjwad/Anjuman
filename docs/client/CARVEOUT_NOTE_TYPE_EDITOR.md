@@ -13,9 +13,9 @@ already done — this is shell UI work only.
 ## What already exists (consume this — do not re-add)
 
 - Server (all already exist, teacher/admin-gated):
-  - `GET /note-types`, `GET /note-types/{id}`, `POST /note-types` (create from
-    scratch), `POST /note-types/{id}/clone`, `PATCH /note-types/{id}`,
-    `DELETE /note-types/{id}`, `POST /note-types/{id}/templates`,
+  - `GET /note-types`, `GET /note-types/{id}`, `POST /note-types/{id}/clone`,
+    `PATCH /note-types/{id}`, `DELETE /note-types/{id}`,
+    `POST /note-types/{id}/templates`,
     `PATCH /note-types/{id}/templates/{template_id}`,
     `DELETE /note-types/{id}/templates/{template_id}`,
     `PATCH /note-types/{id}/templates/order`.
@@ -23,8 +23,8 @@ already done — this is shell UI work only.
   - `ShowNoteTypes` (top-level nav → `CurrentRoute::NoteTypes`)
   - `NoteTypesRequested` / `NoteTypesResult` → `view.note_types`
   - `NoteTypeSelect { note_type_id }` / `NoteTypeResult` → `view.selected_note_type`
-  - `NoteTypeCreate { name, field_names }`
-  - `NoteTypeClone { note_type_id }`
+  - `NoteTypeClone { note_type_id }` (the **only** way to make a new note type —
+    Anki's "Add note type" clones an existing one)
   - `NoteTypeUpdate { note_type_id, name, field_names, sort_field, styling }` (all `Option`)
   - `NoteTypeDelete { note_type_id }`
   - `NoteTypeTemplateCreate { note_type_id, name, front_pattern, back_pattern }`
@@ -53,9 +53,9 @@ the editor re-renders automatically; surface `note_types_error` on failure.
    - Right: the selected `view.selected_note_type` editor.
 
 3. **Note-type level controls** (all gated on `can_manage_note_types`):
-   - "New note type" → a dialog collecting `name` + comma/`field_names`, firing
-     `NoteTypeCreate`.
-   - "Duplicate" → `NoteTypeClone { note_type_id: selected.id }`.
+   - **"New note type"** → pick a base note type and fire
+     `NoteTypeClone { note_type_id: base.id }` (Anki parity — there is no
+     blank-slate create; new types are clones of an existing one).
    - Edit name, field names, sort field (dropdown over `field_names`), and the
      `styling` CSS textarea → `NoteTypeUpdate`.
    - "Delete" (confirm) → `NoteTypeDelete`.
