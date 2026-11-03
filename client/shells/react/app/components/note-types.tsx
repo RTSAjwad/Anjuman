@@ -18,12 +18,21 @@ import { Input } from "~/components/ui/input"
 import { Textarea } from "~/components/ui/textarea"
 import { Label } from "~/components/ui/label"
 import { cn } from "~/lib/utils"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "~/components/ui/collapsible";
+} from "~/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -32,7 +41,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, ChevronUp, ChevronDown, X, EllipsisVertical } from "lucide-react"
 
 type ScreenProps = {
   noteTypes: NoteTypeView[]
@@ -43,9 +52,9 @@ type ScreenProps = {
 }
 
 export function NoteTypesScreen({ noteTypes, selected, error, canManage, update }: ScreenProps) {
-  // The selected template is a client concern (the core tracks the selected note
-  // type only). Default to the note type's first template when it changes.
   const [selectedTemplateId, setSelectedTemplateId] = useState<bigint | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<NoteTypeView | null>(null)
+  const [addTemplateTarget, setAddTemplateTarget] = useState<NoteTypeView | null>(null)
 
   useEffect(() => {
     if (!selected) {
@@ -71,9 +80,17 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
     setSelectedTemplateId(templateId)
   }
 
+  function moveTemplate(nt: NoteTypeView, index: number, dir: -1 | 1) {
+    const ids = nt.templates.map((t) => t.id)
+    const j = index + dir
+    if (j < 0 || j >= ids.length) return
+    ;[ids[index], ids[j]] = [ids[j], ids[index]]
+    update(eventNoteTypeTemplatesReorder(nt.id, ids))
+  }
+
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      {/* Sidebar: note types as parents (chevron), templates as children */}
+      {/* Sidebar: note types as parents, templates as children with their own actions */}
       <aside className="w-64 shrink-0 overflow-y-auto border-r p-3">
         {canManage ? <CreateNoteTypeDialog update={update} /> : null}
         {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
@@ -84,8 +101,14 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
               noteType={nt}
               selectedId={selected?.id ?? null}
               selectedTemplateId={selectedTemplateId}
+              canManage={canManage}
               onSelectNoteType={selectNoteType}
               onSelectTemplate={selectTemplate}
+              onAddTemplate={() => setAddTemplateTarget(nt)}
+              onDuplicate={() => update(eventNoteTypeClone(nt.id))}
+              onDelete={() => setDeleteTarget(nt)}
+              onMoveTemplate={(index, dir) => moveTemplate(nt, index, dir)}
+              onDeleteTemplate={(templateId) => update(eventNoteTypeTemplateDelete(nt.id, templateId))}
             />
           ))}
         </ul>
@@ -100,38 +123,51 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
         )}
       </section>
 
-      {/* Panel 3: template CRUD (Styling / Front / Back) */}
-      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+      {/* Panel 3: template CRUD (tabs on top, textarea fills, save at bottom) */}
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {selected ? (
           <TemplatePanel
             noteType={selected}
             template={selectedTemplate}
-            selectedTemplateId={selectedTemplateId}
             canManage={canManage}
             update={update}
           />
         ) : (
-          <p className="text-muted-foreground">Select a note type.</p>
+          <p className="p-4 text-muted-foreground">Select a note type.</p>
         )}
       </section>
+
+      <DeleteNoteTypeDialog noteType={deleteTarget} open={deleteTarget !== null} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }} update={update} />
+      <CreateTemplateDialog noteType={addTemplateTarget} update={update} open={addTemplateTarget !== null} onOpenChange={(v) => { if (!v) setAddTemplateTarget(null) }} />
     </div>
   )
 }
 
-// A note type node in the sidebar: chevron on the parent (when it has templates),
-// children indented and collapsible — mirroring the browser filter tree.
+// Sidebar tree node: note type (chevron + dropdown) → templates (inline actions).
 function NoteTypeTreeNode({
   noteType,
   selectedId,
   selectedTemplateId,
+  canManage,
   onSelectNoteType,
   onSelectTemplate,
+  onAddTemplate,
+  onDuplicate,
+  onDelete,
+  onMoveTemplate,
+  onDeleteTemplate,
 }: {
-  noteType: NoteTypeView;
-  selectedId: bigint | null;
-  selectedTemplateId: bigint | null;
-  onSelectNoteType: (nt: NoteTypeView) => void;
-  onSelectTemplate: (nt: NoteTypeView, templateId: bigint) => void;
+  noteType: NoteTypeView
+  selectedId: bigint | null
+  selectedTemplateId: bigint | null
+  canManage: boolean
+  onSelectNoteType: (nt: NoteTypeView) => void
+  onSelectTemplate: (nt: NoteTypeView, templateId: bigint) => void
+  onAddTemplate: () => void
+  onDuplicate: () => void
+  onDelete: () => void
+  onMoveTemplate: (index: number, dir: -1 | 1) => void
+  onDeleteTemplate: (templateId: bigint) => void
 }) {
   const [open, setOpen] = useState(true)
   const hasChildren = noteType.templates.length > 0
@@ -140,7 +176,7 @@ function NoteTypeTreeNode({
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <li className="flex flex-col">
-        <div className="flex items-center">
+        <div className="group/row flex items-center">
           {hasChildren ? (
             <CollapsibleTrigger
               onClick={(e) => e.stopPropagation()}
@@ -162,24 +198,54 @@ function NoteTypeTreeNode({
             <span className="truncate">{noteType.name}</span>
             <span className="text-xs text-muted-foreground">{Number(noteType.note_count)}</span>
           </button>
+          {canManage ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${noteType.name}`} onClick={(e) => e.stopPropagation()} />
+                }
+              >
+                <EllipsisVertical />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{noteType.name}</DropdownMenuLabel>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddTemplate(); }}>Add template</DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDuplicate(); }}>Duplicate</DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={(e) => { e.stopPropagation(); onDelete(); }}>Delete</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
         {hasChildren ? (
           <CollapsibleContent>
             <ul className="ml-2.5 flex flex-col border-l border-border pl-1">
-              {noteType.templates.map((t) => (
-                <li key={String(t.id)}>
-                  <button
-                    type="button"
-                    onClick={() => onSelectTemplate(noteType, t.id)}
-                    className={cn(
-                      "flex w-full items-center rounded-sm px-2 py-1 text-left text-sm hover:bg-muted",
-                      isSelected && selectedTemplateId === t.id && "bg-accent text-accent-foreground hover:bg-accent",
-                    )}
-                  >
-                    <span className="truncate">{t.name}</span>
-                  </button>
-                </li>
-              ))}
+              {noteType.templates.map((t, i) => {
+                const isTmplSelected = isSelected && selectedTemplateId === t.id
+                return (
+                  <li key={String(t.id)} className="group/row flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => onSelectTemplate(noteType, t.id)}
+                      className={cn(
+                        "flex flex-1 items-center rounded-sm px-2 py-1 text-left text-sm hover:bg-muted",
+                        isTmplSelected && "bg-accent text-accent-foreground hover:bg-accent",
+                      )}
+                    >
+                      <span className="truncate">{t.name}</span>
+                    </button>
+                    {canManage ? (
+                      <span className="flex shrink-0 items-center opacity-0 group-hover/row:opacity-100">
+                        <Button variant="ghost" size="icon-sm" aria-label="Move up" disabled={i === 0} onClick={() => onMoveTemplate(i, -1)}><ChevronUp /></Button>
+                        <Button variant="ghost" size="icon-sm" aria-label="Move down" disabled={i === noteType.templates.length - 1} onClick={() => onMoveTemplate(i, 1)}><ChevronDown /></Button>
+                        <Button variant="ghost" size="icon-sm" aria-label="Delete template" onClick={() => onDeleteTemplate(t.id)}><X /></Button>
+                      </span>
+                    ) : null}
+                  </li>
+                )
+              })}
             </ul>
           </CollapsibleContent>
         ) : null}
@@ -188,12 +254,11 @@ function NoteTypeTreeNode({
   )
 }
 
-// Panel 1 — note-type CRUD (name, fields, sort field) + actions.
+// Panel 1 — note-type CRUD (name, fields, sort field).
 function NoteTypePanel({ noteType, canManage, update }: { noteType: NoteTypeView; canManage: boolean; update: (e: Event) => void }) {
   const [name, setName] = useState(noteType.name)
   const [fieldNames, setFieldNames] = useState(noteType.field_names.join(", "))
   const [sortField, setSortField] = useState(noteType.sort_field)
-  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const dirty =
     name !== noteType.name ||
@@ -225,25 +290,19 @@ function NoteTypePanel({ noteType, canManage, update }: { noteType: NoteTypeView
       </div>
 
       {canManage ? (
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={save} disabled={!dirty}>Save</Button>
-          <Button variant="outline" onClick={() => update(eventNoteTypeClone(noteType.id))}>Duplicate</Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
-        </div>
+        <Button onClick={save} disabled={!dirty}>Save</Button>
       ) : null}
-
-      <DeleteNoteTypeDialog noteType={noteType} open={deleteOpen} onOpenChange={setDeleteOpen} update={update} />
     </div>
   )
 }
 
-// Panel 3 — template CRUD with Styling / Front / Back tabs.
-function TemplatePanel({ noteType, template, selectedTemplateId, canManage, update }: { noteType: NoteTypeView; template: TemplateView | null; selectedTemplateId: bigint | null; canManage: boolean; update: (e: Event) => void }) {
+// Panel 3 — template editor. Tabs on top, textarea fills the space, save at the bottom.
+function TemplatePanel({ noteType, template, canManage, update }: { noteType: NoteTypeView; template: TemplateView | null; canManage: boolean; update: (e: Event) => void }) {
+  const [tab, setTab] = useState<string>("styling")
   const [styling, setStyling] = useState(noteType.styling)
   const [front, setFront] = useState(template?.front_pattern ?? "")
   const [back, setBack] = useState(template?.back_pattern ?? "")
 
-  // Re-seed local draft values when the target changes.
   useEffect(() => {
     setStyling(noteType.styling)
   }, [noteType.id, noteType.styling])
@@ -252,73 +311,67 @@ function TemplatePanel({ noteType, template, selectedTemplateId, canManage, upda
     setBack(template?.back_pattern ?? "")
   }, [template?.id])
 
-  const stylingDirty = styling !== noteType.styling
-  const frontDirty = template !== null && front !== template.front_pattern
-  const backDirty = template !== null && back !== template.back_pattern
+  const dirty =
+    tab === "styling"
+      ? styling !== noteType.styling
+      : tab === "front"
+        ? template !== null && front !== template.front_pattern
+        : template !== null && back !== template.back_pattern
 
-  function saveStyling() {
-    update(eventNoteTypeUpdate(noteType.id, null, null, null, styling))
-  }
-  function saveFront() {
-    if (template) update(eventNoteTypeTemplateUpdate(noteType.id, template.id, null, front, null))
-  }
-  function saveBack() {
-    if (template) update(eventNoteTypeTemplateUpdate(noteType.id, template.id, null, null, back))
-  }
+  const value = tab === "styling" ? styling : tab === "front" ? front : back
 
-  function moveTemplate(index: number, dir: -1 | 1) {
-    const ids = noteType.templates.map((t) => t.id)
-    const j = index + dir
-    if (j < 0 || j >= ids.length) return
-    ;[ids[index], ids[j]] = [ids[j], ids[index]]
-    update(eventNoteTypeTemplatesReorder(noteType.id, ids))
+  function save() {
+    if (tab === "styling") {
+      update(eventNoteTypeUpdate(noteType.id, null, null, null, styling))
+    } else if (tab === "front" && template) {
+      update(eventNoteTypeTemplateUpdate(noteType.id, template.id, null, front, null))
+    } else if (tab === "back" && template) {
+      update(eventNoteTypeTemplateUpdate(noteType.id, template.id, null, null, back))
+    }
   }
-
-  const templateIndex = template ? noteType.templates.findIndex((t) => t.id === template.id) : -1
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{template ? template.name : "Template"}</h2>
-        {canManage ? (
-          <div className="flex gap-1">
-            {template ? (
-              <>
-                <Button variant="ghost" size="icon-sm" aria-label="Move up" disabled={templateIndex <= 0} onClick={() => moveTemplate(templateIndex, -1)}>↑</Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Move down" disabled={templateIndex < 0 || templateIndex >= noteType.templates.length - 1} onClick={() => moveTemplate(templateIndex, 1)}>↓</Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Delete template" onClick={() => update(eventNoteTypeTemplateDelete(noteType.id, template.id))}>✕</Button>
-              </>
-            ) : null}
-            <CreateTemplateDialog noteType={noteType} update={update} disabled={!canManage} />
-          </div>
-        ) : null}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Tabs at the top */}
+      <div className="shrink-0 border-b px-4 py-2">
+        <Tabs value={tab} onValueChange={(v) => { if (v !== null) setTab(v) }}>
+          <TabsList>
+            <TabsTrigger value="styling">Styling</TabsTrigger>
+            <TabsTrigger value="front">Front</TabsTrigger>
+            <TabsTrigger value="back">Back</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      <Tabs defaultValue="styling" className="flex flex-col gap-3">
-        <TabsList>
-          <TabsTrigger value="styling">Styling</TabsTrigger>
-          <TabsTrigger value="front">Front</TabsTrigger>
-          <TabsTrigger value="back">Back</TabsTrigger>
-        </TabsList>
+      {/* Textarea fills the remaining space */}
+      <div className="min-h-0 flex-1 p-4">
+        <div className="flex h-full flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground">
+            {tab === "styling"
+              ? "Styling (CSS, shared by all templates)"
+              : tab === "front"
+                ? `${template ? template.name : "Front"} — use {{Field}} placeholders`
+                : `${template ? template.name : "Back"} — use {{Field}} placeholders`}
+          </Label>
+          <Textarea
+            value={value}
+            onChange={(e) => {
+              if (tab === "styling") setStyling(e.target.value)
+              else if (tab === "front") setFront(e.target.value)
+              else setBack(e.target.value)
+            }}
+            disabled={!canManage || (tab !== "styling" && !template)}
+            className="min-h-0 flex-1 resize-none font-mono text-sm"
+          />
+        </div>
+      </div>
 
-        <TabsContent value="styling" className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground">Styling (CSS, shared by all templates)</Label>
-          <Textarea value={styling} onChange={(e) => setStyling(e.target.value)} disabled={!canManage} rows={16} className="font-mono text-xs" />
-          {canManage ? <Button onClick={saveStyling} disabled={!stylingDirty}>Save styling</Button> : null}
-        </TabsContent>
-
-        <TabsContent value="front" className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground">Front template — use {"{{Field}}"} placeholders</Label>
-          <Textarea value={front} onChange={(e) => setFront(e.target.value)} disabled={!canManage || !template} rows={16} className="font-mono text-xs" />
-          {canManage && template ? <Button onClick={saveFront} disabled={!frontDirty}>Save front</Button> : null}
-        </TabsContent>
-
-        <TabsContent value="back" className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground">Back template — use {"{{Field}}"} placeholders</Label>
-          <Textarea value={back} onChange={(e) => setBack(e.target.value)} disabled={!canManage || !template} rows={16} className="font-mono text-xs" />
-          {canManage && template ? <Button onClick={saveBack} disabled={!backDirty}>Save back</Button> : null}
-        </TabsContent>
-      </Tabs>
+      {/* Save at the bottom */}
+      <div className="shrink-0 border-t px-4 py-2">
+        {canManage && (tab === "styling" || template) ? (
+          <Button onClick={save} disabled={!dirty}>Save</Button>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -367,56 +420,58 @@ function CreateNoteTypeDialog({ update }: { update: (e: Event) => void }) {
   )
 }
 
-function CreateTemplateDialog({ noteType, update, disabled }: { noteType: NoteTypeView; update: (e: Event) => void; disabled: boolean }) {
-  const [open, setOpen] = useState(false)
+function CreateTemplateDialog({ noteType, update, open, onOpenChange }: { noteType: NoteTypeView | null; update: (e: Event) => void; open: boolean; onOpenChange: (o: boolean) => void }) {
   const [name, setName] = useState("")
   const [front, setFront] = useState("")
   const [back, setBack] = useState("")
 
+  useEffect(() => {
+    if (open) {
+      setName("")
+      setFront("")
+      setBack("")
+    }
+  }, [open])
+
   function submit() {
+    if (!noteType) return
     const n = name.trim()
     if (n === "") return
     update(eventNoteTypeTemplateCreate(noteType.id, n, front, back))
-    setName("")
-    setFront("")
-    setBack("")
-    setOpen(false)
+    onOpenChange(false)
   }
 
   return (
-    <>
-      <Button variant="outline" size="sm" disabled={disabled} onClick={() => setOpen(true)}>Add template</Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add template</DialogTitle>
-            <DialogDescription>Use {"{{Field}}"} placeholders for note fields.</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Card 1" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Front pattern</Label>
-              <Textarea value={front} onChange={(e) => setFront(e.target.value)} rows={3} className="font-mono text-xs" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Back pattern</Label>
-              <Textarea value={back} onChange={(e) => setBack(e.target.value)} rows={3} className="font-mono text-xs" />
-            </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add template</DialogTitle>
+          <DialogDescription>Use {"{{Field}}"} placeholders for note fields.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Card 1" />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit} disabled={name.trim() === ""}>Create</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Front pattern</Label>
+            <Textarea value={front} onChange={(e) => setFront(e.target.value)} rows={3} className="font-mono text-xs" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Back pattern</Label>
+            <Textarea value={back} onChange={(e) => setBack(e.target.value)} rows={3} className="font-mono text-xs" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={submit} disabled={name.trim() === ""}>Create</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-function DeleteNoteTypeDialog({ noteType, open, onOpenChange, update }: { noteType: NoteTypeView; open: boolean; onOpenChange: (o: boolean) => void; update: (e: Event) => void }) {
+function DeleteNoteTypeDialog({ noteType, open, onOpenChange, update }: { noteType: NoteTypeView | null; open: boolean; onOpenChange: (o: boolean) => void; update: (e: Event) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -428,7 +483,7 @@ function DeleteNoteTypeDialog({ noteType, open, onOpenChange, update }: { noteTy
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="destructive" onClick={() => { update(eventNoteTypeDelete(noteType.id)); onOpenChange(false); }}>Delete</Button>
+          <Button variant="destructive" onClick={() => { if (noteType) update(eventNoteTypeDelete(noteType.id)); onOpenChange(false); }}>Delete</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
