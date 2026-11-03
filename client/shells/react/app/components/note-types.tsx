@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import type { NoteTypeView, TemplateView, Event } from "shared_types/app"
 import {
   eventNoteTypeSelect,
-  eventNoteTypeCreate,
   eventNoteTypeClone,
   eventNoteTypeUpdate,
   eventNoteTypeDelete,
@@ -33,6 +32,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "~/components/ui/collapsible"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -92,7 +99,7 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
     <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* Sidebar: note types as parents, templates as children with their own actions */}
       <aside className="w-64 shrink-0 overflow-y-auto border-r p-3">
-        {canManage ? <CreateNoteTypeDialog update={update} /> : null}
+        {canManage ? <CreateNoteTypeDialog noteTypes={noteTypes} update={update} /> : null}
         {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
         <ul className="mt-3 flex flex-col">
           {noteTypes.map((nt) => (
@@ -285,7 +292,23 @@ function NoteTypePanel({ noteType, canManage, update }: { noteType: NoteTypeView
         </div>
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs text-muted-foreground">Sort field</Label>
-          <Input value={sortField} onChange={(e) => setSortField(e.target.value)} disabled={!canManage} placeholder="first field (default)" />
+          <Select
+            items={[{ value: "", label: "first field (default)" }, ...noteType.field_names.map((f) => ({ value: f, label: f }))]}
+            value={sortField}
+            onValueChange={(v) => { if (v !== null) setSortField(v) }}
+          >
+            <SelectTrigger className="w-full" disabled={!canManage}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="">first field (default)</SelectItem>
+                {noteType.field_names.map((f) => (
+                  <SelectItem key={f} value={f}>{f}</SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -376,18 +399,17 @@ function TemplatePanel({ noteType, template, canManage, update }: { noteType: No
   )
 }
 
-function CreateNoteTypeDialog({ update }: { update: (e: Event) => void }) {
+function CreateNoteTypeDialog({ noteTypes, update }: { noteTypes: NoteTypeView[]; update: (e: Event) => void }) {
   const [open, setOpen] = useState(false)
-  const [name, setName] = useState("")
-  const [fields, setFields] = useState("")
+  const [baseId, setBaseId] = useState("")
+
+  useEffect(() => {
+    if (open) setBaseId("")
+  }, [open])
 
   function submit() {
-    const n = name.trim()
-    if (n === "") return
-    const fs = fields.split(",").map((f) => f.trim()).filter((f) => f !== "")
-    update(eventNoteTypeCreate(n, fs))
-    setName("")
-    setFields("")
+    if (baseId === "") return
+    update(eventNoteTypeClone(BigInt(baseId)))
     setOpen(false)
   }
 
@@ -398,21 +420,30 @@ function CreateNoteTypeDialog({ update }: { update: (e: Event) => void }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New note type</DialogTitle>
-            <DialogDescription>Define the note type's name and fields.</DialogDescription>
+            <DialogDescription>Clone an existing note type as a starting point, then rename it.</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Basic" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Fields (comma-separated)</Label>
-              <Input value={fields} onChange={(e) => setFields(e.target.value)} placeholder="Front, Back" />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Base note type</Label>
+            <Select
+              items={noteTypes.map((nt) => ({ value: String(nt.id), label: nt.name }))}
+              value={baseId}
+              onValueChange={(v) => { if (v !== null) setBaseId(v) }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a note type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {noteTypes.map((nt) => (
+                    <SelectItem key={String(nt.id)} value={String(nt.id)}>{nt.name}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit} disabled={name.trim() === ""}>Create</Button>
+            <Button onClick={submit} disabled={baseId === ""}>Clone</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
