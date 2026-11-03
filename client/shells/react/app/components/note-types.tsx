@@ -366,8 +366,8 @@ function TemplatePanel({ noteType, template, canManage, update }: { noteType: No
         </div>
       </div>
 
-      {/* Save at the bottom */}
-      <div className="shrink-0 border-t px-4 py-2">
+      {/* Save at the bottom, right-aligned */}
+      <div className="flex shrink-0 justify-end border-t px-4 py-2">
         {canManage && (tab === "styling" || template) ? (
           <Button onClick={save} disabled={!dirty}>Save</Button>
         ) : null}
