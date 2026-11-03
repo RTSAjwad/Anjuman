@@ -71,6 +71,9 @@ the editor re-renders automatically; surface `note_types_error` on failure.
 
 ## Notes / decisions
 
+- **"New note type" is clone-only** — there is deliberately **no** create-from-
+  scratch endpoint/event (Anki parity). The shell's "New" flow is: pick a base
+  type → `NoteTypeClone` → the clone is auto-selected; then rename/edit it.
 - **Fields are free text**, not a strict schema editor. Collapsing/renaming fields
   with existing notes is a separate (future) concern — this editor edits the note
   type definition itself; the server validates field presence on note create.
@@ -84,8 +87,8 @@ the editor re-renders automatically; surface `note_types_error` on failure.
 
 - `cargo build` in the client workspace (shell compiles against the updated
   `shared`; the new events are in the generated bindings).
-- Manual: as a teacher/admin, open the route, create a note type from scratch,
-  clone one, add/edit/reorder/delete templates, edit name/fields/sort/styling, and
-  delete a type — confirming the list + editor re-render each time. As a student,
-  confirm the route/affordances are absent.
+- Manual: as a teacher/admin, open the route, clone a note type, add/edit/reorder/
+  delete templates, edit name/fields/sort/styling, and delete a type — confirming
+  the list + editor re-render each time. As a student, confirm the route/
+  affordances are absent.
 - Commit with Conventional Commits scope `shell/react`.
