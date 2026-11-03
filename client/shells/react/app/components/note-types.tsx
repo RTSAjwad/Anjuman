@@ -100,7 +100,7 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
       {/* Sidebar: note types as parents, templates as children with their own actions */}
       <aside className="w-64 shrink-0 overflow-y-auto border-r p-3">
         {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
-        <ul className="mt-3 flex flex-col">
+        <ul className="flex flex-col">
           {noteTypes.map((nt) => (
             <NoteTypeTreeNode
               key={String(nt.id)}
