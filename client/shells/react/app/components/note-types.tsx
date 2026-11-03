@@ -99,7 +99,6 @@ export function NoteTypesScreen({ noteTypes, selected, error, canManage, update 
     <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* Sidebar: note types as parents, templates as children with their own actions */}
       <aside className="w-64 shrink-0 overflow-y-auto border-r p-3">
-        {canManage ? <CreateNoteTypeDialog noteTypes={noteTypes} update={update} /> : null}
         {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
         <ul className="mt-3 flex flex-col">
           {noteTypes.map((nt) => (
@@ -396,58 +395,6 @@ function TemplatePanel({ noteType, template, canManage, update }: { noteType: No
         ) : null}
       </div>
     </div>
-  )
-}
-
-function CreateNoteTypeDialog({ noteTypes, update }: { noteTypes: NoteTypeView[]; update: (e: Event) => void }) {
-  const [open, setOpen] = useState(false)
-  const [baseId, setBaseId] = useState("")
-
-  useEffect(() => {
-    if (open) setBaseId("")
-  }, [open])
-
-  function submit() {
-    if (baseId === "") return
-    update(eventNoteTypeClone(BigInt(baseId)))
-    setOpen(false)
-  }
-
-  return (
-    <>
-      <Button variant="outline" size="sm" className="w-full" onClick={() => setOpen(true)}>New note type</Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>New note type</DialogTitle>
-            <DialogDescription>Clone an existing note type as a starting point, then rename it.</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Base note type</Label>
-            <Select
-              items={noteTypes.map((nt) => ({ value: String(nt.id), label: nt.name }))}
-              value={baseId}
-              onValueChange={(v) => { if (v !== null) setBaseId(v) }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a note type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {noteTypes.map((nt) => (
-                    <SelectItem key={String(nt.id)} value={String(nt.id)}>{nt.name}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit} disabled={baseId === ""}>Clone</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   )
 }
 
