@@ -42,7 +42,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { LibraryIcon, TableIcon, LayoutTemplateIcon, LogOutIcon } from "lucide-react";
+import { LibraryIcon, TableIcon, NotebookPenIcon, LogOutIcon } from "lucide-react";
 import {
   DeckListScreen,
   StudyScreen,
@@ -320,7 +320,7 @@ function AppSidebar({
                     isActive={route === "NoteTypes"}
                     tooltip="Note types"
                   >
-                    <LayoutTemplateIcon />
+                    <NotebookPenIcon />
                     <span>Note types</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
